@@ -121,6 +121,23 @@ export async function getGamePlayersCount(gameId) {
  */
 export async function startGame(gameId) {
   try {
+    // Get game details first to get the entry fee
+    const { data: gameData, error: gameError } = await supabase
+      .from('games')
+      .select('entry_fee, status')
+      .eq('id', gameId)
+      .single();
+
+    if (gameError) throw gameError;
+    
+    if (gameData.status !== 'waiting') {
+      console.warn('Game already started or completed');
+      return { success: false, error: 'Game already started' };
+    }
+
+    const entryFee = gameData.entry_fee || GAME_ENTRY_FEE;
+    console.log(`💰 Starting game ${gameId} with entry fee: ${entryFee} Birr`);
+
     // Get all players who haven't paid yet
     const { data: players, error: playersError } = await supabase
       .from('game_players')
@@ -130,14 +147,22 @@ export async function startGame(gameId) {
 
     if (playersError) throw playersError;
 
+    if (!players || players.length === 0) {
+      console.warn('No players to charge');
+      return { success: false, error: 'No players in game' };
+    }
+
     let totalPrizePool = 0;
+    let successfulPlayers = 0;
 
     // Deduct entry fee from each player
     for (const player of players) {
       const userBalance = player.users?.balance || 0;
       
-      if (userBalance < GAME_ENTRY_FEE) {
-        console.warn(`Player ${player.user_id} has insufficient balance`);
+      console.log(`Checking player ${player.user_id}: Balance ${userBalance}, Entry Fee ${entryFee}`);
+      
+      if (userBalance < entryFee) {
+        console.warn(`Player ${player.user_id} has insufficient balance (${userBalance} < ${entryFee})`);
         // Remove player from game
         await supabase
           .from('game_players')
@@ -147,10 +172,15 @@ export async function startGame(gameId) {
       }
 
       // Deduct money from user
-      await supabase
+      const { error: balanceError } = await supabase
         .from('users')
-        .update({ balance: userBalance - GAME_ENTRY_FEE })
+        .update({ balance: userBalance - entryFee })
         .eq('id', player.user_id);
+
+      if (balanceError) {
+        console.error(`Failed to deduct from player ${player.user_id}:`, balanceError);
+        continue;
+      }
 
       // Mark player as paid
       await supabase
@@ -158,7 +188,8 @@ export async function startGame(gameId) {
         .update({ paid: true })
         .eq('id', player.id);
 
-      totalPrizePool += GAME_ENTRY_FEE;
+      totalPrizePool += entryFee;
+      successfulPlayers++;
 
       // Log transaction
       await supabase
@@ -166,10 +197,14 @@ export async function startGame(gameId) {
         .insert({
           user_id: player.user_id,
           type: 'game_entry',
-          amount: -GAME_ENTRY_FEE,
-          description: `Joined game ${gameId}`
+          amount: -entryFee,
+          description: `Joined game ${gameId} - ${entryFee} Birr entry fee`
         });
+
+      console.log(`✅ Charged player ${player.user_id}: ${entryFee} Birr`);
     }
+
+    console.log(`💰 Total Prize Pool: ${totalPrizePool} Birr from ${successfulPlayers} players`);
 
     // Update game with prize pool and status
     const { data, error } = await supabase
@@ -184,7 +219,9 @@ export async function startGame(gameId) {
       .single();
 
     if (error) throw error;
-    return { success: true, game: data };
+    
+    console.log(`🎮 Game ${gameId} started successfully!`);
+    return { success: true, game: data, playersCharged: successfulPlayers };
   } catch (error) {
     console.error('Error starting game:', error);
     return { success: false, error: error.message };

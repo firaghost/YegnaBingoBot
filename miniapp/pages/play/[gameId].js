@@ -404,7 +404,14 @@ export default function PlayGame() {
             <div className="flex-1 bg-purple-800/50 px-3 py-2 rounded-lg text-center">
               <div className="text-xs text-purple-200">Derash</div>
               <div className="text-sm font-bold text-white">
-                {((game?.prize_pool || 0) * 0.9).toFixed(2)} ETB
+                {(() => {
+                  const playerCount = game?.game_players?.length || 0;
+                  const entryFee = game?.entry_fee || 0;
+                  const potentialPool = playerCount * entryFee;
+                  const actualPool = game?.prize_pool || 0;
+                  const totalPool = actualPool > 0 ? actualPool : potentialPool;
+                  return (totalPool * 0.9).toFixed(2);
+                })()} ETB
               </div>
             </div>
             

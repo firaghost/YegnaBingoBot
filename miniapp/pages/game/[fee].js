@@ -65,7 +65,11 @@ export default function GamePage() {
       const game = games && games.length > 0 ? games[0] : null;
       
       if (game) {
-        const totalPool = game.prize_pool || 0;
+        const playerCount = game.game_players?.length || 0;
+        // Calculate potential prize pool (players * entry fee)
+        const potentialPool = playerCount * parseInt(fee);
+        // Use actual prize pool if game started, otherwise show potential
+        const totalPool = game.prize_pool > 0 ? game.prize_pool : potentialPool;
         const commission = totalPool * 0.10; // 10% commission
         const playerPrize = totalPool - commission;
         
@@ -73,7 +77,7 @@ export default function GamePage() {
           prizePool: totalPool,
           playerPrize: playerPrize,
           commission: commission,
-          playerCount: game.game_players?.length || 0,
+          playerCount: playerCount,
           status: game.status
         });
       } else {
