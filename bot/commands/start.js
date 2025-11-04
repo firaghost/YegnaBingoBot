@@ -24,18 +24,18 @@ export async function handleStart(ctx) {
       );
     }
 
-    // Existing user - show welcome
+    // Existing user - show welcome with inline buttons
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.webApp('🎮 Launch Game', `${process.env.MINI_APP_URL || 'https://miniapo.vercel.app'}?userId=${user.id}`)],
+      [Markup.button.callback('💰 Check Balance', 'check_balance')]
+    ]);
+
     return ctx.reply(
-      `🎮 Welcome to Bingo Vault, @${ctx.from.username || firstName}!\n\n` +
-      `✅ Your account has been created!\n` +
-      `🎁 Welcome Bonus: ${STARTING_BONUS} Birr\n` +
-      `💰 Current Balance: ${user.balance} Birr\n\n` +
-      `🎮 You can now play Bingo!\n` +
-      `• Use /play to join a game (5 Birr per game)\n` +
-      `• Use /balance to check your balance\n` +
-      `• Use /receipt to add more funds\n` +
-      `• Use /help for all commands\n\n` +
-      `Good luck! 🍀`
+      `🎮 ሰላም ጨዋታ!\n\n` +
+      `💰 ቀሪ ሂሳብ: ${user.balance} ብር\n` +
+      `🎁 የመግቢያ ክፍያ: 5-100 ብር\n\n` +
+      `ጨዋታውን ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ 👇`,
+      keyboard
     );
   } catch (error) {
     console.error('Error in start command:', error);
