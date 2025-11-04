@@ -4,12 +4,20 @@
     {
       "src": "api/webhook.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "api/start-game.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/webhook",
       "dest": "/api/webhook.js"
+    },
+    {
+      "src": "/api/start-game",
+      "dest": "/api/start-game.js"
     }
   ]
 }

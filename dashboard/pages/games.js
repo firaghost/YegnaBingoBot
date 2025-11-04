@@ -54,21 +54,27 @@ export default function GamesPage() {
 
   async function startGame(gameId) {
     try {
-      const { error } = await supabase
-        .from('games')
-        .update({ 
-          status: 'active',
-          started_at: new Date().toISOString()
-        })
-        .eq('id', gameId);
+      // Call the API to properly start the game and deduct money
+      // Use the bot's Vercel URL or fallback to current domain
+      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
+      const response = await fetch(`${botUrl}/api/start-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to start game');
+      }
+
+      const result = await response.json();
       
-      alert('Game started successfully!');
+      alert(`Game started successfully!\n${result.playersCharged} players charged.\nPrize Pool: ${result.prizePool} Birr`);
       router.push(`/games/live/${gameId}`);
     } catch (error) {
       console.error('Error starting game:', error);
-      alert('Failed to start game');
+      alert('Failed to start game: ' + error.message);
     }
   }
 

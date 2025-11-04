@@ -24,8 +24,38 @@ export default function PlayGame() {
       return;
     }
     loadGameData();
-    setBackButton(() => router.push('/'));
-  }, [gameId]);
+    
+    // Set back button with confirmation for active games
+    setBackButton(() => {
+      if (game?.status === 'active' || gameState === 'playing') {
+        const confirmed = window.confirm(
+          '⚠️ Warning!\n\n' +
+          'The game has already started and your entry fee has been deducted.\n\n' +
+          'If you leave now, you will LOSE your stake!\n\n' +
+          'Are you sure you want to exit?'
+        );
+        if (confirmed) {
+          router.push('/');
+        }
+      } else {
+        router.push('/');
+      }
+    });
+  }, [gameId, game?.status, gameState]);
+
+  // Warn before closing/refreshing if game is active
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (game?.status === 'active' || gameState === 'playing') {
+        e.preventDefault();
+        e.returnValue = 'Game is active! If you leave, you will lose your stake!';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [game?.status, gameState]);
 
   useEffect(() => {
     if (!gameId) return;
