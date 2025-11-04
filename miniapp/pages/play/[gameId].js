@@ -22,6 +22,7 @@ export default function PlayGame() {
   const [gameState, setGameState] = useState('loading'); // loading, waiting, playing, won, lost
   const [lastCalledNumber, setLastCalledNumber] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadGameData();
@@ -31,44 +32,55 @@ export default function PlayGame() {
   useEffect(() => {
     if (!gameId) return;
 
-    // Subscribe to real-time game updates
-    console.log('Setting up real-time subscription for game:', gameId);
-    const channel = subscribeToGame(gameId, async (payload) => {
-      console.log('🔴 REAL-TIME UPDATE:', payload);
-      const updatedGame = payload.new;
-      setGame(updatedGame);
-      
-      // Check if game just started
-      if (updatedGame.status === 'active' && gameState === 'waiting') {
-        console.log('🎮 Game started! Transitioning to playing...');
-        setGameState('playing');
-        hapticFeedback('heavy');
-      }
-      
-      // Update called numbers
-      if (updatedGame.status === 'active') {
-        const numbers = updatedGame.called_numbers || [];
-        setCalledNumbers(numbers);
-        
-        // Show last called number
-        if (numbers.length > 0) {
-          const last = numbers[numbers.length - 1];
-          if (last !== lastCalledNumber) {
-            setLastCalledNumber(last);
-            hapticFeedback('medium');
+    try {
+      // Subscribe to real-time game updates
+      console.log('Setting up real-time subscription for game:', gameId);
+      const channel = subscribeToGame(gameId, async (payload) => {
+        try {
+          console.log('🔴 REAL-TIME UPDATE:', payload);
+          const updatedGame = payload.new;
+          setGame(updatedGame);
+          
+          // Check if game just started
+          if (updatedGame.status === 'active' && gameState === 'waiting') {
+            console.log('🎮 Game started! Transitioning to playing...');
+            setGameState('playing');
+            hapticFeedback('heavy');
           }
+          
+          // Update called numbers
+          if (updatedGame.status === 'active') {
+            const numbers = updatedGame.called_numbers || [];
+            setCalledNumbers(numbers);
+            
+            // Show last called number
+            if (numbers.length > 0) {
+              const last = numbers[numbers.length - 1];
+              if (last !== lastCalledNumber) {
+                setLastCalledNumber(last);
+                hapticFeedback('medium');
+              }
+            }
+          }
+          
+          // Check if game completed
+          if (updatedGame.status === 'completed') {
+            checkGameResult(updatedGame);
+          }
+        } catch (err) {
+          console.error('Error in real-time update:', err);
+          setError('Failed to process game update');
         }
-      }
-      
-      // Check if game completed
-      if (updatedGame.status === 'completed') {
-        checkGameResult(updatedGame);
-      }
-    });
+      });
 
-    return () => {
-      channel.unsubscribe();
-    };
+      return () => {
+        console.log('Unsubscribing from game updates');
+        if (channel) channel.unsubscribe();
+      };
+    } catch (err) {
+      console.error('Error setting up subscription:', err);
+      setError('Failed to connect to game');
+    }
   }, [gameId, gameState, lastCalledNumber]);
 
   async function loadGameData() {
@@ -146,6 +158,25 @@ export default function PlayGame() {
 
   const letters = ['B', 'I', 'N', 'G', 'O'];
   const letterColors = ['#EF4444', '#FCD34D', '#60A5FA', '#34D399', '#F97316'];
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-600 via-pink-600 to-purple-600 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+          <div className="text-6xl mb-4">❌</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Back to Games
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (gameState === 'loading') {
     return (
@@ -291,6 +322,27 @@ export default function PlayGame() {
   // Playing state
   const bingoCard = playerData?.card || [];
 
+  // Safety check - if no card data, show error
+  if (!bingoCard || bingoCard.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-red-600 via-pink-600 to-purple-600 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Card Error</h2>
+          <p className="text-gray-600 mb-4">
+            Your Bingo card could not be loaded. Please try rejoining the game.
+          </p>
+          <button
+            onClick={() => router.push('/')}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Back to Games
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Head>
@@ -347,11 +399,18 @@ export default function PlayGame() {
         {/* Bingo Card */}
         <div className="px-4 mb-6">
           <div className="bg-white/10 backdrop-blur-sm rounded-3xl p-4 shadow-2xl">
-            {bingoCard.length > 0 && (
+            {bingoCard.length === 5 && (
               <div className="grid grid-cols-5 gap-2">
                 {[0, 1, 2, 3, 4].map((row) => (
                   <React.Fragment key={row}>
                     {[0, 1, 2, 3, 4].map((col) => {
+                      // Safety check for card data
+                      if (!bingoCard[col] || bingoCard[col][row] === undefined) {
+                        return (
+                          <div key={`${row}-${col}`} className="aspect-square bg-gray-500 rounded-xl"></div>
+                        );
+                      }
+                      
                       const number = bingoCard[col][row];
                       const isCalled = calledNumbers.includes(number);
                       const isMarked = markedNumbers.includes(number);

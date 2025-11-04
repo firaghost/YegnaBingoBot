@@ -27,21 +27,25 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'game_players' AND column_name = 'selected_numbers'
   ) THEN
     ALTER TABLE game_players ADD COLUMN selected_numbers jsonb DEFAULT '[]'::jsonb;
   END IF;
 END $$;
 
--- Create admin_users table
-CREATE TABLE IF NOT EXISTS admin_users (
+-- Create payments table
+CREATE TABLE IF NOT EXISTS payments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  username text UNIQUE NOT NULL,
-  password_hash text NOT NULL,
-  email text,
-  created_at timestamp DEFAULT now(),
-  last_login timestamp,
-  is_active boolean DEFAULT true
+  user_id uuid REFERENCES users(id),
+  amount numeric NOT NULL,
+  payment_method text,
+  account_number text,
+  transaction_proof text,
+  type text CHECK (type IN ('deposit', 'withdrawal')),
+  status text DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  admin_note text,
+  processed_at timestamp,
+  processed_by uuid REFERENCES admin_users(id),
+  created_at timestamp DEFAULT now()
 );
 
 -- Create transaction_history table
