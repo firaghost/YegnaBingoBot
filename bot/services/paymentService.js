@@ -45,17 +45,17 @@ export async function getUserByTelegramId(telegramId) {
 }
 
 /**
- * Create a new user
+ * Create a new user with optional starting bonus
  */
-export async function createUser(telegramId, username) {
+export async function createUser(telegramId, username, startingBalance = 0) {
   try {
     const { data, error } = await supabase
       .from('users')
       .insert({
         telegram_id: telegramId,
         username: username,
-        balance: 0,
-        status: 'pending'
+        balance: startingBalance,
+        status: 'active' // New users with bonus are active
       })
       .select()
       .single();

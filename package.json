@@ -6,7 +6,7 @@
   "scripts": {
     "bot": "node bot/index.js",
     "dev": "cd dashboard && npm run dev",
-    "build": "cd dashboard && npm run build",
+    "build": "echo 'No build needed for bot'",
     "start": "cd dashboard && npm start",
     "setup": "node scripts/setup.js",
     "test-connection": "node scripts/test-connection.js",

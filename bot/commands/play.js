@@ -1,9 +1,11 @@
+import { Markup } from 'telegraf';
 import { getUserByTelegramId } from '../services/paymentService.js';
 import { getActiveGame, joinGame, getGamePlayersCount } from '../services/gameService.js';
 import { formatBingoCard } from '../utils/bingoEngine.js';
 
 const MIN_PLAYERS = 2; // Minimum players to start a game
 const GAME_ENTRY_FEE = 10;
+const MINI_APP_URL = process.env.MINI_APP_URL || 'https://your-mini-app.vercel.app';
 
 export async function handlePlay(ctx) {
   try {
@@ -11,65 +13,30 @@ export async function handlePlay(ctx) {
     const user = await getUserByTelegramId(telegramId);
 
     if (!user) {
-      return ctx.reply('❌ You need to register first. Use /start');
-    }
-
-    if (user.balance < GAME_ENTRY_FEE) {
       return ctx.reply(
-        `❌ Insufficient balance!\n\n` +
-        `💰 Your balance: ${user.balance} Birr\n` +
-        `🎮 Required: ${GAME_ENTRY_FEE} Birr\n\n` +
-        `Please deposit funds using /receipt`
+        '❌ እባክዎን መጀመሪያ ይመዝገቡ።\n\nየመመዝገብ ቁልፍን ይጫኑ 📝',
+        Markup.keyboard([
+          [{ text: '📝 Register' }]
+        ]).resize()
       );
     }
 
-    // Get or create active game
-    const game = await getActiveGame();
-    if (!game) {
-      return ctx.reply('❌ Error creating game. Please try again.');
-    }
+    // Show game options with Mini App button
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.webApp('🎮 Launch Game', `${MINI_APP_URL}?userId=${user.id}`)],
+      [Markup.button.callback('💰 Check Balance', 'check_balance')]
+    ]);
 
-    // Check if game is already active
-    if (game.status === 'active') {
-      return ctx.reply(
-        `🎮 A game is currently in progress!\n\n` +
-        `Please wait for it to finish.\n` +
-        `Use /status to check game status.`
-      );
-    }
-
-    // Join the game
-    const result = await joinGame(game.id, user.id, user.balance);
-
-    if (!result.success) {
-      return ctx.reply(`❌ ${result.error}`);
-    }
-
-    // Get current players count
-    const playersCount = await getGamePlayersCount(game.id);
-
-    // Format and send the Bingo card
-    const cardDisplay = formatBingoCard(result.card);
-    
-    let message = `🎉 You've joined the game!\n\n`;
-    message += `💰 Entry fee: ${GAME_ENTRY_FEE} Birr\n`;
-    message += `💵 New balance: ${user.balance - GAME_ENTRY_FEE} Birr\n`;
-    message += `👥 Players in game: ${playersCount}\n\n`;
-    message += `🎲 Your Bingo Card:\n\n`;
-    message += `\`\`\`\n${cardDisplay}\`\`\`\n`;
-    
-    if (playersCount < MIN_PLAYERS) {
-      message += `\n⏳ Waiting for more players (${MIN_PLAYERS - playersCount} more needed)...\n`;
-      message += `The game will start automatically when enough players join.`;
-    } else {
-      message += `\n✅ Game is ready to start!\n`;
-      message += `Waiting for admin to begin...`;
-    }
-
-    return ctx.reply(message, { parse_mode: 'Markdown' });
+    return ctx.reply(
+      `🎮 ቢንጎ ጨዋታ\n\n` +
+      `💰 ቀሪ ሂሳብ: ${user.balance} ብር\n` +
+      `🎯 የመግቢያ ክፍያ: 5-100 ብር\n\n` +
+      `ጨዋታውን ለመጀመር ከታች ያለውን ቁልፍ ይጫኑ 👇`,
+      keyboard
+    );
   } catch (error) {
     console.error('Error in play command:', error);
-    return ctx.reply('❌ Error joining game. Please try again.');
+    return ctx.reply('❌ ስህተት ተከስቷል። እባክዎን እንደገና ይሞክሩ።');
   }
 }
 

@@ -1,6 +1,6 @@
 import { Telegraf } from 'telegraf';
 import dotenv from 'dotenv';
-import { handleStart } from './commands/start.js';
+import { handleStart, handleRegister, handleContact } from './commands/start.js';
 import { handleBalance } from './commands/balance.js';
 import { handleReceipt, handleReceiptPhoto } from './commands/receipt.js';
 import { handlePlay, handleStatus } from './commands/play.js';
@@ -32,12 +32,30 @@ bot.command('play', handlePlay);
 bot.command('status', handleStatus);
 bot.command('help', handleHelp);
 
+// Handle contact sharing
+bot.on('contact', handleContact);
+
 // Handle photo messages with /receipt caption
 bot.on('photo', async (ctx) => {
   const caption = ctx.message.caption || '';
   if (caption.startsWith('/receipt')) {
     return handleReceiptPhoto(ctx);
   }
+});
+
+// Handle button clicks (keyboard buttons)
+bot.hears('📝 Register', handleRegister);
+bot.hears('🎮 Play', handlePlay);
+bot.hears('💰 Deposit', (ctx) => ctx.reply('💰 የክፍያ መመሪያዎች:\n\nእባክዎን /receipt ይጠቀሙ'));
+bot.hears('💸 Withdraw', (ctx) => ctx.reply('💸 የመውጣት ጥያቄ በቅርቡ ይመጣል...'));
+bot.hears('📊 Transfer', (ctx) => ctx.reply('📊 የማስተላለፍ ባህሪ በቅርቡ ይመጣል...'));
+bot.hears('📢 Join Channel', (ctx) => ctx.reply('📢 የቴሌግራም ቻናላችንን ይቀላቀሉ: @YourChannel'));
+bot.hears('❌ Cancel', handleStart);
+
+// Handle callback queries (inline buttons)
+bot.action('check_balance', async (ctx) => {
+  await ctx.answerCbQuery();
+  return handleBalance(ctx);
 });
 
 // Handle unknown commands
