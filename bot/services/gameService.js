@@ -1,7 +1,7 @@
 import { supabase } from '../utils/supabaseClient.js';
 import { generateBingoCard, checkBingoWin } from '../utils/bingoEngine.js';
 
-const GAME_ENTRY_FEE = 10;
+const GAME_ENTRY_FEE = 5;
 
 /**
  * Get or create an active game

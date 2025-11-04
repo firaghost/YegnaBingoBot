@@ -6,33 +6,40 @@ const STARTING_BONUS = 5; // Starting bonus in Birr
 export async function handleStart(ctx) {
   try {
     const telegramId = ctx.from.id.toString();
-    const username = ctx.from.username;
     const firstName = ctx.from.first_name || 'User';
 
     // Check if user exists
     let user = await getUserByTelegramId(telegramId);
 
-    // Welcome message with image and buttons
-    const welcomeMessage = user 
-      ? `👋 እንኳን ደህና መጡ ${firstName}!\n\n💰 ቀሪ ሂሳብ: ${user.balance} ብር\n📊 ሁኔታ: ${user.status === 'active' ? 'ንቁ' : 'በመጠባበቅ ላይ'}\n\nየቢንጎ ጨዋታዎችን ለመጫወት ዝግጁ ነዎት!`
-      : `👋 እንኳን ደህና መጡ ወደ ቢንጎ ቫልት!\n\n🎮 የኢትዮጵያ #1 የቢንጎ መድረክ\n💰 ይመዝገቡ እና 5 ብር ነፃ ቦነስ ያግኙ!\n\nለመጀመር እባክዎን ይመዝገቡ 👇`;
+    if (!user) {
+      // New user - request contact
+      return ctx.reply(
+        `🎮 Welcome to Bingo Vault, @${ctx.from.username || firstName}!\n\n` +
+        `To get started, please share your contact information.\n` +
+        `You'll receive ${STARTING_BONUS} Birr welcome bonus! 🎁`,
+        Markup.keyboard([
+          [Markup.button.contactRequest('📱 Share Contact')],
+          [{ text: '❌ Cancel' }]
+        ]).resize().oneTime()
+      );
+    }
 
-    const keyboard = user
-      ? Markup.keyboard([
-          [{ text: '🎮 Play' }, { text: '💰 Deposit' }],
-          [{ text: '💸 Withdraw' }, { text: '📊 Transfer' }],
-          [{ text: '📢 Join Channel' }]
-        ]).resize()
-      : Markup.keyboard([
-          [{ text: '📝 Register' }, { text: '🎮 Play' }],
-          [{ text: '💰 Deposit' }, { text: '📢 Join Channel' }],
-          [{ text: '💸 Withdraw' }, { text: '📊 Transfer' }]
-        ]).resize();
-
-    return ctx.reply(welcomeMessage, keyboard);
+    // Existing user - show welcome
+    return ctx.reply(
+      `🎮 Welcome to Bingo Vault, @${ctx.from.username || firstName}!\n\n` +
+      `✅ Your account has been created!\n` +
+      `🎁 Welcome Bonus: ${STARTING_BONUS} Birr\n` +
+      `💰 Current Balance: ${user.balance} Birr\n\n` +
+      `🎮 You can now play Bingo!\n` +
+      `• Use /play to join a game (5 Birr per game)\n` +
+      `• Use /balance to check your balance\n` +
+      `• Use /receipt to add more funds\n` +
+      `• Use /help for all commands\n\n` +
+      `Good luck! 🍀`
+    );
   } catch (error) {
     console.error('Error in start command:', error);
-    return ctx.reply('❌ ስህተት ተከስቷል። እባክዎን እንደገና ይሞክሩ።');
+    return ctx.reply('❌ An error occurred. Please try again.');
   }
 }
 

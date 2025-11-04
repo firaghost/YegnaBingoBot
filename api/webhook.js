@@ -5,15 +5,52 @@ import { handleBalance } from '../bot/commands/balance.js';
 import { handleReceipt, handleReceiptPhoto } from '../bot/commands/receipt.js';
 import { handlePlay, handleStatus } from '../bot/commands/play.js';
 import { handleHelp } from '../bot/commands/help.js';
+import {
+  setBotCommands,
+  handleWithdraw,
+  handleDeposit,
+  handleTransfer,
+  handleCheckBalance,
+  handleReferral,
+  handleChangeName,
+  handleJoinChannel,
+  handleGameHistory,
+  handleDepositHistory,
+  handleWithdrawalHistory,
+  handleTryYourLuck,
+  handleHighStakeGameLuck,
+  handleReferralLeaderboard,
+  handleConvertBonusBalance,
+  handleCancel
+} from '../bot/commands/menu.js';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
 
+// Set bot commands menu
+setBotCommands(bot).catch(console.error);
+
 // Set up commands
 bot.start(handleStart);
-bot.command('balance', handleBalance);
-bot.command('receipt', handleReceipt);
+bot.command('register', handleRegister);
 bot.command('play', handlePlay);
+bot.command('balance', handleBalance);
+bot.command('checkbalance', handleCheckBalance);
+bot.command('receipt', handleReceipt);
+bot.command('deposit', handleDeposit);
+bot.command('withdraw', handleWithdraw);
+bot.command('transfer', handleTransfer);
+bot.command('referral', handleReferral);
+bot.command('changename', handleChangeName);
+bot.command('joinchannel', handleJoinChannel);
+bot.command('gamehistory', handleGameHistory);
+bot.command('deposithistory', handleDepositHistory);
+bot.command('withdrawalhistory', handleWithdrawalHistory);
+bot.command('tryyourluck', handleTryYourLuck);
+bot.command('highstakegameluck', handleHighStakeGameLuck);
+bot.command('referralleaderboard', handleReferralLeaderboard);
+bot.command('convertbonusbalance', handleConvertBonusBalance);
+bot.command('cancel', handleCancel);
 bot.command('status', handleStatus);
 bot.command('help', handleHelp);
 
