@@ -1,26 +1,98 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import { supabase } from '../lib/supabaseClient';
 
 export default function Login() {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [logoutReason, setLogoutReason] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    // Check if already authenticated
+    const isAuth = localStorage.getItem('adminAuth');
+    if (isAuth) {
+      router.push('/games');
+    }
+
+    // Check for logout reason
+    const reason = router.query.reason;
+    if (reason) {
+      setLogoutReason(decodeURIComponent(reason));
+    }
+  }, [router.query]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    // Simple password check (in production, use proper authentication)
-    if (password === process.env.NEXT_PUBLIC_ADMIN_PASSWORD || password === 'admin123') {
+    try {
+      // Query admin user from Supabase
+      const { data: admin, error: queryError } = await supabase
+        .from('admin_users')
+        .select('*')
+        .or(`username.eq.${username},email.eq.${username}`)
+        .single();
+
+      if (queryError || !admin) {
+        setError('Invalid username or password');
+        setLoading(false);
+        return;
+      }
+
+      // Check if account is active
+      if (!admin.is_active) {
+        setError('Account is disabled. Contact administrator.');
+        setLoading(false);
+        return;
+      }
+
+      // For now, simple password check (in production, use bcrypt)
+      // Since we can't hash on client, we'll use a simple comparison
+      // TODO: Implement proper password hashing with backend API
+      const isValidPassword = password === 'YegnaBingo2025!'; // Default password
+
+      if (!isValidPassword) {
+        setError('Invalid username or password');
+        setLoading(false);
+        return;
+      }
+
+      // Update last login
+      await supabase
+        .from('admin_users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('id', admin.id);
+
+      // Generate session token
+      const sessionToken = generateSessionToken();
+      
+      // Store auth data
       localStorage.setItem('adminAuth', 'true');
-      router.push('/');
-    } else {
-      setError('Invalid password');
+      localStorage.setItem('sessionToken', sessionToken);
+      localStorage.setItem('adminId', admin.id);
+      localStorage.setItem('adminUsername', admin.username);
+      localStorage.setItem('loginTime', Date.now().toString());
+      localStorage.setItem('lastActivity', Date.now().toString());
+
+      // Redirect to dashboard
+      router.push('/games');
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('An error occurred. Please try again.');
       setLoading(false);
     }
+  };
+
+  const generateSessionToken = () => {
+    return Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
   };
 
   return (
@@ -37,19 +109,53 @@ export default function Login() {
             <p className="text-gray-600">Admin Dashboard</p>
           </div>
 
+          {logoutReason && (
+            <div className="mb-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-lg text-sm">
+              ⚠️ {logoutReason}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Username Field */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Admin Password
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Username or Email
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input"
-                placeholder="Enter admin password"
-                required
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter username or email"
+                  required
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {/* Password Field */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Enter password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -67,8 +173,11 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <p>Protected Admin Area</p>
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-500">🔒 Protected Admin Area</p>
+            <p className="text-xs text-gray-400 mt-2">
+              Default: <code className="bg-gray-100 px-1 rounded">admin</code> / <code className="bg-gray-100 px-1 rounded">YegnaBingo2025!</code>
+            </p>
           </div>
         </div>
       </div>

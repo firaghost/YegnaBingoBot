@@ -28,27 +28,28 @@ export default function PlayGame() {
   }, [gameId]);
 
   useEffect(() => {
-    if (!gameId || !user) return;
+    if (!gameId) return;
 
     // Subscribe to real-time game updates
+    console.log('Setting up real-time subscription for game:', gameId);
     const channel = subscribeToGame(gameId, async (payload) => {
-      console.log('Game update:', payload);
+      console.log('🔴 REAL-TIME UPDATE:', payload);
       const updatedGame = payload.new;
       setGame(updatedGame);
       
+      // Check if game just started
       if (updatedGame.status === 'active' && gameState === 'waiting') {
-        // Game just started! Reload player data and transition to playing
-        console.log('Game started! Transitioning to playing state...');
-        await loadGameData();
+        console.log('🎮 Game started! Transitioning to playing...');
         setGameState('playing');
         hapticFeedback('heavy');
       }
       
+      // Update called numbers
       if (updatedGame.status === 'active') {
-        setCalledNumbers(updatedGame.called_numbers || []);
+        const numbers = updatedGame.called_numbers || [];
+        setCalledNumbers(numbers);
         
         // Show last called number
-        const numbers = updatedGame.called_numbers || [];
         if (numbers.length > 0) {
           const last = numbers[numbers.length - 1];
           if (last !== lastCalledNumber) {
@@ -56,15 +57,19 @@ export default function PlayGame() {
             hapticFeedback('medium');
           }
         }
-      } else if (updatedGame.status === 'completed') {
+      }
+      
+      // Check if game completed
+      if (updatedGame.status === 'completed') {
         checkGameResult(updatedGame);
       }
     });
 
     return () => {
+      console.log('Unsubscribing from game updates');
       channel.unsubscribe();
     };
-  }, [gameId, user, gameState]);
+  }, [gameId, gameState, lastCalledNumber]);
 
   async function loadGameData() {
     const telegramUserId = getUserId();

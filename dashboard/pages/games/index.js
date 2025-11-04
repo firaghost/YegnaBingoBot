@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabaseClient';
+import ProtectedRoute from '../../components/ProtectedRoute';
+import { useAuth } from '../../lib/auth';
 
-export default function GamesPage() {
+function GamesPageContent() {
   const router = useRouter();
+  const auth = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -260,5 +263,13 @@ export default function GamesPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function GamesPage() {
+  return (
+    <ProtectedRoute>
+      <GamesPageContent />
+    </ProtectedRoute>
   );
 }

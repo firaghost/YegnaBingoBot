@@ -377,28 +377,31 @@ export default function LiveGameControl() {
                 </button>
               </div>
 
-              {/* Called Numbers */}
+              {/* All Numbers Grid (1-75) */}
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Called Numbers</h3>
-                <div className="flex flex-wrap gap-2">
-                  {calledNumbers.length === 0 ? (
-                    <div className="text-gray-400 text-center w-full py-4">
-                      No numbers called yet
-                    </div>
-                  ) : (
-                    calledNumbers.map((num) => (
-                      <span
+                <h3 className="font-semibold text-gray-900 mb-4">Number Board (1-75)</h3>
+                <div className="grid grid-cols-10 gap-2">
+                  {Array.from({ length: 75 }, (_, i) => i + 1).map((num) => {
+                    const isCalled = calledNumbers.includes(num);
+                    const isLast = num === lastNumber;
+                    return (
+                      <div
                         key={num}
-                        className={`w-12 h-12 flex items-center justify-center rounded-lg font-bold text-white ${
-                          num === lastNumber
-                            ? 'bg-gradient-to-br from-yellow-400 to-orange-500 ring-4 ring-yellow-200 scale-110'
-                            : 'bg-blue-600'
-                        }`}
+                        className={`
+                          w-12 h-12 flex items-center justify-center rounded-lg font-bold text-sm
+                          transition-all duration-300
+                          ${isCalled 
+                            ? isLast
+                              ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white ring-4 ring-yellow-200 scale-110 shadow-lg'
+                              : 'bg-green-500 text-white'
+                            : 'bg-gray-100 text-gray-400'
+                          }
+                        `}
                       >
                         {num}
-                      </span>
-                    ))
-                  )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
