@@ -1,0 +1,26 @@
+{
+  "name": "bingo-vault",
+  "version": "1.0.0",
+  "description": "Telegram-based Bingo game system with Supabase backend",
+  "type": "module",
+  "scripts": {
+    "bot": "node bot/index.js",
+    "dev": "cd dashboard && npm run dev",
+    "build": "cd dashboard && npm run build",
+    "start": "cd dashboard && npm start",
+    "setup": "node scripts/setup.js",
+    "test-connection": "node scripts/test-connection.js",
+    "install-all": "npm install && cd dashboard && npm install"
+  },
+  "keywords": ["telegram", "bingo", "bot", "supabase"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "telegraf": "^4.15.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0"
+  }
+}
