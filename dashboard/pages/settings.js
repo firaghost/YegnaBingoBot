@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
-import Head from 'head';
+import Head from 'next/head';
 
 export default function Settings() {
   const router = useRouter();
