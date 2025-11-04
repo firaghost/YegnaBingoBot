@@ -79,6 +79,46 @@ bot.action('check_balance', async (ctx) => {
   return handleBalance(ctx);
 });
 
+bot.action('withdraw_telebirr', async (ctx) => {
+  await ctx.answerCbQuery();
+  const { getUserByTelegramId } = await import('../bot/services/paymentService.js');
+  const user = await getUserByTelegramId(ctx.from.id.toString());
+  if (!user) {
+    return ctx.reply('❌ User not found');
+  }
+  return ctx.reply(
+    `📱 Telebirr Withdrawal\n\n` +
+    `💰 Amount to withdraw: ${user.balance} Birr\n\n` +
+    `Please provide your Telebirr number:\n` +
+    `Format: 09XXXXXXXX\n\n` +
+    `Send your number and we'll process your withdrawal within 24 hours.\n\n` +
+    `Contact admin: @YourAdminUsername`
+  );
+});
+
+bot.action('withdraw_cbe', async (ctx) => {
+  await ctx.answerCbQuery();
+  const { getUserByTelegramId } = await import('../bot/services/paymentService.js');
+  const user = await getUserByTelegramId(ctx.from.id.toString());
+  if (!user) {
+    return ctx.reply('❌ User not found');
+  }
+  return ctx.reply(
+    `🏦 CBE (Commercial Bank of Ethiopia) Withdrawal\n\n` +
+    `💰 Amount to withdraw: ${user.balance} Birr\n\n` +
+    `Please provide:\n` +
+    `1. CBE Account Number\n` +
+    `2. Account Holder Name\n\n` +
+    `Send this information and we'll process your withdrawal within 24 hours.\n\n` +
+    `Contact admin: @YourAdminUsername`
+  );
+});
+
+bot.action('withdraw_cancel', async (ctx) => {
+  await ctx.answerCbQuery('Withdrawal cancelled');
+  return ctx.reply('❌ Withdrawal cancelled.\n\nUse /withdraw to try again.');
+});
+
 bot.on('text', (ctx) => {
   const text = ctx.message.text;
   if (text.startsWith('/')) {

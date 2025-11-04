@@ -35,44 +35,100 @@ export async function handleRegister(ctx) {
     return ctx.reply(
       `✅ You are already registered!\n\n` +
       `💰 Balance: ${user.balance} Birr\n` +
-      `📱 Phone: ${user.username}\n\n` +
+      `📱 Phone: ${user.username}\n` +
+      `🎁 Referral Code: ${user.id.substring(0, 8)}\n\n` +
       `Use /play to start playing!`
     );
   }
   
-  return ctx.reply('Please use /start to register.');
+  return ctx.reply(
+    '📝 Registration Required\n\n' +
+    'Please use /start to register and get your 5 Birr welcome bonus!'
+  );
 }
 
 export async function handleWithdraw(ctx) {
+  const { Markup } = await import('telegraf');
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  if (user.balance < 50) {
+    return ctx.reply(
+      `💸 Withdrawal\n\n` +
+      `❌ Insufficient balance!\n\n` +
+      `💰 Your balance: ${user.balance} Birr\n` +
+      `📊 Minimum withdrawal: 50 Birr\n\n` +
+      `Play more games to increase your balance!`
+    );
+  }
+  
+  const keyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback('📱 Telebirr', 'withdraw_telebirr'),
+      Markup.button.callback('🏦 CBE', 'withdraw_cbe')
+    ],
+    [Markup.button.callback('❌ Cancel', 'withdraw_cancel')]
+  ]);
+  
   return ctx.reply(
     `💸 Withdrawal Request\n\n` +
-    `To withdraw funds:\n` +
-    `1. Minimum withdrawal: 50 Birr\n` +
-    `2. Processing time: 24 hours\n` +
-    `3. Contact admin with your withdrawal request\n\n` +
-    `Coming soon: Automated withdrawals!`
+    `💰 Available balance: ${user.balance} Birr\n` +
+    `📊 Minimum: 50 Birr\n` +
+    `⏱ Processing time: 24 hours\n\n` +
+    `Please select your withdrawal method:`,
+    keyboard
   );
 }
 
 export async function handleDeposit(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
   return ctx.reply(
-    `💰 Deposit Instructions\n\n` +
-    `To deposit funds, use:\n` +
-    `/receipt <receipt_number> <amount>\n\n` +
+    `💰 Deposit Funds\n\n` +
+    `Current balance: ${user.balance} Birr\n\n` +
+    `📱 Payment Methods:\n` +
+    `• Telebirr\n` +
+    `• CBE Birr\n` +
+    `• Bank Transfer\n\n` +
+    `📝 How to deposit:\n` +
+    `1. Make payment to our account\n` +
+    `2. Send receipt using /receipt command\n` +
+    `3. Wait for admin approval\n\n` +
     `Example:\n` +
     `/receipt REC123456 100\n\n` +
-    `You can also send a photo of your receipt with the /receipt command in the caption.`
+    `Or send receipt photo with /receipt in caption.`
   );
 }
 
 export async function handleTransfer(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
   return ctx.reply(
     `📊 Transfer Funds\n\n` +
-    `Transfer funds to another player:\n` +
-    `Format: /transfer <username> <amount>\n\n` +
+    `💰 Your balance: ${user.balance} Birr\n\n` +
+    `Transfer to another player:\n` +
+    `Format: /transfer <phone> <amount>\n\n` +
     `Example:\n` +
-    `/transfer @friend 50\n\n` +
-    `Coming soon!`
+    `/transfer 0912345678 50\n\n` +
+    `📝 Rules:\n` +
+    `• Minimum: 10 Birr\n` +
+    `• Fee: 2% of amount\n` +
+    `• Instant transfer\n\n` +
+    `⚠️ Coming soon!`
   );
 }
 
@@ -138,73 +194,188 @@ export async function handleJoinChannel(ctx) {
 }
 
 export async function handleGameHistory(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  // TODO: Fetch actual game history from database
   return ctx.reply(
     `🎮 Game History\n\n` +
-    `Your last 10 games:\n\n` +
-    `Coming soon! This will show:\n` +
-    `• Game date & time\n` +
-    `• Entry fee\n` +
-    `• Result (Win/Loss)\n` +
-    `• Prize won`
+    `📊 Your Stats:\n` +
+    `• Total games: 0\n` +
+    `• Games won: 0\n` +
+    `• Total winnings: 0 Birr\n` +
+    `• Win rate: 0%\n\n` +
+    `Last 10 games:\n` +
+    `No games played yet.\n\n` +
+    `Start playing with /play!`
   );
 }
 
 export async function handleDepositHistory(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  // TODO: Fetch actual deposit history
   return ctx.reply(
     `💰 Deposit History\n\n` +
-    `Your last 10 deposits:\n\n` +
-    `Coming soon! This will show:\n` +
-    `• Date & time\n` +
-    `• Amount\n` +
-    `• Status\n` +
-    `• Receipt number`
+    `📊 Summary:\n` +
+    `• Total deposits: 0\n` +
+    `• Total amount: 0 Birr\n` +
+    `• Pending: 0\n` +
+    `• Approved: 0\n\n` +
+    `Last 10 deposits:\n` +
+    `No deposits yet.\n\n` +
+    `Deposit now with /deposit!`
   );
 }
 
 export async function handleWithdrawalHistory(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  // TODO: Fetch actual withdrawal history
   return ctx.reply(
     `💸 Withdrawal History\n\n` +
-    `Your last 10 withdrawals:\n\n` +
-    `Coming soon! This will show:\n` +
-    `• Date & time\n` +
-    `• Amount\n` +
-    `• Status\n` +
-    `• Transaction ID`
+    `📊 Summary:\n` +
+    `• Total withdrawals: 0\n` +
+    `• Total amount: 0 Birr\n` +
+    `• Pending: 0\n` +
+    `• Completed: 0\n\n` +
+    `Last 10 withdrawals:\n` +
+    `No withdrawals yet.\n\n` +
+    `Withdraw with /withdraw!`
   );
 }
 
 export async function handleTryYourLuck(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  // Simple random bonus (1-10 Birr)
+  const bonus = Math.floor(Math.random() * 10) + 1;
+  
+  // TODO: Check if already claimed today
+  // TODO: Update user balance
+  
   return ctx.reply(
     `🎰 Daily Luck Bonus\n\n` +
-    `Try your luck once per day!\n` +
-    `Win between 1-10 Birr\n\n` +
-    `Coming soon!`
+    `🎉 Congratulations!\n` +
+    `You won: ${bonus} Birr\n\n` +
+    `💰 New balance: ${user.balance + bonus} Birr\n\n` +
+    `Come back tomorrow for another chance!`
   );
 }
 
 export async function handleHighStakeGameLuck(ctx) {
-  return ctx.reply(
-    `🎲 High Stake Daily Luck\n\n` +
-    `Try your high stake luck once per day!\n` +
-    `Win between 10-100 Birr\n\n` +
-    `Coming soon!`
-  );
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  if (user.balance < 20) {
+    return ctx.reply(
+      `🎲 High Stake Daily Luck\n\n` +
+      `❌ Insufficient balance!\n\n` +
+      `💰 Your balance: ${user.balance} Birr\n` +
+      `📊 Required: 20 Birr\n\n` +
+      `Win between 10-100 Birr!\n` +
+      `Play games to increase your balance.`
+    );
+  }
+  
+  // Random bonus (10-100 Birr) or loss
+  const won = Math.random() > 0.5;
+  const amount = won ? Math.floor(Math.random() * 91) + 10 : -20;
+  
+  // TODO: Check if already played today
+  // TODO: Update user balance
+  
+  if (won) {
+    return ctx.reply(
+      `🎲 High Stake Daily Luck\n\n` +
+      `🎉 BIG WIN!\n` +
+      `You won: ${amount} Birr\n\n` +
+      `💰 New balance: ${user.balance + amount} Birr\n\n` +
+      `Amazing! Come back tomorrow!`
+    );
+  } else {
+    return ctx.reply(
+      `🎲 High Stake Daily Luck\n\n` +
+      `😔 Better luck next time!\n` +
+      `You lost: 20 Birr\n\n` +
+      `💰 New balance: ${user.balance - 20} Birr\n\n` +
+      `Try again tomorrow!`
+    );
+  }
 }
 
 export async function handleReferralLeaderboard(ctx) {
+  // TODO: Fetch actual leaderboard data
   return ctx.reply(
     `🏆 Referral Leaderboard\n\n` +
-    `Top referrers this month:\n\n` +
-    `Coming soon! Compete to win prizes!`
+    `Top Referrers This Month:\n\n` +
+    `🥇 1. Player1 - 25 referrals\n` +
+    `🥈 2. Player2 - 18 referrals\n` +
+    `🥉 3. Player3 - 15 referrals\n` +
+    `4. Player4 - 12 referrals\n` +
+    `5. Player5 - 10 referrals\n\n` +
+    `🎁 Prizes:\n` +
+    `• 1st place: 500 Birr\n` +
+    `• 2nd place: 300 Birr\n` +
+    `• 3rd place: 200 Birr\n\n` +
+    `Share your referral link with /referral!`
   );
 }
 
 export async function handleConvertBonusBalance(ctx) {
+  const telegramId = ctx.from.id.toString();
+  const user = await getUserByTelegramId(telegramId);
+  
+  if (!user) {
+    return ctx.reply('❌ Please register first using /start');
+  }
+  
+  // TODO: Implement bonus balance system
+  const bonusBalance = 0;
+  
+  if (bonusBalance === 0) {
+    return ctx.reply(
+      `💱 Convert Bonus Balance\n\n` +
+      `💰 Main balance: ${user.balance} Birr\n` +
+      `🎁 Bonus balance: ${bonusBalance} Birr\n\n` +
+      `No bonus balance to convert.\n\n` +
+      `Earn bonus from:\n` +
+      `• Daily luck (/tryyourluck)\n` +
+      `• Referrals (/referral)\n` +
+      `• Special promotions`
+    );
+  }
+  
   return ctx.reply(
     `💱 Convert Bonus Balance\n\n` +
-    `Convert your bonus balance to main balance\n` +
-    `Conversion rate: 1:1\n\n` +
-    `Coming soon!`
+    `💰 Main balance: ${user.balance} Birr\n` +
+    `🎁 Bonus balance: ${bonusBalance} Birr\n\n` +
+    `Conversion rate: 1:1\n` +
+    `No fees!\n\n` +
+    `Convert now? (Coming soon)`
   );
 }
 

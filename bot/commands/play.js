@@ -5,7 +5,7 @@ import { formatBingoCard } from '../utils/bingoEngine.js';
 
 const MIN_PLAYERS = 2; // Minimum players to start a game
 const GAME_ENTRY_FEE = 5;
-const MINI_APP_URL = process.env.MINI_APP_URL || 'https://your-mini-app.vercel.app';
+const MINI_APP_URL = process.env.MINI_APP_URL || 'https://miniapo.vercel.app';
 
 export async function handlePlay(ctx) {
   try {
