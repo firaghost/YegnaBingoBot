@@ -3,11 +3,10 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../lib/supabaseClient';
 import ProtectedRoute from '../../components/ProtectedRoute';
-import { useAuth } from '../../lib/auth';
+import AdminLayout from '../../components/AdminLayout';
 
 function GamesPageContent() {
   const router = useRouter();
-  const auth = useAuth();
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -93,13 +92,12 @@ function GamesPageContent() {
   }
 
   return (
-    <>
+    <AdminLayout>
       <Head>
-        <title>Games Management - Bingo Vault</title>
+        <title>Games Management - Yegna Bingo</title>
       </Head>
 
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 py-8">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -260,9 +258,8 @@ function GamesPageContent() {
               ))}
             </div>
           )}
-        </div>
       </div>
-    </>
+    </AdminLayout>
   );
 }
 
