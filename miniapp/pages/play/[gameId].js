@@ -1,19 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { getUserId, hapticFeedback, showAlert, setBackButton } from '../../lib/telegram';
-import { 
-  getUserByTelegramId, 
-  getGameDetails, 
-  markNumber, 
-  checkBingo,
-  subscribeToGame 
-} from '../../lib/supabase';
+import { getUserId, hapticFeedback, setBackButton, showAlert } from '../../lib/telegram';
+import { getUserByTelegramId, getGameDetails, subscribeToGame, markNumber, checkBingo } from '../../lib/supabase';
 
-export default function PlayGame() {
-  const router = useRouter();
-  const { gameId } = router.query;
-  
+export default function PlayGame({ gameId }) {
   const [user, setUser] = useState(null);
   const [game, setGame] = useState(null);
   const [playerData, setPlayerData] = useState(null);

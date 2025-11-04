@@ -3,7 +3,20 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  db: {
+    schema: 'public',
+  },
+  auth: {
+    persistSession: false,
+  },
+  global: {
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+  },
+});
 
 // Get user by Telegram ID
 export async function getUserByTelegramId(telegramId) {
@@ -89,6 +102,21 @@ export async function createGame(entryFee) {
 
 // Join a game (NO money deducted yet - only when game starts)
 export async function joinGame(gameId, userId, card, entryFee, selectedNumbers = []) {
+  // Check if game has already started
+  const { data: gameData } = await supabase
+    .from('games')
+    .select('status')
+    .eq('id', gameId)
+    .single();
+  
+  if (!gameData) {
+    return { success: false, error: 'Game not found' };
+  }
+  
+  if (gameData.status !== 'waiting') {
+    return { success: false, error: 'Game has already started. Please wait for the next game.' };
+  }
+  
   // Check if already joined
   const { data: existing } = await supabase
     .from('game_players')

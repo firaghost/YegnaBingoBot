@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { getUserId, hapticFeedback, setMainButton, hideMainButton, setBackButton } from '../../lib/telegram';
-import { getUserByTelegramId } from '../../lib/supabase';
+import { getUserByTelegramId, supabase } from '../../lib/supabase';
 export default function GamePage() {
   const router = useRouter();
   const { fee } = router.query;
@@ -91,13 +91,23 @@ export default function GamePage() {
         return;
       }
       
-      // Show waiting popup and redirect to play page
+      // Show waiting popup - stay on this page
       setShowWaitingPopup(true);
       
-      // Redirect to game play page after a moment
-      setTimeout(() => {
-        router.push(`/play/${game.id}`);
-      }, 1000);
+      // Subscribe to game updates to detect when it starts
+      const channel = supabase
+        .channel(`game:${game.id}`)
+        .on('postgres_changes', 
+          { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${game.id}` },
+          (payload) => {
+            if (payload.new.status === 'active') {
+              // Game started! Transition to playing
+              setShowWaitingPopup(false);
+              router.push(`/play/${game.id}`);
+            }
+          }
+        )
+        .subscribe();
     } catch (error) {
       console.error('Error joining game:', error);
       telegram?.showAlert('An error occurred. Please try again.');

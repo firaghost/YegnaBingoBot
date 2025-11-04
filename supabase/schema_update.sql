@@ -27,10 +27,24 @@ DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'game_players' AND column_name = 'selected_numbers'
   ) THEN
     ALTER TABLE game_players ADD COLUMN selected_numbers jsonb DEFAULT '[]'::jsonb;
   END IF;
 END $$;
+
+-- Enable RLS and create policies for game_players
+ALTER TABLE game_players ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Allow public read access to game_players" ON game_players;
+DROP POLICY IF EXISTS "Allow public insert access to game_players" ON game_players;
+DROP POLICY IF EXISTS "Allow public update access to game_players" ON game_players;
+
+-- Create new policies
+CREATE POLICY "Allow public read access to game_players" ON game_players FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access to game_players" ON game_players FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update access to game_players" ON game_players FOR UPDATE USING (true);
 
 -- Create payments table
 CREATE TABLE IF NOT EXISTS payments (
