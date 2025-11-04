@@ -4,7 +4,10 @@ import Head from 'next/head';
 import { getUserId, hapticFeedback, setBackButton, showAlert } from '../../lib/telegram';
 import { getUserByTelegramId, getGameDetails, subscribeToGame, markNumber, checkBingo } from '../../lib/supabase';
 
-export default function PlayGame({ gameId }) {
+export default function PlayGame() {
+  const router = useRouter();
+  const { gameId } = router.query;
+  
   const [user, setUser] = useState(null);
   const [game, setGame] = useState(null);
   const [playerData, setPlayerData] = useState(null);
@@ -16,6 +19,10 @@ export default function PlayGame({ gameId }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (!gameId) {
+      console.log('⏳ Waiting for gameId from router...');
+      return;
+    }
     loadGameData();
     setBackButton(() => router.push('/'));
   }, [gameId]);
@@ -75,18 +82,39 @@ export default function PlayGame({ gameId }) {
   }, [gameId, gameState, lastCalledNumber]);
 
   async function loadGameData() {
+    console.log('🎮 Loading game data for gameId:', gameId);
     setLoading(true);
+    
+    // Add timeout
+    const timeout = setTimeout(() => {
+      console.error('⏰ Loading timeout!');
+      setError('Loading timeout. Please try again.');
+      setLoading(false);
+      setTimeout(() => router.push('/'), 2000);
+    }, 10000); // 10 second timeout
+    
     try {
       const telegramUserId = getUserId();
+      console.log('👤 Telegram User ID:', telegramUserId);
       const userData = await getUserByTelegramId(telegramUserId) || { id: 'test', balance: 5 };
+      console.log('✅ User data loaded:', userData);
       setUser(userData);
 
-      if (!gameId) return;
+      if (!gameId) {
+        console.error('❌ No gameId provided');
+        clearTimeout(timeout);
+        return;
+      }
 
+      console.log('🔍 Fetching game details...');
       const gameData = await getGameDetails(gameId);
+      console.log('📊 Game data:', gameData);
+      clearTimeout(timeout);
+      
       if (!gameData) {
         console.error('Game not found');
-        router.push('/');
+        setError('Game not found');
+        setTimeout(() => router.push('/'), 2000);
         return;
       }
 
@@ -100,6 +128,9 @@ export default function PlayGame({ gameId }) {
         setMarkedNumbers(player.marked_numbers || []);
       } else {
         console.error('Player not found in game');
+        setError('You are not in this game');
+        setTimeout(() => router.push('/'), 2000);
+        return;
       }
 
       // Set game state
@@ -113,9 +144,11 @@ export default function PlayGame({ gameId }) {
 
       setLoading(false);
     } catch (error) {
+      clearTimeout(timeout);
       console.error('Error loading game data:', error);
+      setError(error.message || 'Failed to load game');
       setLoading(false);
-      setGameState('waiting'); // Fallback to waiting state
+      setTimeout(() => router.push('/'), 2000);
     }
   }
 
@@ -139,10 +172,13 @@ export default function PlayGame({ gameId }) {
       setMarkedNumbers(result.markedNumbers);
 
       // Check for BINGO
-      const hasBingo = await checkBingo(playerData.id);
-      if (hasBingo) {
+      const bingoResult = await checkBingo(playerData.id);
+      if (bingoResult.hasBingo) {
+        console.log('🎉 BINGO! Game ending...');
         showAlert('🎉 BINGO! You won!');
-        setGameState('won');
+        hapticFeedback('heavy');
+        // Game will be updated via real-time subscription
+        // The subscription will detect status change to 'completed'
       }
     }
   }
