@@ -415,6 +415,7 @@ export default function LiveGameControl() {
                 <div className="space-y-3 max-h-[600px] overflow-y-auto">
                   {players.map((player, index) => {
                     const hasBingo = checkPlayerBingo(player);
+                    const selectedNums = player.selected_numbers || [];
                     return (
                       <div
                         key={player.id}
@@ -434,9 +435,21 @@ export default function LiveGameControl() {
                             </span>
                           )}
                         </div>
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-600 mb-2">
                           Marked: {player.marked_numbers?.length || 0} numbers
                         </div>
+                        {selectedNums.length > 0 && (
+                          <div className="text-xs text-gray-500">
+                            <div className="font-medium mb-1">Selected:</div>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedNums.map((num, i) => (
+                                <span key={i} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                  {num}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

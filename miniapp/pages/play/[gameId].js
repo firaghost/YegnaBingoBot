@@ -21,6 +21,7 @@ export default function PlayGame() {
   const [markedNumbers, setMarkedNumbers] = useState([]);
   const [gameState, setGameState] = useState('loading'); // loading, waiting, playing, won, lost
   const [lastCalledNumber, setLastCalledNumber] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadGameData();
@@ -66,42 +67,52 @@ export default function PlayGame() {
     });
 
     return () => {
-      console.log('Unsubscribing from game updates');
       channel.unsubscribe();
     };
   }, [gameId, gameState, lastCalledNumber]);
 
   async function loadGameData() {
-    const telegramUserId = getUserId();
-    const userData = await getUserByTelegramId(telegramUserId) || { id: 'test', balance: 5 };
-    setUser(userData);
+    setLoading(true);
+    try {
+      const telegramUserId = getUserId();
+      const userData = await getUserByTelegramId(telegramUserId) || { id: 'test', balance: 5 };
+      setUser(userData);
 
-    if (!gameId) return;
+      if (!gameId) return;
 
-    const gameData = await getGameDetails(gameId);
-    if (!gameData) {
-      showAlert('Game not found');
-      router.push('/');
-      return;
-    }
+      const gameData = await getGameDetails(gameId);
+      if (!gameData) {
+        console.error('Game not found');
+        router.push('/');
+        return;
+      }
 
-    setGame(gameData);
-    setCalledNumbers(gameData.called_numbers || []);
+      setGame(gameData);
+      setCalledNumbers(gameData.called_numbers || []);
 
-    // Find player's data
-    const player = gameData.game_players?.find(p => p.user_id === userData.id);
-    if (player) {
-      setPlayerData(player);
-      setMarkedNumbers(player.marked_numbers || []);
-    }
+      // Find player's data
+      const player = gameData.game_players?.find(p => p.user_id === userData.id);
+      if (player) {
+        setPlayerData(player);
+        setMarkedNumbers(player.marked_numbers || []);
+      } else {
+        console.error('Player not found in game');
+      }
 
-    // Set initial game state
-    if (gameData.status === 'waiting') {
-      setGameState('waiting');
-    } else if (gameData.status === 'active') {
-      setGameState('playing');
-    } else if (gameData.status === 'completed') {
-      checkGameResult(gameData);
+      // Set game state
+      if (gameData.status === 'waiting') {
+        setGameState('waiting');
+      } else if (gameData.status === 'active') {
+        setGameState('playing');
+      } else if (gameData.status === 'completed') {
+        checkGameResult(gameData);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading game data:', error);
+      setLoading(false);
+      setGameState('waiting'); // Fallback to waiting state
     }
   }
 

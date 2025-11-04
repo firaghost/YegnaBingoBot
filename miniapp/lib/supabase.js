@@ -88,7 +88,7 @@ export async function createGame(entryFee) {
 }
 
 // Join a game (NO money deducted yet - only when game starts)
-export async function joinGame(gameId, userId, card, entryFee) {
+export async function joinGame(gameId, userId, card, entryFee, selectedNumbers = []) {
   // Check if already joined
   const { data: existing } = await supabase
     .from('game_players')
@@ -120,6 +120,7 @@ export async function joinGame(gameId, userId, card, entryFee) {
       user_id: userId,
       card: card,
       marked_numbers: [],
+      selected_numbers: selectedNumbers,
       paid: false  // Track if player has paid
     })
     .select()

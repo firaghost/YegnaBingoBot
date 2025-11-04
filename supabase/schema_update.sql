@@ -22,6 +22,17 @@ BEGIN
   END IF;
 END $$;
 
+-- Add selected_numbers column to game_players table
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'game_players' AND column_name = 'selected_numbers'
+  ) THEN
+    ALTER TABLE game_players ADD COLUMN selected_numbers jsonb DEFAULT '[]'::jsonb;
+  END IF;
+END $$;
+
 -- Create admin_users table
 CREATE TABLE IF NOT EXISTS admin_users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
