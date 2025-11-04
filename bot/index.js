@@ -97,45 +97,37 @@ bot.action('check_balance', async (ctx) => {
 
 bot.action('withdraw_telebirr', async (ctx) => {
   await ctx.answerCbQuery();
-  const user = await import('./services/paymentService.js').then(m => m.getUserByTelegramId(ctx.from.id.toString()));
-  if (!user) {
-    return ctx.reply('❌ User not found');
-  }
-  return ctx.reply(
-    `📱 Telebirr Withdrawal\n\n` +
-    `💰 Amount to withdraw: ${user.balance} Birr\n\n` +
-    `Please provide your Telebirr number:\n` +
-    `Format: 09XXXXXXXX\n\n` +
-    `Send your number and we'll process your withdrawal within 24 hours.\n\n` +
-    `Contact admin: @YourAdminUsername`
-  );
+  const { handleWithdrawalMethod } = await import('./services/paymentHandler.js');
+  return handleWithdrawalMethod(ctx, 'telebirr');
 });
 
 bot.action('withdraw_cbe', async (ctx) => {
   await ctx.answerCbQuery();
-  const user = await import('./services/paymentService.js').then(m => m.getUserByTelegramId(ctx.from.id.toString()));
-  if (!user) {
-    return ctx.reply('❌ User not found');
-  }
-  return ctx.reply(
-    `🏦 CBE (Commercial Bank of Ethiopia) Withdrawal\n\n` +
-    `💰 Amount to withdraw: ${user.balance} Birr\n\n` +
-    `Please provide:\n` +
-    `1. CBE Account Number\n` +
-    `2. Account Holder Name\n\n` +
-    `Send this information and we'll process your withdrawal within 24 hours.\n\n` +
-    `Contact admin: @YourAdminUsername`
-  );
+  const { handleWithdrawalMethod } = await import('./services/paymentHandler.js');
+  return handleWithdrawalMethod(ctx, 'cbe');
 });
 
 bot.action('withdraw_cancel', async (ctx) => {
   await ctx.answerCbQuery('Withdrawal cancelled');
+  const { cancelUserAction } = await import('./services/paymentHandler.js');
+  cancelUserAction(ctx.from.id.toString());
   return ctx.reply('❌ Withdrawal cancelled.\n\nUse /withdraw to try again.');
 });
 
-// Handle unknown commands
-bot.on('text', (ctx) => {
+// Handle text messages (for multi-step processes)
+bot.on('text', async (ctx) => {
   const text = ctx.message.text;
+  
+  // Check if user has an active state (withdrawal/deposit in progress)
+  const { getUserState, processUserInput } = await import('./services/paymentHandler.js');
+  const state = getUserState(ctx.from.id.toString());
+  
+  if (state) {
+    // User is in the middle of withdrawal/deposit process
+    return processUserInput(ctx);
+  }
+  
+  // Handle unknown commands
   if (text.startsWith('/')) {
     ctx.reply('❌ Unknown command. Use /help to see available commands.');
   }

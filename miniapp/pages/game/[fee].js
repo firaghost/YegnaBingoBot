@@ -37,7 +37,7 @@ export default function GamePage() {
     async function loadGameInfo() {
       if (!fee) return;
       
-      const { data: game } = await supabase
+      const { data: games, error } = await supabase
         .from('games')
         .select(`
           id,
@@ -48,7 +48,21 @@ export default function GamePage() {
         `)
         .eq('entry_fee', parseInt(fee))
         .in('status', ['waiting', 'active'])
-        .single();
+        .limit(1);
+      
+      if (error) {
+        console.error('Error loading game info:', error);
+        setGameInfo({
+          prizePool: 0,
+          playerPrize: 0,
+          commission: 0,
+          playerCount: 0,
+          status: 'new'
+        });
+        return;
+      }
+      
+      const game = games && games.length > 0 ? games[0] : null;
       
       if (game) {
         const totalPool = game.prize_pool || 0;
@@ -227,18 +241,6 @@ export default function GamePage() {
             </button>
             
             <button
-              onClick={() => setActiveTab('Coins')}
-              className={`flex-1 px-3 py-2 rounded-lg font-semibold transition-all ${
-                activeTab === 'Coins'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-blue-800/50 text-blue-200'
-              }`}
-            >
-              <div className="text-xs opacity-75">Coins</div>
-              <div className="text-sm font-bold">#</div>
-            </button>
-            
-            <button
               onClick={() => setActiveTab('Derash')}
               className={`flex-1 px-3 py-2 rounded-lg font-semibold transition-all ${
                 activeTab === 'Derash'
@@ -254,6 +256,18 @@ export default function GamePage() {
               onClick={() => setActiveTab('Stake')}
               className={`flex-1 px-3 py-2 rounded-lg font-semibold transition-all ${
                 activeTab === 'Stake'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-800/50 text-blue-200'
+              }`}
+            >
+              <div className="text-xs opacity-75">Stake</div>
+              <div className="text-sm font-bold">{fee || 5} ETB</div>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('Players')}
+              className={`flex-1 px-3 py-2 rounded-lg font-semibold transition-all ${
+                activeTab === 'Players'
                   ? 'bg-blue-600 text-white'
                   : 'bg-blue-800/50 text-blue-200'
               }`}

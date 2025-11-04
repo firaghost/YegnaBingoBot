@@ -112,6 +112,8 @@ export async function createGame(entryFee) {
 // Join a game (NO money deducted yet - only when game starts)
 export async function joinGame(gameId, userId, card, entryFee, selectedNumbers = []) {
   try {
+    console.log('🎮 JOIN GAME - Starting...', { gameId, userId, entryFee });
+    
     // Check if game has already started
     const { data: gameData, error: gameError } = await supabase
       .from('games')
@@ -127,6 +129,8 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
     if (!gameData) {
       return { success: false, error: 'Game not found' };
     }
+    
+    console.log('✅ Game status:', gameData.status);
     
     if (gameData.status !== 'waiting') {
       return { success: false, error: 'Game has already started. Please wait for the next game.' };
@@ -146,6 +150,7 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
     }
     
     if (existingList && existingList.length > 0) {
+      console.log('✅ Player already joined - no charge');
       return { success: true, data: existingList[0], alreadyJoined: true };
     }
     
@@ -156,11 +161,14 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
       .eq('id', userId)
       .single();
     
+    console.log('💰 User balance BEFORE join:', user?.balance);
+    
     if (!user || user.balance < entryFee) {
       return { success: false, error: 'Insufficient balance' };
     }
     
     // Join game (money will be deducted when game starts)
+    console.log('⚠️ IMPORTANT: NOT deducting money now - will deduct when admin starts game');
     const { data, error } = await supabase
       .from('game_players')
       .insert({
@@ -178,6 +186,16 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
       console.error('Error joining game:', error);
       return { success: false, error: error.message };
     }
+    
+    // Verify balance didn't change
+    const { data: userAfter } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('id', userId)
+      .single();
+    
+    console.log('💰 User balance AFTER join:', userAfter?.balance);
+    console.log('✅ JOIN COMPLETE - Money NOT deducted (paid: false)');
     
     return { success: true, data };
   } catch (err) {
@@ -394,6 +412,49 @@ export async function endGame(gameId, winnerId) {
       });
     
     console.log(`✅ Game ${gameId} ended. Winner: ${winnerId}, Prize: ${playerPrize} ETB (Commission: ${commission} ETB)`);
+    
+    // Send notifications to all players
+    try {
+      // Get all players in the game
+      const { data: allPlayers } = await supabase
+        .from('game_players')
+        .select('user_id')
+        .eq('game_id', gameId);
+      
+      if (allPlayers) {
+        // Notify winner
+        await fetch('/api/notify-game-result', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: winnerId,
+            gameId,
+            result: 'win',
+            prizeAmount: playerPrize
+          })
+        });
+        
+        // Notify losers
+        for (const player of allPlayers) {
+          if (player.user_id !== winnerId) {
+            await fetch('/api/notify-game-result', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: player.user_id,
+                gameId,
+                result: 'loss',
+                winnerId
+              })
+            });
+          }
+        }
+      }
+    } catch (notifyError) {
+      console.error('Error sending notifications:', notifyError);
+      // Don't fail the game end if notifications fail
+    }
+    
     return { success: true, winnerId, prizePool: playerPrize, commission };
   } catch (error) {
     console.error('Error ending game:', error);

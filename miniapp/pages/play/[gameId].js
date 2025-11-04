@@ -387,8 +387,35 @@ export default function PlayGame() {
               </p>
             </div>
             <div className="bg-gradient-to-r from-yellow-400 to-orange-500 px-4 py-2 rounded-xl shadow-lg">
-              <div className="text-sm text-white/80">Prize Pool</div>
-              <div className="font-bold text-white">{game?.prize_pool || 0} ብር</div>
+              <div className="text-sm text-white/80">Entry Fee</div>
+              <div className="font-bold text-white">{game?.entry_fee || 0} ETB</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Info Tabs */}
+        <div className="bg-purple-900/50 px-4 py-3">
+          <div className="flex gap-2 justify-between">
+            <div className="flex-1 bg-purple-800/50 px-3 py-2 rounded-lg text-center">
+              <div className="text-xs text-purple-200">Balance</div>
+              <div className="text-sm font-bold text-white">{user?.balance || 0} ETB</div>
+            </div>
+            
+            <div className="flex-1 bg-purple-800/50 px-3 py-2 rounded-lg text-center">
+              <div className="text-xs text-purple-200">Derash</div>
+              <div className="text-sm font-bold text-white">
+                {((game?.prize_pool || 0) * 0.9).toFixed(2)} ETB
+              </div>
+            </div>
+            
+            <div className="flex-1 bg-purple-800/50 px-3 py-2 rounded-lg text-center">
+              <div className="text-xs text-purple-200">Stake</div>
+              <div className="text-sm font-bold text-white">{game?.entry_fee || 0} ETB</div>
+            </div>
+            
+            <div className="flex-1 bg-purple-800/50 px-3 py-2 rounded-lg text-center">
+              <div className="text-xs text-purple-200">Players</div>
+              <div className="text-sm font-bold text-white">{game?.game_players?.length || 0}</div>
             </div>
           </div>
         </div>

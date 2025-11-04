@@ -195,34 +195,14 @@ export default function WalletPage() {
             </div>
           </div>
 
-          {/* Stats Tabs */}
-          <div className="bg-primary/50 px-4 py-4 grid grid-cols-4 gap-2">
-            <div className="text-center">
-              <div className="text-white/70 text-xs mb-1">Balance</div>
-              <div className="text-white font-bold">{user?.balance?.toFixed(2) || '0.00'} ETB</div>
-            </div>
-            <div className="text-center">
-              <div className="text-white/70 text-xs mb-1">Coins</div>
-              <div className="text-white font-bold">#</div>
-            </div>
-            <div className="text-center">
-              <div className="text-white/70 text-xs mb-1">Derash</div>
-              <div className="text-white font-bold">72.25</div>
-            </div>
-            <div className="text-center">
-              <div className="text-white/70 text-xs mb-1">Stake</div>
-              <div className="text-white font-bold">5</div>
-            </div>
-          </div>
-
           {/* Wallet Actions */}
           <div className="px-4 py-8">
             <div className="grid grid-cols-2 gap-6 mb-8">
-              {/* Withdrawal */}
+              {/* Deposit */}
               <button
                 onClick={() => {
                   hapticFeedback('light');
-                  setActiveMenu('withdraw');
+                  setActiveMenu('deposit');
                 }}
                 className="flex flex-col items-center"
               >
@@ -234,11 +214,11 @@ export default function WalletPage() {
                 </div>
               </button>
 
-              {/* Deposit */}
+              {/* Withdrawal */}
               <button
                 onClick={() => {
                   hapticFeedback('light');
-                  setActiveMenu('deposit');
+                  setActiveMenu('withdraw');
                 }}
                 className="flex flex-col items-center"
               >
@@ -286,7 +266,7 @@ export default function WalletPage() {
           <div className="sticky top-0 z-10 bg-primary/90 backdrop-blur-sm px-4 py-3 shadow-lg">
             <div className="flex items-center justify-between">
               <button onClick={() => setActiveMenu(null)} className="text-white text-2xl">←</button>
-              <h1 className="text-xl font-bold text-white">Withdrawal (ገቢ)</h1>
+              <h1 className="text-xl font-bold text-white">Withdrawal (ወጪ)</h1>
               <div className="w-8"></div>
             </div>
           </div>
@@ -393,7 +373,7 @@ export default function WalletPage() {
           <div className="sticky top-0 z-10 bg-primary/90 backdrop-blur-sm px-4 py-3 shadow-lg">
             <div className="flex items-center justify-between">
               <button onClick={() => setActiveMenu(null)} className="text-white text-2xl">←</button>
-              <h1 className="text-xl font-bold text-white">Deposit (ወጪ)</h1>
+              <h1 className="text-xl font-bold text-white">Deposit (ገቢ)</h1>
               <div className="w-8"></div>
             </div>
           </div>

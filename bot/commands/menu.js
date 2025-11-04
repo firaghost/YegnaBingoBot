@@ -92,21 +92,9 @@ export async function handleDeposit(ctx) {
     return ctx.reply('❌ Please register first using /start');
   }
   
-  return ctx.reply(
-    `💰 Deposit Funds\n\n` +
-    `Current balance: ${user.balance} Birr\n\n` +
-    `📱 Payment Methods:\n` +
-    `• Telebirr\n` +
-    `• CBE Birr\n` +
-    `• Bank Transfer\n\n` +
-    `📝 How to deposit:\n` +
-    `1. Make payment to our account\n` +
-    `2. Send receipt using /receipt command\n` +
-    `3. Wait for admin approval\n\n` +
-    `Example:\n` +
-    `/receipt REC123456 100\n\n` +
-    `Or send receipt photo with /receipt in caption.`
-  );
+  // Use the new payment handler
+  const { handleDepositRequest } = await import('../services/paymentHandler.js');
+  return handleDepositRequest(ctx);
 }
 
 export async function handleTransfer(ctx) {
@@ -380,6 +368,9 @@ export async function handleConvertBonusBalance(ctx) {
 }
 
 export async function handleCancel(ctx) {
+  const { cancelUserAction } = await import('../services/paymentHandler.js');
+  cancelUserAction(ctx.from.id.toString());
+  
   return ctx.reply(
     `❌ All operations cancelled.\n\n` +
     `Use /start to begin again.`

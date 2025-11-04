@@ -74,47 +74,22 @@ export async function joinGame(gameId, userId, userBalance) {
     // Generate Bingo card
     const card = generateBingoCard();
 
-    // Add player to game
+    // Add player to game (DON'T deduct money yet - only when game starts)
     const { data: player, error: playerError } = await supabase
       .from('game_players')
       .insert({
         game_id: gameId,
         user_id: userId,
         card: card,
-        marked_numbers: []
+        marked_numbers: [],
+        paid: false  // Money not deducted yet
       })
       .select()
       .single();
 
     if (playerError) throw playerError;
 
-    // Deduct entry fee from user balance
-    const { error: balanceError } = await supabase
-      .from('users')
-      .update({ balance: userBalance - GAME_ENTRY_FEE })
-      .eq('id', userId);
-
-    if (balanceError) throw balanceError;
-
-    // Add to prize pool
-    const { error: poolError } = await supabase.rpc('increment_prize_pool', {
-      game_id: gameId,
-      amount: GAME_ENTRY_FEE
-    });
-
-    // If RPC doesn't exist, update manually
-    if (poolError) {
-      const { data: game } = await supabase
-        .from('games')
-        .select('prize_pool')
-        .eq('id', gameId)
-        .single();
-
-      await supabase
-        .from('games')
-        .update({ prize_pool: (game?.prize_pool || 0) + GAME_ENTRY_FEE })
-        .eq('id', gameId);
-    }
+    // DON'T deduct money here - it will be deducted when admin starts the game
 
     return { success: true, player, card };
   } catch (error) {
@@ -142,14 +117,66 @@ export async function getGamePlayersCount(gameId) {
 }
 
 /**
- * Start a game
+ * Start a game - THIS IS WHERE MONEY IS DEDUCTED
  */
 export async function startGame(gameId) {
   try {
+    // Get all players who haven't paid yet
+    const { data: players, error: playersError } = await supabase
+      .from('game_players')
+      .select('*, users(balance)')
+      .eq('game_id', gameId)
+      .eq('paid', false);
+
+    if (playersError) throw playersError;
+
+    let totalPrizePool = 0;
+
+    // Deduct entry fee from each player
+    for (const player of players) {
+      const userBalance = player.users?.balance || 0;
+      
+      if (userBalance < GAME_ENTRY_FEE) {
+        console.warn(`Player ${player.user_id} has insufficient balance`);
+        // Remove player from game
+        await supabase
+          .from('game_players')
+          .delete()
+          .eq('id', player.id);
+        continue;
+      }
+
+      // Deduct money from user
+      await supabase
+        .from('users')
+        .update({ balance: userBalance - GAME_ENTRY_FEE })
+        .eq('id', player.user_id);
+
+      // Mark player as paid
+      await supabase
+        .from('game_players')
+        .update({ paid: true })
+        .eq('id', player.id);
+
+      totalPrizePool += GAME_ENTRY_FEE;
+
+      // Log transaction
+      await supabase
+        .from('transaction_history')
+        .insert({
+          user_id: player.user_id,
+          type: 'game_entry',
+          amount: -GAME_ENTRY_FEE,
+          description: `Joined game ${gameId}`
+        });
+    }
+
+    // Update game with prize pool and status
     const { data, error } = await supabase
       .from('games')
       .update({
         status: 'active',
+        prize_pool: totalPrizePool,
         started_at: new Date().toISOString()
       })
       .eq('id', gameId)

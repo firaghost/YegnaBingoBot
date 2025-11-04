@@ -203,12 +203,12 @@ export default function GamesPage() {
                             <div className="text-sm text-gray-600 mb-2">Players:</div>
                             <div className="flex flex-wrap gap-2">
                               {game.game_players.slice(0, 5).map((player, index) => (
-                                <span key={index} className="bg-gray-100 px-3 py-1 rounded-full text-sm">
+                                <span key={index} className="bg-gray-100 px-3 py-1 rounded-full text-sm text-gray-900">
                                   {player.users?.username || 'Player ' + (index + 1)}
                                 </span>
                               ))}
                               {game.game_players.length > 5 && (
-                                <span className="bg-gray-100 px-3 py-1 rounded-full text-sm">
+                                <span className="bg-gray-100 px-3 py-1 rounded-full text-sm text-gray-900">
                                   +{game.game_players.length - 5} more
                                 </span>
                               )}

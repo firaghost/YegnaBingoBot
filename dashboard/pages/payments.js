@@ -245,33 +245,33 @@ export default function Payments() {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                         <div className="text-sm text-gray-600">User</div>
-                        <div className="font-semibold">{payment.users?.username || 'Unknown'}</div>
+                        <div className="font-semibold text-gray-900">{payment.users?.username || 'Unknown'}</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600">Amount</div>
-                        <div className="font-bold text-xl">{payment.amount} Birr</div>
+                        <div className="font-bold text-xl text-gray-900">{payment.amount} Birr</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600">Method</div>
-                        <div className="font-semibold uppercase">{payment.payment_method}</div>
+                        <div className="font-semibold uppercase text-gray-900">{payment.payment_method}</div>
                       </div>
                       <div>
                         <div className="text-sm text-gray-600">Current Balance</div>
-                        <div className="font-semibold">{payment.users?.balance || 0} Birr</div>
+                        <div className="font-semibold text-gray-900">{payment.users?.balance || 0} Birr</div>
                       </div>
                     </div>
 
                     {payment.account_number && (
                       <div className="mb-2">
                         <div className="text-sm text-gray-600">Account Number</div>
-                        <div className="font-mono">{payment.account_number}</div>
+                        <div className="font-mono text-gray-900">{payment.account_number}</div>
                       </div>
                     )}
 
                     {payment.transaction_proof && (
                       <div className="mb-2">
                         <div className="text-sm text-gray-600">Transaction Proof</div>
-                        <div className="bg-gray-100 p-3 rounded text-sm font-mono">
+                        <div className="bg-gray-100 p-3 rounded text-sm font-mono text-gray-900">
                           {payment.transaction_proof}
                         </div>
                       </div>

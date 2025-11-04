@@ -42,14 +42,14 @@ export default function PaymentCard({ payment, onApprove, onReject }) {
       </div>
 
       <div className="space-y-2 mb-4">
-        <p className="text-sm">
-          <span className="font-medium">User:</span> {payment.users?.username || 'Unknown'}
+        <p className="text-sm text-gray-700">
+          <span className="font-medium text-gray-900">User:</span> {payment.users?.username || 'Unknown'}
         </p>
-        <p className="text-sm">
-          <span className="font-medium">Telegram ID:</span> {payment.users?.telegram_id}
+        <p className="text-sm text-gray-700">
+          <span className="font-medium text-gray-900">Telegram ID:</span> {payment.users?.telegram_id}
         </p>
-        <p className="text-sm">
-          <span className="font-medium">Current Balance:</span> {payment.users?.balance} Birr
+        <p className="text-sm text-gray-700">
+          <span className="font-medium text-gray-900">Current Balance:</span> {payment.users?.balance} Birr
         </p>
       </div>
 

@@ -158,11 +158,11 @@ export default function Dashboard() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Platform:</span>
-                  <span className="font-medium">Telegram Bot</span>
+                  <span className="font-medium text-gray-900">Telegram Bot</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Database:</span>
-                  <span className="font-medium">Supabase</span>
+                  <span className="font-medium text-gray-900">Supabase</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Status:</span>
