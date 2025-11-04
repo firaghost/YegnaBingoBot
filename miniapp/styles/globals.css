@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --tg-theme-bg-color: #1E40AF;
+  --tg-theme-text-color: #ffffff;
+  --tg-theme-hint-color: #aaaaaa;
+  --tg-theme-link-color: #2563EB;
+  --tg-theme-button-color: #F97316;
+  --tg-theme-button-text-color: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: var(--tg-theme-bg-color);
+  color: var(--tg-theme-text-color);
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@layer components {
+  .btn {
+    @apply px-6 py-3 rounded-lg font-semibold transition-all duration-200;
+  }
+  
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-orange-600 active:scale-95;
+  }
+  
+  .btn-secondary {
+    @apply bg-primary text-white hover:bg-blue-700 active:scale-95;
+  }
+  
+  .card {
+    @apply bg-white/10 backdrop-blur-sm rounded-xl p-4 shadow-lg;
+  }
+  
+  .game-card {
+    @apply bg-primary rounded-xl p-4 shadow-lg border-2 border-blue-400 hover:border-accent transition-all;
+  }
+  
+  .number-cell {
+    @apply w-10 h-10 flex items-center justify-center rounded-lg font-bold text-sm cursor-pointer transition-all;
+  }
+  
+  .number-cell-unselected {
+    @apply bg-blue-600 text-white hover:bg-blue-500;
+  }
+  
+  .number-cell-selected {
+    @apply bg-danger text-white ring-2 ring-white;
+  }
+  
+  .bingo-cell {
+    @apply w-12 h-12 flex items-center justify-center rounded-lg font-bold text-lg border-2 border-white/30;
+  }
+  
+  .bingo-cell-called {
+    @apply bg-danger text-white;
+  }
+  
+  .bingo-cell-uncalled {
+    @apply bg-blue-700 text-white;
+  }
+}

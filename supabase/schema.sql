@@ -23,6 +23,7 @@ CREATE TABLE payments (
 -- Games table
 CREATE TABLE games (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entry_fee numeric NOT NULL DEFAULT 5,
   status text DEFAULT 'waiting',
   prize_pool numeric DEFAULT 0,
   called_numbers jsonb DEFAULT '[]'::jsonb,
@@ -57,6 +58,48 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE games ENABLE ROW LEVEL SECURITY;
 ALTER TABLE game_players ENABLE ROW LEVEL SECURITY;
+
+-- Database Functions
+
+-- Function to deduct balance
+CREATE OR REPLACE FUNCTION deduct_balance(user_id uuid, amount numeric)
+RETURNS void AS $$
+BEGIN
+  UPDATE users
+  SET balance = balance - amount
+  WHERE id = user_id AND balance >= amount;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to add to prize pool
+CREATE OR REPLACE FUNCTION add_to_prize_pool(game_id uuid, amount numeric)
+RETURNS void AS $$
+BEGIN
+  UPDATE games
+  SET prize_pool = prize_pool + amount
+  WHERE id = game_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to award prize
+CREATE OR REPLACE FUNCTION award_prize(winner_user_id uuid, game_id uuid)
+RETURNS void AS $$
+DECLARE
+  prize_amount numeric;
+BEGIN
+  SELECT prize_pool INTO prize_amount FROM games WHERE id = game_id;
+  
+  UPDATE users
+  SET balance = balance + prize_amount
+  WHERE id = winner_user_id;
+  
+  UPDATE games
+  SET winner_id = winner_user_id,
+      status = 'completed',
+      ended_at = now()
+  WHERE id = game_id;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Create policies (allow all for service role, restrict for anon)
 CREATE POLICY "Allow all for service role" ON users FOR ALL USING (true);
