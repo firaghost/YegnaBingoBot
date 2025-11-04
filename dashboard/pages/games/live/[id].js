@@ -66,12 +66,50 @@ export default function LiveGameControl() {
     }
   }
 
+  async function deductAllPlayersFees() {
+    // Deduct entry fee from all players and add to prize pool
+    try {
+      for (const player of players) {
+        if (player.paid) continue; // Skip if already paid
+        
+        // Deduct balance
+        await supabase.rpc('deduct_balance', {
+          user_id: player.user_id,
+          amount: game.entry_fee
+        });
+        
+        // Mark as paid
+        await supabase
+          .from('game_players')
+          .update({ paid: true })
+          .eq('id', player.id);
+      }
+      
+      // Update prize pool
+      const totalPrize = game.entry_fee * players.length;
+      await supabase
+        .from('games')
+        .update({ prize_pool: totalPrize })
+        .eq('id', id);
+        
+      console.log(`Deducted ${game.entry_fee} Birr from ${players.length} players. Prize pool: ${totalPrize} Birr`);
+    } catch (error) {
+      console.error('Error deducting fees:', error);
+    }
+  }
+
   async function callNumber() {
     if (calling) return;
     setCalling(true);
 
     try {
       const calledNumbers = game.called_numbers || [];
+      
+      // If first number, deduct fees from all players
+      if (calledNumbers.length === 0) {
+        await deductAllPlayersFees();
+      }
+      
       const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
         .filter(n => !calledNumbers.includes(n));
 

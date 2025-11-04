@@ -87,7 +87,7 @@ export async function createGame(entryFee) {
   return data;
 }
 
-// Join a game
+// Join a game (NO money deducted yet - only when game starts)
 export async function joinGame(gameId, userId, card, entryFee) {
   // Check if already joined
   const { data: existing } = await supabase
@@ -98,17 +98,29 @@ export async function joinGame(gameId, userId, card, entryFee) {
     .single();
   
   if (existing) {
-    return { success: false, error: 'Already joined this game' };
+    return { success: true, data: existing, alreadyJoined: true };
   }
   
-  // Join game
+  // Check user balance (but don't deduct yet)
+  const { data: user } = await supabase
+    .from('users')
+    .select('balance')
+    .eq('id', userId)
+    .single();
+  
+  if (!user || user.balance < entryFee) {
+    return { success: false, error: 'Insufficient balance' };
+  }
+  
+  // Join game (money will be deducted when game starts)
   const { data, error } = await supabase
     .from('game_players')
     .insert({
       game_id: gameId,
       user_id: userId,
       card: card,
-      marked_numbers: []
+      marked_numbers: [],
+      paid: false  // Track if player has paid
     })
     .select()
     .single();
@@ -116,26 +128,6 @@ export async function joinGame(gameId, userId, card, entryFee) {
   if (error) {
     console.error('Error joining game:', error);
     return { success: false, error: error.message };
-  }
-  
-  // Update user balance
-  const { error: balanceError } = await supabase.rpc('deduct_balance', {
-    user_id: userId,
-    amount: entryFee
-  });
-  
-  if (balanceError) {
-    console.error('Error updating balance:', balanceError);
-  }
-  
-  // Update prize pool
-  const { error: poolError } = await supabase.rpc('add_to_prize_pool', {
-    game_id: gameId,
-    amount: entryFee
-  });
-  
-  if (poolError) {
-    console.error('Error updating prize pool:', poolError);
   }
   
   return { success: true, data };

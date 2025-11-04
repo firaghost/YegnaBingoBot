@@ -11,6 +11,17 @@ BEGIN
   END IF;
 END $$;
 
+-- Add paid column to game_players table
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'game_players' AND column_name = 'paid'
+  ) THEN
+    ALTER TABLE game_players ADD COLUMN paid boolean DEFAULT false;
+  END IF;
+END $$;
+
 -- Function to deduct balance
 CREATE OR REPLACE FUNCTION deduct_balance(user_id uuid, amount numeric)
 RETURNS void AS $$

@@ -28,24 +28,33 @@ export default function PlayGame() {
   }, [gameId]);
 
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId || !user) return;
 
     // Subscribe to real-time game updates
-    const channel = subscribeToGame(gameId, (payload) => {
+    const channel = subscribeToGame(gameId, async (payload) => {
       console.log('Game update:', payload);
       const updatedGame = payload.new;
       setGame(updatedGame);
       
-      if (updatedGame.status === 'active') {
+      if (updatedGame.status === 'active' && gameState === 'waiting') {
+        // Game just started! Reload player data and transition to playing
+        console.log('Game started! Transitioning to playing state...');
+        await loadGameData();
         setGameState('playing');
+        hapticFeedback('heavy');
+      }
+      
+      if (updatedGame.status === 'active') {
         setCalledNumbers(updatedGame.called_numbers || []);
         
         // Show last called number
         const numbers = updatedGame.called_numbers || [];
         if (numbers.length > 0) {
           const last = numbers[numbers.length - 1];
-          setLastCalledNumber(last);
-          hapticFeedback('medium');
+          if (last !== lastCalledNumber) {
+            setLastCalledNumber(last);
+            hapticFeedback('medium');
+          }
         }
       } else if (updatedGame.status === 'completed') {
         checkGameResult(updatedGame);
@@ -55,7 +64,7 @@ export default function PlayGame() {
     return () => {
       channel.unsubscribe();
     };
-  }, [gameId]);
+  }, [gameId, user, gameState]);
 
   async function loadGameData() {
     const telegramUserId = getUserId();
