@@ -4,38 +4,82 @@ import { getUserId, telegram, hapticFeedback } from '../lib/telegram';
 import { getUserByTelegramId } from '../lib/supabase';
 import Head from 'next/head';
 
-const GAME_OPTIONS = [
-  { id: 1, fee: 5, players: 14, status: 'live' },
-  { id: 2, fee: 7, players: 0, status: 'new' },
-  { id: 3, fee: 10, players: 0, status: 'new' },
-  { id: 4, fee: 20, players: 0, status: 'new' },
-  { id: 5, fee: 50, players: 0, status: 'new' },
-  { id: 6, fee: 100, players: 0, status: 'new' },
-];
+// Games will be fetched from database
 
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState(null);
+  const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadUser() {
+    async function loadData() {
       const telegramUserId = getUserId();
       
       if (!telegramUserId) {
         // For testing without Telegram
         setUser({ id: 'test', balance: 5, username: 'Test User' });
-        setLoading(false);
-        return;
+      } else {
+        const userData = await getUserByTelegramId(telegramUserId);
+        setUser(userData);
       }
 
-      const userData = await getUserByTelegramId(telegramUserId);
-      setUser(userData);
+      // Fetch real games from database
+      await loadGames();
       setLoading(false);
     }
 
-    loadUser();
+    loadData();
   }, []);
+
+  async function loadGames() {
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase
+        .from('games')
+        .select(`
+          *,
+          game_players (id)
+        `)
+        .in('status', ['waiting', 'active'])
+        .order('entry_fee', { ascending: true });
+
+      if (error) throw error;
+
+      // Group by entry fee
+      const gamesByFee = {};
+      (data || []).forEach(game => {
+        if (!gamesByFee[game.entry_fee]) {
+          gamesByFee[game.entry_fee] = game;
+        }
+      });
+
+      // Create game options for each entry fee
+      const entryFees = [5, 7, 10, 20, 50, 100];
+      const gameOptions = entryFees.map(fee => {
+        const game = gamesByFee[fee];
+        return {
+          id: game?.id || null,
+          fee: fee,
+          players: game?.game_players?.length || 0,
+          status: game ? (game.status === 'active' ? 'live' : 'waiting') : 'new',
+          prizePool: game?.prize_pool || 0
+        };
+      });
+
+      setGames(gameOptions);
+    } catch (error) {
+      console.error('Error loading games:', error);
+      // Fallback to default games
+      setGames([5, 7, 10, 20, 50, 100].map(fee => ({
+        id: null,
+        fee,
+        players: 0,
+        status: 'new',
+        prizePool: 0
+      })));
+    }
+  }
 
   const handleJoinGame = (game) => {
     hapticFeedback('medium');
@@ -64,7 +108,7 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>Cheers Bingo - Select Game</title>
+        <title>Yegna Bingo - Select Game</title>
       </Head>
 
       <div className="min-h-screen bg-gradient-to-b from-secondary to-primary pb-20">
@@ -73,7 +117,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-white">ተመላሽ</h1>
-              <p className="text-xs text-blue-200">Cheers Bingo</p>
+              <p className="text-xs text-blue-200">Yegna Bingo</p>
             </div>
             <div className="bg-yellow-500 px-4 py-2 rounded-lg">
               <div className="flex items-center gap-2">
@@ -86,9 +130,9 @@ export default function Home() {
 
         {/* Game Options */}
         <div className="px-4 py-6 space-y-4">
-          <h2 className="text-white text-lg font-semibold mb-4">ስፖንሰር 1 - 5</h2>
+          <h2 className="text-white text-lg font-semibold mb-4">የጨዋታ አማራጮች</h2>
           
-          {GAME_OPTIONS.map((game) => (
+          {games.map((game) => (
             <div
               key={game.id}
               className="game-card relative overflow-hidden"
@@ -133,8 +177,8 @@ export default function Home() {
 
         {/* Bottom Info */}
         <div className="px-4 py-4 text-center text-blue-200 text-sm">
-          <p>Cheers Bingo ስፖንሰር አስር Challenge ላይደሰታ</p>
-          <p className="mt-1">@CheersBingoBot</p>
+          <p>Yegna Bingo - የኢትዮጵያ የቢንጎ ጨዋታ</p>
+          <p className="mt-1">@YegnaBingoBot</p>
         </div>
       </div>
     </>

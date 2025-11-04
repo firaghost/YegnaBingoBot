@@ -134,7 +134,7 @@ export default function PlayGame() {
     return (
       <>
         <Head>
-          <title>Waiting for Players - Bingo</title>
+          <title>Waiting for Players - Yegna Bingo</title>
         </Head>
         <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center p-4">
           <div className="max-w-md w-full">
@@ -189,7 +189,7 @@ export default function PlayGame() {
     return (
       <>
         <Head>
-          <title>You Won! - Bingo</title>
+          <title>You Won! - Yegna Bingo</title>
         </Head>
         <div className="min-h-screen bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 flex items-center justify-center p-4">
           <div className="max-w-md w-full">
@@ -228,7 +228,7 @@ export default function PlayGame() {
     return (
       <>
         <Head>
-          <title>Game Over - Bingo</title>
+          <title>Game Over - Yegna Bingo</title>
         </Head>
         <div className="min-h-screen bg-gradient-to-br from-gray-600 via-gray-700 to-gray-800 flex items-center justify-center p-4">
           <div className="max-w-md w-full">
@@ -269,7 +269,7 @@ export default function PlayGame() {
   return (
     <>
       <Head>
-        <title>Playing Bingo - Live</title>
+        <title>Playing Yegna Bingo - Live</title>
       </Head>
 
       <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 pb-20">
