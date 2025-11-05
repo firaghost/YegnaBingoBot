@@ -17,5 +17,5 @@
       "dest": "/api/webhook.js"
     }
   ],
-  "ignoreCommand": "bash -c 'if git diff HEAD^ HEAD --quiet -- bot/; then echo \"No changes in bot\"; exit 1; else echo \"Changes detected in bot\"; exit 0; fi'"
+  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- bot/ || exit 0; exit 1'"
 }

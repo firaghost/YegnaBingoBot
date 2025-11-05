@@ -4,5 +4,5 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "ignoreCommand": "bash -c 'if git diff HEAD^ HEAD --quiet -- miniapp/; then echo \"No changes in miniapp\"; exit 1; else echo \"Changes detected in miniapp\"; exit 0; fi'"
+  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- miniapp/ || exit 0; exit 1'"
 }
