@@ -139,18 +139,29 @@ export default function Home() {
               <h1 className="text-xl font-bold text-white">ተመላሽ</h1>
               <p className="text-xs text-blue-200">Yegna Bingo</p>
             </div>
-            <button
-              onClick={() => {
-                hapticFeedback('light');
-                router.push('/wallet');
-              }}
-              className="bg-yellow-500 px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors active:scale-95"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">💰</span>
-                <span className="font-bold text-white">{user?.balance || 0}.00 ETB</span>
-              </div>
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  hapticFeedback('light');
+                  router.push('/history');
+                }}
+                className="bg-purple-500 px-3 py-2 rounded-lg hover:bg-purple-600 transition-colors active:scale-95"
+              >
+                <span className="text-xl">📊</span>
+              </button>
+              <button
+                onClick={() => {
+                  hapticFeedback('light');
+                  router.push('/wallet');
+                }}
+                className="bg-yellow-500 px-4 py-2 rounded-lg hover:bg-yellow-600 transition-colors active:scale-95"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">💰</span>
+                  <span className="font-bold text-white">{user?.balance || 0}.00 ETB</span>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
 

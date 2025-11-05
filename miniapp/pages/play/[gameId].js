@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { getUserId, hapticFeedback, setBackButton, showAlert } from '../../lib/telegram';
-import { getUserByTelegramId, getGameDetails, subscribeToGame, markNumber, checkBingo } from '../../lib/supabase';
+import { getUserByTelegramId, getGameDetails, subscribeToGame, markNumber, checkBingo, supabase } from '../../lib/supabase';
+import ConfirmModal from '../../components/ConfirmModal';
 
 export default function PlayGame() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function PlayGame() {
   const [lastCalledNumber, setLastCalledNumber] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [exitModalConfig, setExitModalConfig] = useState({});
 
   useEffect(() => {
     if (!gameId) {
@@ -28,15 +31,28 @@ export default function PlayGame() {
     // Set back button with confirmation for active games
     setBackButton(() => {
       if (game?.status === 'active' || gameState === 'playing') {
-        const confirmed = window.confirm(
-          '⚠️ Warning!\n\n' +
-          'The game has already started and your entry fee has been deducted.\n\n' +
-          'If you leave now, you will LOSE your stake!\n\n' +
-          'Are you sure you want to exit?'
-        );
-        if (confirmed) {
-          router.push('/');
-        }
+        // Game is active - warn about losing stake
+        setExitModalConfig({
+          title: 'Warning!',
+          message: 'The game has already started and your entry fee has been deducted.\n\nIf you leave now, you will LOSE your stake!\n\nAre you sure you want to exit?',
+          type: 'danger',
+          confirmText: 'Leave Anyway',
+          onConfirm: () => router.push('/')
+        });
+        setShowExitModal(true);
+      } else if (game?.status === 'waiting' && playerData) {
+        // Game is waiting - allow leaving without penalty
+        setExitModalConfig({
+          title: 'Cancel Participation?',
+          message: 'Are you sure you want to cancel?\n\nYou can leave now without any penalty since the game hasn\'t started yet.',
+          type: 'info',
+          confirmText: 'Yes, Cancel',
+          onConfirm: async () => {
+            await leaveGame();
+            router.push('/');
+          }
+        });
+        setShowExitModal(true);
       } else {
         router.push('/');
       }
@@ -190,6 +206,30 @@ export default function PlayGame() {
     }
   }
 
+  async function leaveGame() {
+    try {
+      if (!playerData) return;
+      
+      console.log('🚪 Leaving game, deleting player entry...');
+      
+      // Delete player entry from game_players table
+      const { error } = await supabase
+        .from('game_players')
+        .delete()
+        .eq('id', playerData.id);
+      
+      if (error) {
+        console.error('Error leaving game:', error);
+        throw error;
+      }
+      
+      console.log('✅ Successfully left the game');
+    } catch (error) {
+      console.error('Failed to leave game:', error);
+      showAlert('Failed to leave game. Please try again.');
+    }
+  }
+
   async function handleNumberClick(number) {
     if (gameState !== 'playing') return;
     if (!calledNumbers.includes(number)) return;
@@ -289,8 +329,27 @@ export default function PlayGame() {
               </div>
 
               <div className="mt-6 text-white/60 text-sm">
-                Game will start automatically when ready
+                Admin will start the game when ready
               </div>
+
+              <button
+                onClick={() => {
+                  setExitModalConfig({
+                    title: 'Cancel Participation?',
+                    message: 'Are you sure you want to cancel?\n\nYou can leave now without any penalty since the game hasn\'t started yet.',
+                    type: 'info',
+                    confirmText: 'Yes, Cancel',
+                    onConfirm: async () => {
+                      await leaveGame();
+                      router.push('/');
+                    }
+                  });
+                  setShowExitModal(true);
+                }}
+                className="mt-4 w-full bg-red-500/80 hover:bg-red-600 text-white py-3 px-6 rounded-xl font-medium transition-colors"
+              >
+                🚪 Cancel Participation
+              </button>
             </div>
           </div>
         </div>
@@ -320,7 +379,10 @@ export default function PlayGame() {
               <div className="bg-white/20 rounded-2xl p-6 mb-6">
                 <div className="text-white/80 mb-2">Prize</div>
                 <div className="text-5xl font-bold text-white">
-                  {game?.prize_pool || 0} ብር
+                  {((game?.prize_pool || 0) * 0.9).toFixed(0)} ብር
+                </div>
+                <div className="text-white/60 text-sm mt-2">
+                  (After 10% commission)
                 </div>
               </div>
 
@@ -557,6 +619,18 @@ export default function PlayGame() {
           </div>
         </div>
       </div>
+
+      {/* Exit Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showExitModal}
+        onClose={() => setShowExitModal(false)}
+        onConfirm={exitModalConfig.onConfirm}
+        title={exitModalConfig.title}
+        message={exitModalConfig.message}
+        type={exitModalConfig.type}
+        confirmText={exitModalConfig.confirmText}
+        cancelText="Stay"
+      />
     </>
   );
 }

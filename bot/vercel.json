@@ -16,5 +16,6 @@
       "src": "/(.*)",
       "dest": "/api/webhook.js"
     }
-  ]
+  ],
+  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- bot/ || exit 0; exit 1'"
 }

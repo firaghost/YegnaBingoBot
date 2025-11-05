@@ -27,8 +27,30 @@ export default function LiveGameControl() {
         schema: 'public',
         table: 'games',
         filter: `id=eq.${id}`
-      }, () => {
+      }, (payload) => {
+        console.log('Game updated:', payload);
         loadGameData();
+        
+        // Check if game completed
+        if (payload.new?.status === 'completed' && payload.old?.status === 'active') {
+          // Stop auto-calling
+          if (autoInterval) {
+            clearInterval(autoInterval);
+            setAutoInterval(null);
+            setAutoCalling(false);
+          }
+          
+          // Show winner notification
+          const winnerId = payload.new.winner_id;
+          if (winnerId) {
+            // Find winner's username
+            const winner = players.find(p => p.user_id === winnerId);
+            const winnerName = winner?.users?.username || 'Unknown';
+            const prize = (payload.new.prize_pool * 0.9).toFixed(0);
+            
+            alert(`🎉 GAME ENDED!\n\n🏆 Winner: ${winnerName}\n💰 Prize: ${prize} Birr\n\nThe game has been completed.`);
+          }
+        }
       })
       .subscribe();
 
@@ -36,7 +58,7 @@ export default function LiveGameControl() {
       channel.unsubscribe();
       if (autoInterval) clearInterval(autoInterval);
     };
-  }, [id]);
+  }, [id, autoInterval, players]);
 
   async function loadGameData() {
     try {
@@ -47,6 +69,14 @@ export default function LiveGameControl() {
         .single();
 
       if (gameError) throw gameError;
+      
+      // If game is completed, redirect to details page after 3 seconds
+      if (gameData.status === 'completed' && game?.status !== 'completed') {
+        setTimeout(() => {
+          router.push(`/games/details/${id}`);
+        }, 3000);
+      }
+      
       setGame(gameData);
 
       const { data: playersData, error: playersError } = await supabase
@@ -227,7 +257,8 @@ export default function LiveGameControl() {
 
       if (prizeError) throw prizeError;
 
-      alert(`🎉 BINGO! Winner: ${player.users?.username || 'Player'}\nPrize: ${game.prize_pool} Birr`);
+      const winnerPrize = (game.prize_pool * 0.9).toFixed(0);
+      alert(`🎉 BINGO! Winner: ${player.users?.username || 'Player'}\nPrize: ${winnerPrize} Birr (after 10% commission)`);
       router.push('/games');
     } catch (error) {
       console.error('Error declaring winner:', error);
@@ -323,7 +354,7 @@ export default function LiveGameControl() {
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">{game.entry_fee} Birr Game - Live Control</h1>
                 <p className="text-gray-600 mt-1">
-                  {players.length} players • Prize Pool: {game.prize_pool} Birr
+                  {players.length} players • Pool: {game.prize_pool} Birr • Winner Gets: {(game.prize_pool * 0.9).toFixed(0)} Birr
                 </p>
               </div>
               <span className="bg-red-100 text-red-800 px-4 py-2 rounded-full font-semibold animate-pulse">

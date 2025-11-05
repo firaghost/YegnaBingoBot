@@ -3,5 +3,6 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- miniapp/ || exit 0; exit 1'"
 }
