@@ -32,9 +32,14 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Call admin auth API (using simple version for testing)
-      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
-      const response = await fetch(`${botUrl}/api/admin-auth-simple`, {
+      // Call admin auth API
+      // In development, use local API; in production, use bot URL
+      const isDev = window.location.hostname === 'localhost';
+      const apiUrl = isDev 
+        ? '/api/admin-auth-simple'  // Local API
+        : `${process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app'}/api/admin-auth-simple`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

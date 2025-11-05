@@ -73,11 +73,34 @@ export function showMainButton() {
   }
 }
 
+// Store the current back button handler
+let currentBackHandler = null;
+
 export function setBackButton(onClick) {
   if (!tg) return;
   
-  tg.BackButton.show();
+  // Remove previous handler if exists
+  if (currentBackHandler) {
+    tg.BackButton.offClick(currentBackHandler);
+  }
+  
+  // Store and add new handler
+  currentBackHandler = onClick;
   tg.BackButton.onClick(onClick);
+  
+  // Show the button
+  tg.BackButton.show();
+}
+
+export function removeBackButton() {
+  if (!tg) return;
+  
+  if (currentBackHandler) {
+    tg.BackButton.offClick(currentBackHandler);
+    currentBackHandler = null;
+  }
+  
+  tg.BackButton.hide();
 }
 
 export function hideBackButton() {

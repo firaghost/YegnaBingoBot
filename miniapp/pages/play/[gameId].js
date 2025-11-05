@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
-import { getUserId, hapticFeedback, setBackButton, showAlert } from '../../lib/telegram';
+import { getUserId, hapticFeedback, setBackButton, removeBackButton, showAlert } from '../../lib/telegram';
 import { getUserByTelegramId, getGameDetails, subscribeToGame, markNumber, checkBingo, supabase } from '../../lib/supabase';
 import ConfirmModal from '../../components/ConfirmModal';
 
@@ -20,6 +20,23 @@ export default function PlayGame() {
   const [error, setError] = useState(null);
   const [showExitModal, setShowExitModal] = useState(false);
   const [exitModalConfig, setExitModalConfig] = useState({});
+  
+  // Use refs to always have latest values in back button handler
+  const gameRef = useRef(game);
+  const gameStateRef = useRef(gameState);
+  const playerDataRef = useRef(playerData);
+  
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+  
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+  
+  useEffect(() => {
+    playerDataRef.current = playerData;
+  }, [playerData]);
 
   useEffect(() => {
     if (!gameId) {
@@ -36,25 +53,33 @@ export default function PlayGame() {
     console.log('🔙 Setting back button handler. Game status:', game?.status, 'Game state:', gameState);
     
     const handleBackButton = () => {
-      console.log('🔙 Back button clicked! Game status:', game?.status, 'Game state:', gameState, 'Has player data:', !!playerData);
+      // Use refs to get latest values
+      const currentGame = gameRef.current;
+      const currentGameState = gameStateRef.current;
+      const currentPlayerData = playerDataRef.current;
       
-      // Prevent default navigation
-      if (game?.status === 'active' || gameState === 'playing') {
+      console.log('🔙 Back button clicked!');
+      console.log('  - Game status:', currentGame?.status);
+      console.log('  - Game state:', currentGameState);
+      console.log('  - Has player data:', !!currentPlayerData);
+      
+      // Prevent default navigation if game is active
+      if (currentGame?.status === 'active' || currentGameState === 'playing') {
         // Game is active - warn about losing stake
-        console.log('⚠️ Showing active game warning - BLOCKING EXIT');
+        console.log('⚠️ BLOCKING EXIT - Game is active!');
         setExitModalConfig({
           title: '⚠️ Warning!',
           message: 'The game has already started and your entry fee has been deducted.\n\nIf you leave now, you will LOSE your stake!\n\nAre you sure you want to exit?',
           type: 'danger',
           confirmText: 'Leave Anyway',
           onConfirm: () => {
-            console.log('User confirmed exit from active game');
+            console.log('✅ User confirmed exit from active game');
             router.push('/');
           }
         });
         setShowExitModal(true);
         return false; // Block navigation
-      } else if (game?.status === 'waiting' && playerData) {
+      } else if (currentGame?.status === 'waiting' && currentPlayerData) {
         // Game is waiting - allow leaving without penalty
         console.log('ℹ️ Showing waiting game confirmation');
         setExitModalConfig({
@@ -63,7 +88,7 @@ export default function PlayGame() {
           type: 'info',
           confirmText: 'Yes, Cancel',
           onConfirm: async () => {
-            console.log('User confirmed cancel from waiting game');
+            console.log('✅ User confirmed cancel from waiting game');
             await leaveGame();
             router.push('/');
           }
@@ -78,6 +103,11 @@ export default function PlayGame() {
     };
     
     setBackButton(handleBackButton);
+    
+    // Cleanup on unmount
+    return () => {
+      removeBackButton();
+    };
   }, [gameId, game?.status, gameState, playerData]);
 
   // Warn before closing/refreshing if game is active
@@ -202,10 +232,13 @@ export default function PlayGame() {
 
       // Set game state
       if (gameData.status === 'waiting') {
+        console.log('🕐 Game is WAITING');
         setGameState('waiting');
       } else if (gameData.status === 'active') {
+        console.log('🎮 Game is ACTIVE/PLAYING');
         setGameState('playing');
       } else if (gameData.status === 'completed') {
+        console.log('🏁 Game is COMPLETED');
         checkGameResult(gameData);
       }
 
@@ -229,22 +262,34 @@ export default function PlayGame() {
 
   async function leaveGame() {
     try {
-      if (!playerData) return;
+      if (!playerData || !user) return;
       
-      console.log('🚪 Leaving game, deleting player entry...');
+      console.log('🚪 Leaving game...');
+      console.log('  - Game ID:', gameId);
+      console.log('  - User ID:', user.id);
+      console.log('  - Game status:', game?.status);
       
-      // Delete player entry from game_players table
-      const { error } = await supabase
-        .from('game_players')
-        .delete()
-        .eq('id', playerData.id);
-      
-      if (error) {
-        console.error('Error leaving game:', error);
-        throw error;
+      // Call API to handle leaving (different logic for waiting vs active games)
+      const response = await fetch('/api/leave-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          gameId: gameId,
+          userId: user.id 
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to leave game');
       }
+
+      console.log('✅ Successfully left the game:', data.message);
       
-      console.log('✅ Successfully left the game');
+      if (game?.status === 'active') {
+        showAlert('⚠️ You have left the game. Your stake has been forfeited.');
+      }
     } catch (error) {
       console.error('Failed to leave game:', error);
       showAlert('Failed to leave game. Please try again.');

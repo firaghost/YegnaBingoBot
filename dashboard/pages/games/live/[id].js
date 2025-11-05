@@ -185,11 +185,12 @@ export default function LiveGameControl() {
 
       console.log('✅ Number called successfully');
 
-      // Check for winners after calling number
+      // Check for winners after calling number (exclude players who left)
       const { data: playersData } = await supabase
         .from('game_players')
         .select('*, users (username, telegram_id)')
-        .eq('game_id', id);
+        .eq('game_id', id)
+        .eq('has_left', false);
       
       for (const player of playersData || []) {
         const hasBingo = checkPlayerBingo(player, updatedNumbers);
@@ -238,8 +239,13 @@ export default function LiveGameControl() {
   }, [autoCalling, id, callNumber]);
 
   async function checkForWinners() {
-    // Check each player for BINGO
+    // Check each player for BINGO (exclude players who left)
     for (const player of players) {
+      if (player.has_left) {
+        console.log(`⏭️ Skipping player ${player.users?.username} - has left game`);
+        continue;
+      }
+      
       const hasBingo = checkPlayerBingo(player);
       if (hasBingo) {
         await declareWinner(player);
@@ -387,147 +393,185 @@ export default function LiveGameControl() {
   const lastNumber = calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1] : null;
   const remainingNumbers = 75 - calledNumbers.length;
 
+  const handleLogout = () => {
+    localStorage.removeItem('adminAuth');
+    router.push('/login');
+  };
+
   return (
     <>
       <Head>
-        <title>Live Game Control - {game.entry_fee} Birr</title>
+        <title>🔴 LIVE - {game.entry_fee} ETB Game</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
       </Head>
 
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="mb-8">
-            <button
-              onClick={() => router.push('/games')}
-              className="text-blue-600 hover:text-blue-700 mb-4"
-            >
-              ← Back to Games
-            </button>
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">{game.entry_fee} Birr Game - Live Control</h1>
-                <p className="text-gray-600 mt-1">
-                  {players.length} players • Pool: {game.prize_pool} Birr • Winner Gets: {(game.prize_pool * 0.9).toFixed(0)} Birr
-                </p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900" style={{ fontFamily: 'Inter, sans-serif' }}>
+        <div className="fixed inset-0 opacity-10 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
+            backgroundSize: '40px 40px'
+          }}></div>
+        </div>
+
+        <header className="relative bg-black/40 backdrop-blur-xl border-b border-white/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center py-4">
+              <div className="flex items-center space-x-4">
+                <button onClick={() => router.push('/games/active')} className="text-white hover:text-purple-300 transition-colors">← Back</button>
+                <div className="relative">
+                  <div className="absolute inset-0 bg-red-500 rounded-xl blur-lg animate-pulse"></div>
+                  <div className="relative w-12 h-12 bg-gradient-to-br from-red-500 to-pink-500 rounded-xl flex items-center justify-center">
+                    <span className="text-2xl animate-pulse">🔴</span>
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-black text-white">{game.entry_fee} ETB GAME - LIVE CONTROL</h1>
+                  <p className="text-sm text-gray-300">
+                    👥 {players.filter(p => !p.has_left).length} Active • 💰 Pool: {game.prize_pool} ETB • 🏆 Winner: {(game.prize_pool * 0.9).toFixed(0)} ETB
+                  </p>
+                </div>
               </div>
-              <span className="bg-red-100 text-red-800 px-4 py-2 rounded-full font-semibold animate-pulse">
-                🔴 LIVE
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-sm animate-pulse shadow-lg shadow-red-500/50">
+                  🔴 LIVE NOW
+                </span>
+                <button onClick={handleLogout} className="px-4 py-2 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-xl hover:from-red-700 hover:to-pink-700 transition-all font-bold">🚪</button>
+              </div>
             </div>
           </div>
+        </header>
+
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Number Calling */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Last Called Number */}
-              <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg shadow-lg p-8 text-center text-white">
-                <div className="text-sm opacity-80 mb-2">Last Called Number</div>
-                <div className="text-8xl font-bold mb-4">
-                  {lastNumber || '-'}
-                </div>
-                <div className="text-sm opacity-80">
-                  {calledNumbers.length} of 75 numbers called • {remainingNumbers} remaining
+              {/* Last Called Number - Massive Display */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-yellow-600/30 to-orange-600/30 rounded-2xl blur-2xl animate-pulse"></div>
+                <div className="relative bg-gradient-to-br from-yellow-500 via-orange-500 to-red-500 rounded-2xl p-12 text-center shadow-2xl border-4 border-yellow-300">
+                  <div className="text-white text-lg font-bold mb-2 opacity-90">LAST CALLED NUMBER</div>
+                  <div className="text-white text-9xl font-black mb-4 drop-shadow-2xl" style={{textShadow: '0 0 30px rgba(0,0,0,0.5)'}}>
+                    {lastNumber || '-'}
+                  </div>
+                  <div className="text-white text-xl font-bold">
+                    {calledNumbers.length} / 75 • {remainingNumbers} REMAINING
+                  </div>
                 </div>
               </div>
 
               {/* Controls */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Game Controls</h3>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-green-600/20 to-blue-600/20 rounded-2xl blur-xl"></div>
+                <div className="relative bg-black/40 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
+                  <h3 className="font-black text-white mb-4 text-xl">🎮 GAME CONTROLS</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <button
+                      onClick={callNumber}
+                      disabled={calling || autoCalling || remainingNumbers === 0}
+                      className="px-6 py-6 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all font-black text-xl shadow-lg hover:shadow-green-500/50 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
+                    >
+                      {calling ? '⏳ CALLING...' : '🎲 CALL NUMBER'}
+                    </button>
+                    <button
+                      onClick={toggleAutoCalling}
+                      disabled={remainingNumbers === 0}
+                      className={`px-6 py-6 rounded-xl transition-all font-black text-xl shadow-lg transform hover:scale-105 ${
+                        autoCalling
+                          ? 'bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 text-white animate-pulse'
+                          : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      {autoCalling ? '⏹️ STOP AUTO' : '▶️ AUTO CALL'}
+                    </button>
+                  </div>
                   <button
-                    onClick={callNumber}
-                    disabled={calling || autoCalling || remainingNumbers === 0}
-                    className="bg-green-600 text-white px-6 py-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed font-semibold text-lg"
+                    onClick={endGame}
+                    className="w-full px-6 py-4 bg-gradient-to-r from-gray-700 to-gray-900 text-white rounded-xl hover:from-gray-800 hover:to-black transition-all font-bold shadow-lg"
                   >
-                    {calling ? 'Calling...' : 'Call Number'}
-                  </button>
-                  <button
-                    onClick={toggleAutoCalling}
-                    disabled={remainingNumbers === 0}
-                    className={`px-6 py-4 rounded-lg transition-colors font-semibold text-lg ${
-                      autoCalling
-                        ? 'bg-red-600 text-white hover:bg-red-700'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
-                    } disabled:bg-gray-300 disabled:cursor-not-allowed`}
-                  >
-                    {autoCalling ? 'Stop Auto-Call' : 'Start Auto-Call'}
+                    🛑 END GAME
                   </button>
                 </div>
-                <button
-                  onClick={endGame}
-                  className="w-full mt-4 bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-colors"
-                >
-                  End Game
-                </button>
               </div>
 
-              {/* All Numbers Grid (1-75) */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">Number Board (1-75)</h3>
-                <div className="grid grid-cols-10 gap-2">
-                  {Array.from({ length: 75 }, (_, i) => i + 1).map((num) => {
-                    const isCalled = calledNumbers.includes(num);
-                    const isLast = num === lastNumber;
-                    return (
-                      <div
-                        key={num}
-                        className={`
-                          w-12 h-12 flex items-center justify-center rounded-lg font-bold text-sm
-                          transition-all duration-300
-                          ${isCalled 
-                            ? isLast
-                              ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white ring-4 ring-yellow-200 scale-110 shadow-lg'
-                              : 'bg-green-500 text-white'
-                            : 'bg-gray-100 text-gray-400'
-                          }
-                        `}
-                      >
-                        {num}
-                      </div>
-                    );
-                  })}
+              {/* Number Board */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-2xl blur-xl"></div>
+                <div className="relative bg-black/40 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
+                  <h3 className="font-black text-white mb-4 text-xl">🎯 NUMBER BOARD (1-75)</h3>
+                  <div className="grid grid-cols-10 gap-2">
+                    {Array.from({ length: 75 }, (_, i) => i + 1).map((num) => {
+                      const isCalled = calledNumbers.includes(num);
+                      const isLast = num === lastNumber;
+                      return (
+                        <div
+                          key={num}
+                          className={`
+                            w-12 h-12 flex items-center justify-center rounded-xl font-black text-lg
+                            transition-all duration-300 transform
+                            ${isCalled 
+                              ? isLast
+                                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white ring-4 ring-yellow-300 scale-125 shadow-2xl shadow-yellow-500/50 animate-pulse'
+                                : 'bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg'
+                              : 'bg-white/10 text-gray-500 border border-white/20'
+                            }
+                          `}
+                        >
+                          {num}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Right Column - Players */}
-            <div className="space-y-6">
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="font-semibold text-gray-900 mb-4">
-                  Players ({players.length})
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-2xl blur-xl"></div>
+              <div className="relative bg-black/40 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
+                <h3 className="font-black text-white mb-4 text-xl">
+                  👥 PLAYERS ({players.filter(p => !p.has_left).length}/{players.length})
                 </h3>
-                <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                <div className="space-y-3 max-h-[700px] overflow-y-auto custom-scrollbar">
                   {players.map((player, index) => {
                     const hasBingo = checkPlayerBingo(player);
                     const selectedNums = player.selected_numbers || [];
+                    const hasLeft = player.has_left;
                     return (
                       <div
                         key={player.id}
-                        className={`p-4 rounded-lg border-2 ${
-                          hasBingo
-                            ? 'border-green-500 bg-green-50'
-                            : 'border-gray-200'
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          hasLeft
+                            ? 'border-red-400/50 bg-red-500/20 opacity-60'
+                            : hasBingo
+                            ? 'border-green-400 bg-green-500/30 shadow-lg shadow-green-500/50 animate-pulse'
+                            : 'border-white/20 bg-white/5'
                         }`}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <div className="font-semibold text-gray-900">
+                          <div className="font-bold text-white">
                             {player.users?.username || `Player ${index + 1}`}
                           </div>
-                          {hasBingo && (
-                            <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full font-bold">
-                              BINGO!
+                          {hasLeft && (
+                            <span className="bg-red-500 text-white text-xs px-3 py-1 rounded-full font-black">
+                              LEFT
+                            </span>
+                          )}
+                          {hasBingo && !hasLeft && (
+                            <span className="bg-green-500 text-black text-xs px-3 py-1 rounded-full font-black animate-pulse">
+                              🏆 BINGO!
                             </span>
                           )}
                         </div>
-                        <div className="text-sm text-gray-600 mb-2">
-                          Marked: {player.marked_numbers?.length || 0} numbers
+                        <div className="text-sm text-gray-300 mb-2">
+                          {hasLeft ? '❌ Left game - stake forfeited' : `✅ Marked: ${player.marked_numbers?.length || 0} numbers`}
                         </div>
-                        {selectedNums.length > 0 && (
-                          <div className="text-xs text-gray-500">
-                            <div className="font-medium mb-1">Selected:</div>
+                        {selectedNums.length > 0 && !hasLeft && (
+                          <div className="text-xs">
+                            <div className="font-medium text-gray-400 mb-1">Selected:</div>
                             <div className="flex flex-wrap gap-1">
                               {selectedNums.map((num, i) => (
-                                <span key={i} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                <span key={i} className="bg-blue-500/30 text-blue-200 px-2 py-0.5 rounded border border-blue-400/30 font-bold">
                                   {num}
                                 </span>
                               ))}
@@ -541,7 +585,7 @@ export default function LiveGameControl() {
               </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
     </>
   );

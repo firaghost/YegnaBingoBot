@@ -41,7 +41,10 @@ CREATE TABLE game_players (
   card jsonb NOT NULL,
   marked_numbers jsonb DEFAULT '[]'::jsonb,
   is_winner boolean DEFAULT false,
+  paid boolean DEFAULT false,
+  has_left boolean DEFAULT false,
   joined_at timestamp DEFAULT now(),
+  left_at timestamp,
   UNIQUE(game_id, user_id)
 );
 
