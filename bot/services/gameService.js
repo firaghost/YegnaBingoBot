@@ -266,6 +266,15 @@ export async function endGame(gameId, winnerId) {
       .eq('id', gameId)
       .single();
 
+    const totalPrize = game?.prize_pool || 0;
+    const commission = totalPrize * 0.10; // 10% commission
+    const winnerPrize = totalPrize - commission;
+
+    console.log(`💰 Prize Distribution:
+      Total Prize Pool: ${totalPrize} Birr
+      Commission (10%): ${commission} Birr
+      Winner Gets: ${winnerPrize} Birr`);
+
     // Mark winner
     await supabase
       .from('game_players')
@@ -283,19 +292,38 @@ export async function endGame(gameId, winnerId) {
       })
       .eq('id', gameId);
 
-    // Award prize to winner
+    // Award prize to winner (after commission)
     const { data: winner } = await supabase
       .from('users')
       .select('balance')
       .eq('id', winnerId)
       .single();
 
+    const newBalance = (winner?.balance || 0) + winnerPrize;
+
     await supabase
       .from('users')
-      .update({ balance: (winner?.balance || 0) + (game?.prize_pool || 0) })
+      .update({ balance: newBalance })
       .eq('id', winnerId);
 
-    return { success: true, prizeAmount: game?.prize_pool || 0 };
+    // Log transaction
+    await supabase
+      .from('transaction_history')
+      .insert({
+        user_id: winnerId,
+        type: 'game_win',
+        amount: winnerPrize,
+        description: `Won game ${gameId} - Prize: ${winnerPrize} Birr (after 10% commission)`
+      });
+
+    console.log(`🏆 Winner ${winnerId} received ${winnerPrize} Birr (Commission: ${commission} Birr)`);
+
+    return { 
+      success: true, 
+      prizeAmount: winnerPrize,
+      commission: commission,
+      totalPrize: totalPrize
+    };
   } catch (error) {
     console.error('Error ending game:', error);
     return { success: false, error: error.message };
