@@ -1,5 +1,5 @@
 {
   "version": 2,
   "framework": "nextjs",
-  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- dashboard/ || exit 0; exit 1'"
+  "ignoreCommand": "bash -c 'if git diff HEAD^ HEAD --quiet -- dashboard/; then echo \"No changes in dashboard\"; exit 1; else echo \"Changes detected in dashboard\"; exit 0; fi'"
 }
