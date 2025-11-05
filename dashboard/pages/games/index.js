@@ -32,21 +32,11 @@ function GamesPageContent() {
 
   async function loadGames() {
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select(`
-          *,
-          game_players (
-            id,
-            user_id,
-            users (username)
-          )
-        `)
-        .in('status', ['waiting', 'active'])
-        .order('created_at', { ascending: false });
+      const response = await fetch('/api/get-games');
+      const { games, error } = await response.json();
 
-      if (error) throw error;
-      setGames(data || []);
+      if (error) throw new Error(error);
+      setGames(games || []);
     } catch (error) {
       console.error('Error loading games:', error);
     } finally {
@@ -56,9 +46,8 @@ function GamesPageContent() {
 
   async function startGame(gameId) {
     try {
-      // Call the backend API to properly start the game
-      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
-      const response = await fetch(`${botUrl}/api/start-game`, {
+      // Call the local API route
+      const response = await fetch('/api/start-game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId })
@@ -123,24 +112,38 @@ function GamesPageContent() {
             </button>
           </div>
 
-          {/* Stats */}
+          {/* Stats - Clickable Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-gray-600 text-sm">Total Games</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{games.length}</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
+            <button
+              onClick={() => router.push('/games/waiting')}
+              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+            >
+              <div className="text-gray-600 text-sm">Waiting Games</div>
+              <div className="text-3xl font-bold text-yellow-600 mt-2">
+                {games.filter(g => g.status === 'waiting' || g.status === 'countdown').length}
+              </div>
+              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
+            </button>
+            <button
+              onClick={() => router.push('/games/active')}
+              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+            >
               <div className="text-gray-600 text-sm">Active Games</div>
               <div className="text-3xl font-bold text-green-600 mt-2">
                 {games.filter(g => g.status === 'active').length}
               </div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-gray-600 text-sm">Waiting Games</div>
-              <div className="text-3xl font-bold text-yellow-600 mt-2">
-                {games.filter(g => g.status === 'waiting').length}
+              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
+            </button>
+            <button
+              onClick={() => router.push('/games/completed')}
+              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+            >
+              <div className="text-gray-600 text-sm">Completed Games</div>
+              <div className="text-3xl font-bold text-gray-900 mt-2">
+                {games.filter(g => g.status === 'completed').length}
               </div>
-            </div>
+              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
+            </button>
           </div>
 
           {/* Games List */}

@@ -30,21 +30,11 @@ export default function GamesPage() {
 
   async function loadGames() {
     try {
-      const { data, error } = await supabase
-        .from('games')
-        .select(`
-          *,
-          game_players (
-            id,
-            user_id,
-            users (username)
-          )
-        `)
-        .in('status', ['waiting', 'active'])
-        .order('created_at', { ascending: false });
+      const response = await fetch('/api/get-games');
+      const { games, error } = await response.json();
 
-      if (error) throw error;
-      setGames(data || []);
+      if (error) throw new Error(error);
+      setGames(games || []);
     } catch (error) {
       console.error('Error loading games:', error);
     } finally {
@@ -54,10 +44,8 @@ export default function GamesPage() {
 
   async function startGame(gameId) {
     try {
-      // Call the API to properly start the game and deduct money
-      // Use the bot's Vercel URL or fallback to current domain
-      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
-      const response = await fetch(`${botUrl}/api/start-game`, {
+      // Call the local API route
+      const response = await fetch('/api/start-game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId })
