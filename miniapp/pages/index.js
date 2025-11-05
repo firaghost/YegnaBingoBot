@@ -11,6 +11,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [countdowns, setCountdowns] = useState({});
 
   useEffect(() => {
     async function loadData() {
@@ -31,6 +32,24 @@ export default function Home() {
 
     loadData();
   }, []);
+
+  // Update countdowns every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newCountdowns = {};
+      games.forEach(game => {
+        if (game.countdownEnd) {
+          const now = new Date().getTime();
+          const end = new Date(game.countdownEnd).getTime();
+          const remaining = Math.max(0, Math.floor((end - now) / 1000));
+          newCountdowns[game.fee] = remaining;
+        }
+      });
+      setCountdowns(newCountdowns);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [games]);
 
   async function loadGames() {
     try {
@@ -63,7 +82,8 @@ export default function Home() {
           fee: fee,
           players: game?.game_players?.length || 0,
           status: game ? (game.status === 'active' ? 'live' : 'waiting') : 'new',
-          prizePool: game?.prize_pool || 0
+          prizePool: game?.prize_pool || 0,
+          countdownEnd: game?.countdown_end || null
         };
       });
 
@@ -154,6 +174,11 @@ export default function Home() {
                         ቀጥታ ({game.players})
                       </span>
                     )}
+                    {countdowns[game.fee] > 0 && (
+                      <span className="bg-orange-500 text-white text-xs px-3 py-1 rounded-full font-bold animate-pulse">
+                        ⏰ {Math.floor(countdowns[game.fee] / 60)}:{String(countdowns[game.fee] % 60).padStart(2, '0')}
+                      </span>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-2 mt-2 text-sm text-blue-200">
@@ -161,7 +186,7 @@ export default function Home() {
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
                       </svg>
-                      {game.players} - ብር ደረጃ
+                      {game.players} {countdowns[game.fee] > 0 ? '- በመጠባበቅ ላይ' : '- ብር ደረጃ'}
                     </span>
                   </div>
                 </div>

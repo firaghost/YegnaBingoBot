@@ -197,6 +197,18 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
     console.log('💰 User balance AFTER join:', userAfter?.balance);
     console.log('✅ JOIN COMPLETE - Money NOT deducted (paid: false)');
     
+    // Trigger countdown check (call bot API)
+    try {
+      await fetch('/api/check-countdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      });
+    } catch (error) {
+      console.error('Failed to trigger countdown check:', error);
+      // Don't fail the join if countdown check fails
+    }
+    
     return { success: true, data };
   } catch (err) {
     console.error('Join game error:', err);

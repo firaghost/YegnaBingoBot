@@ -5,13 +5,20 @@ import { getUserId, hapticFeedback, setMainButton, hideMainButton, setBackButton
 import { getUserByTelegramId, supabase } from '../../lib/supabase';
 export default function GamePage() {
   const router = useRouter();
-  const { fee } = router.query;
   const [user, setUser] = useState(null);
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showWaitingPopup, setShowWaitingPopup] = useState(false);
   const [activeTab, setActiveTab] = useState('Balance');
-  const [gameInfo, setGameInfo] = useState({ prizePool: 0, playerCount: 0, status: 'new' });
+  const [gameInfo, setGameInfo] = useState({
+    prizePool: 0,
+    playerPrize: 0,
+    commission: 0,
+    playerCount: 0,
+    status: 'new',
+    countdownEnd: null
+  });
+  const [countdown, setCountdown] = useState(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -22,7 +29,34 @@ export default function GamePage() {
     }
 
     loadUser();
+  }, []);
 
+  // Countdown timer
+  useEffect(() => {
+    if (!gameInfo.countdownEnd) {
+      setCountdown(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = new Date().getTime();
+      const end = new Date(gameInfo.countdownEnd).getTime();
+      const remaining = Math.max(0, Math.floor((end - now) / 1000));
+      
+      if (remaining > 0) {
+        setCountdown(remaining);
+      } else {
+        setCountdown(0);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [gameInfo.countdownEnd]);
+
+  useEffect(() => {
     // Set back button
     setBackButton(() => {
       router.back();
@@ -78,7 +112,8 @@ export default function GamePage() {
           playerPrize: playerPrize,
           commission: commission,
           playerCount: playerCount,
-          status: game.status
+          status: game.status,
+          countdownEnd: game.countdown_end
         });
       } else {
         setGameInfo({
@@ -228,6 +263,18 @@ export default function GamePage() {
             </div>
           </div>
         </div>
+
+        {/* Countdown Banner */}
+        {countdown !== null && countdown > 0 && (
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 px-4 py-3 text-center animate-pulse">
+            <div className="text-white font-bold text-lg">
+              ⏰ Game Starting in {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, '0')}
+            </div>
+            <div className="text-white/90 text-sm">
+              {gameInfo.playerCount} players joined • More can join now!
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="bg-primary/50 px-4 py-2">

@@ -4,9 +4,29 @@
     {
       "src": "api/**/*.js",
       "use": "@vercel/node"
+    },
+    {
+      "src": "api/index.html",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
+    {
+      "src": "/api/webhook",
+      "dest": "/api/webhook.js"
+    },
+    {
+      "src": "/api/start-game",
+      "dest": "/api/start-game.js"
+    },
+    {
+      "src": "/api/check-countdown",
+      "dest": "/api/check-countdown.js"
+    },
+    {
+      "src": "/api/super-admin-auth",
+      "dest": "/api/super-admin-auth.js"
+    },
     {
       "src": "/api/(.*)",
       "dest": "/api/$1"

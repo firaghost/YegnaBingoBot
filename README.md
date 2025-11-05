@@ -1,22 +1,37 @@
-# 🎮 Bingo Vault - Telegram Bingo Bot
+# 🎮 Yegna Bingo - Telegram Bingo Bot
 
-A complete Telegram-based Bingo game system with Supabase backend and Next.js admin dashboard.
+A complete Telegram-based Bingo game system with auto-game features, real-time monitoring, and separate Super Admin dashboard for 50/50 partnership management.
 
 ## 🌟 Features
 
-### For Players (Telegram Bot)
-- 🎯 Register and create account via `/start`
-- 💰 Submit payment receipts for balance top-up
+### For Players (Telegram Mini App)
+- 🎯 Register and create account via Telegram
+- 💰 Deposit/withdraw money with payment proof
 - 🎲 Join Bingo games with automatic card generation
-- 🏆 Win prizes from the prize pool
-- 📊 Check balance and game status
+- ⏰ **Auto-countdown when 2+ players join (60 seconds)**
+- 🎮 **Auto-start games** - No admin needed!
+- 🔢 **Auto-call numbers** every 5 seconds
+- 🏆 Win prizes automatically
+- 📊 Real-time balance and game status
+- ⚠️ Exit warnings for active games
 
 ### For Admins (Web Dashboard)
 - ✅ Approve/reject payment receipts
-- 🎮 Manage game rounds (start, call numbers, end)
+- 🎮 Manage games (or let them auto-run)
 - 👥 View all users and their balances
 - 📈 Dashboard with statistics
 - 💵 Track revenue and prize pools
+- 📋 Payment management
+
+### For Super Admin (Hidden Dashboard)
+- 👑 **Separate authentication** (hidden from regular admin)
+- 💰 **Complete financial overview**
+- 📊 **Real-time analytics** (auto-refresh every 10s)
+- 🔍 **Monitor all admin actions**
+- 🏆 **Top players leaderboard**
+- 📜 **Complete transaction history**
+- 🤝 **50/50 partnership tracking**
+- 🔐 **Secure & separate access**
 
 ## 🏗️ Tech Stack
 
@@ -26,110 +41,115 @@ A complete Telegram-based Bingo game system with Supabase backend and Next.js ad
 - **Admin Panel:** Next.js + React + Tailwind CSS
 - **Language:** JavaScript (ES6+)
 
-## 📦 Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ installed
 - Telegram Bot Token (from [@BotFather](https://t.me/botfather))
 - Supabase account (free tier)
-- Vercel account (optional, for deployment)
+- Vercel account (for deployment)
+- GitHub account
 
 ### 1. Clone and Install
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
-cd bingo-vault
+git clone https://github.com/yourusername/YegnaBingoBot.git
+cd YegnaBingoBot
 
-# Install root dependencies
+# Install dependencies for all projects
 npm install
-
-# Install dashboard dependencies
-cd dashboard
-npm install
-cd ..
+cd miniapp && npm install && cd ..
+cd dashboard && npm install && cd ..
 ```
 
 ### 2. Set Up Supabase
 
 1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to SQL Editor and run the schema:
-   ```bash
-   # Copy contents from supabase/schema.sql and execute
-   ```
-3. Get your credentials:
-   - Project URL: `https://your-project.supabase.co`
-   - Anon/Public Key: From Settings > API
+2. Go to SQL Editor and run:
+   - `supabase/schema.sql` - Database schema
+   - `supabase/add_countdown_field.sql` - Auto-game fields
+3. Get your credentials from Settings > API
 
-### 3. Configure Environment Variables
+### 3. Deploy to Vercel (Auto-Deploy Setup)
 
+**See detailed guide:** [`QUICK_DEPLOY.md`](./QUICK_DEPLOY.md)
+
+**Quick steps:**
+1. Push code to GitHub
+2. Create 3 Vercel projects from same repo:
+   - **Bot API** (root: `./`)
+   - **Mini App** (root: `miniapp/`)
+   - **Dashboard** (root: `dashboard/`)
+3. Set environment variables for each
+4. Enable auto-deploy on `main` branch
+
+**After setup, just:**
 ```bash
-# Copy example env file
-cp .env.example .env
-
-# Edit .env with your credentials
+git add .
+git commit -m "Your changes"
+git push origin main
+# ✅ All 3 projects auto-deploy!
 ```
 
-Required variables:
+### 4. Environment Variables
+
+**Bot API:**
 ```env
-BOT_TOKEN=your_telegram_bot_token
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_service_role_key
-ADMIN_PASSWORD=your_admin_password
+SUPABASE_SERVICE_KEY=your_service_role_key
+TELEGRAM_BOT_TOKEN=your_bot_token
+```
+
+**Mini App:**
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=YegnaBingoBot
+```
+
+**Dashboard:**
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_BOT_URL=https://yegna-bingo-bot.vercel.app
+NEXT_PUBLIC_SUPER_ADMIN_USERNAME=superadmin
+NEXT_PUBLIC_SUPER_ADMIN_PASSWORD=YourStrongPassword123!
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
 
-### 4. Run Locally
+## 📚 Documentation
 
-#### Start the Bot (Development)
-```bash
-npm run bot
+### Complete Guides
+- 📖 [`QUICK_DEPLOY.md`](./QUICK_DEPLOY.md) - Auto-deploy with Git push
+- 🚀 [`VERCEL_AUTO_DEPLOY.md`](./VERCEL_AUTO_DEPLOY.md) - Detailed Vercel setup
+- 🤖 [`AUTO_GAME_SYSTEM.md`](./AUTO_GAME_SYSTEM.md) - Auto-game features
+- 👑 [`SUPER_ADMIN_SETUP.md`](./SUPER_ADMIN_SETUP.md) - Super Admin guide
+- 👑 [`SUPER_ADMIN_GUIDE.md`](./SUPER_ADMIN_GUIDE.md) - Dashboard features
+- 🔔 [`NOTIFICATION_SYSTEM.md`](./NOTIFICATION_SYSTEM.md) - Notifications
+
+### Project Structure
 ```
-
-#### Start the Dashboard
-```bash
-npm run dev
-# Dashboard will be at http://localhost:3000
-```
-
-## 🚀 Deployment
-
-### Deploy Bot to Vercel
-
-1. Create `api/webhook.js` for Vercel serverless:
-
-```javascript
-import bot from '../bot/index.js';
-
-export default async (req, res) => {
-  try {
-    await bot.handleUpdate(req.body);
-    res.status(200).json({ ok: true });
-  } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
-```
-
-2. Deploy to Vercel:
-```bash
-vercel
-```
-
-3. Set webhook URL:
-```bash
-curl -X POST https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://your-vercel-app.vercel.app/api/webhook"}'
-```
-
-### Deploy Dashboard to Vercel
-
-```bash
-cd dashboard
-vercel
+YegnaBingoBot/
+├── api/                    # Vercel serverless functions
+│   ├── webhook.js         # Telegram bot webhook
+│   ├── start-game.js      # Auto-start game endpoint
+│   ├── check-countdown.js # Countdown trigger
+│   └── index.html         # API landing page
+├── bot/                   # Bot logic
+│   ├── services/          # Game & auto-game services
+│   └── utils/             # Utilities
+├── miniapp/               # Telegram Mini App (Next.js)
+│   ├── pages/             # App pages
+│   ├── components/        # React components
+│   └── lib/               # Supabase client
+├── dashboard/             # Admin Dashboard (Next.js)
+│   ├── pages/             # Dashboard pages
+│   │   ├── super-admin.js # Super Admin (hidden)
+│   │   └── super-login.js # Super Admin login
+│   └── components/        # Dashboard components
+└── supabase/              # Database schemas
 ```
 
 ## 📖 Usage Guide
@@ -192,71 +212,125 @@ const MIN_PLAYERS = 2;     // Minimum players to start
 
 ### Admin Password
 
-Set in `.env`:
-```env
-ADMIN_PASSWORD=your_secure_password
+## 🎯 Key Features Explained
+
+### Auto-Game System
+- **2+ players join** → 60-second countdown starts
+- **Countdown ends** → Game auto-starts
+- **Numbers auto-called** → Every 5 seconds
+- **Winner auto-detected** → Prize awarded instantly
+- **No admin needed** → Fully automated!
+
+### Super Admin Dashboard
+- **Separate login** → `/super-login` (hidden from regular admin)
+- **Financial tracking** → Monitor all money flows
+- **50/50 partnership** → Track revenue split
+- **Admin audit log** → See all admin actions
+- **Real-time updates** → Auto-refresh every 10s
+
+### Money Deduction
+- **Join game** → Money NOT deducted (reserved)
+- **Game starts** → Money deducted from all players
+- **Insufficient balance** → Player removed automatically
+- **Exit warnings** → Players warned before leaving active games
+
+## 🛡️ Security & Partnership
+
+### Two-Level Access
+1. **Regular Admin** (Your Partner)
+   - Manages day-to-day operations
+   - Approves payments
+   - Can start games manually
+   - Cannot see Super Admin
+
+2. **Super Admin** (You - System Owner)
+   - Complete financial oversight
+   - Monitor all admin actions
+   - Track 50/50 revenue split
+   - Hidden from regular admin
+
+### Security Features
+- ✅ Separate authentication systems
+- ✅ Different session tokens
+- ✅ No cross-access
+- ✅ Audit logging
+- ✅ Environment-based credentials
+
+## 🚀 Deployment Workflow
+
+### One-Time Setup
+```bash
+# 1. Push to GitHub
+git push origin main
+
+# 2. Create 3 Vercel projects (see QUICK_DEPLOY.md)
+# 3. Set environment variables
+# 4. Enable auto-deploy
 ```
 
-## 📁 Project Structure
+### Daily Workflow
+```bash
+# Make changes
+git add .
+git commit -m "Your changes"
+git push origin main
 
-```
-bingo-vault/
-├── bot/                    # Telegram bot
-│   ├── commands/          # Bot commands
-│   ├── services/          # Business logic
-│   └── utils/             # Helper functions
-├── dashboard/             # Admin web dashboard
-│   ├── pages/            # Next.js pages
-│   ├── components/       # React components
-│   └── lib/              # Utilities
-├── supabase/             # Database schema
-└── api/                  # Vercel serverless functions
+# ✅ All 3 projects auto-deploy!
+# No manual commands needed!
 ```
 
-## 🛡️ Security Notes
+## 📊 Revenue Model
 
-- Never commit `.env` file
-- Use Supabase Row Level Security (RLS)
-- Keep admin password secure
-- Use HTTPS for webhooks
-- Validate all user inputs
+### Commission Structure
+- **Game Entry Fee**: 5, 7, 10, 20, 50, or 100 Birr
+- **Prize Pool**: Sum of all entry fees
+- **Commission**: 10% of prize pool
+- **Player Prize**: 90% of prize pool
+
+### Partnership Split
+- **Total Commission**: 10% from each game
+- **Your Share**: 50% of commission (5% of prize pool)
+- **Partner Share**: 50% of commission (5% of prize pool)
+
+**Example:**
+- 10 players × 10 Birr = 100 Birr prize pool
+- Commission: 10 Birr (10%)
+- Your share: 5 Birr
+- Partner share: 5 Birr
+- Winner gets: 90 Birr
 
 ## 🐛 Troubleshooting
 
-### Bot not responding
-- Check BOT_TOKEN is correct
-- Verify webhook is set properly
-- Check Vercel logs for errors
+### Deployment Issues
+- See [`VERCEL_AUTO_DEPLOY.md`](./VERCEL_AUTO_DEPLOY.md)
+- Check Vercel dashboard for build logs
+- Verify environment variables are set
 
-### Database errors
-- Verify Supabase credentials
-- Check if schema is properly created
-- Ensure RLS policies are set
+### Auto-Game Not Starting
+- Check `countdown_end` field exists in database
+- Run `supabase/add_countdown_field.sql`
+- Verify `/api/check-countdown` endpoint works
 
-### Dashboard not loading
-- Check NEXT_PUBLIC_* variables
+### Super Admin Access Denied
+- Check environment variables:
+  - `NEXT_PUBLIC_SUPER_ADMIN_USERNAME`
+  - `NEXT_PUBLIC_SUPER_ADMIN_PASSWORD`
 - Clear browser cache
-- Check browser console for errors
+- Try incognito mode
 
 ## 📝 License
 
-MIT License - feel free to use for your projects!
+MIT License - Use for your projects!
 
-## 🤝 Contributing
+## 🤝 Support
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
-
-## 📧 Support
-
-For issues and questions:
-- Open an issue on GitHub
-- Contact: your-email@example.com
+For issues:
+- Check documentation files
+- Review Vercel logs
+- Test locally first
 
 ---
 
-**Built with ❤️ for the Bingo community**
+**Built for 50/50 Partnership Success** 🤝💰
+
+**Auto-Deploy Ready** 🚀 **Just Git Push!**
