@@ -196,18 +196,7 @@ export async function joinGame(gameId, userId, card, entryFee, selectedNumbers =
     
     console.log('💰 User balance AFTER join:', userAfter?.balance);
     console.log('✅ JOIN COMPLETE - Money NOT deducted (paid: false)');
-    
-    // Trigger countdown check (call bot API)
-    try {
-      await fetch('/api/check-countdown', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId })
-      });
-    } catch (error) {
-      console.error('Failed to trigger countdown check:', error);
-      // Don't fail the join if countdown check fails
-    }
+    console.log('⚠️ COUNTDOWN DISABLED - Admin must manually start game');
     
     return { success: true, data };
   } catch (err) {
@@ -453,13 +442,36 @@ export async function endGame(gameId, winnerId) {
     
     console.log('✅ Validations passed, ending game:', gameId, 'Winner:', winnerId);
     
-    // Calculate commission (10% for app owner)
+    // Get winner's current balance
+    const { data: winner } = await supabase
+      .from('users')
+      .select('balance')
+      .eq('id', winnerId)
+      .single();
+    
+    if (!winner) {
+      console.error('❌ Winner not found');
+      return { success: false };
+    }
+    
+    // Calculate prize distribution
+    // Winner gets: their stake back + (loser's stake - commission)
+    // Example: 2 players × 100 Birr = 200 total
+    // Commission: 200 × 10% = 20 Birr
+    // Winner gets: 200 - 20 = 180 Birr
+    // Winner's profit: 180 - 100 (their stake) = 80 Birr
     const COMMISSION_RATE = 0.10;
     const totalPool = game.prize_pool;
     const commission = totalPool * COMMISSION_RATE;
-    const playerPrize = totalPool - commission;
+    const winnerPayout = totalPool - commission; // Total amount winner receives
     
-    console.log(`💰 Prize breakdown: Total: ${totalPool}, Commission: ${commission}, Player Prize: ${playerPrize}`);
+    console.log(`💰 Prize breakdown:
+      - Total Pool: ${totalPool} Birr
+      - Commission (10%): ${commission} Birr
+      - Winner Payout: ${winnerPayout} Birr
+      - Winner's current balance: ${winner.balance} Birr
+      - Winner's new balance: ${winner.balance + winnerPayout} Birr
+    `);
     
     // Update game status and set winner
     const { error: gameError } = await supabase
@@ -476,29 +488,32 @@ export async function endGame(gameId, winnerId) {
       return { success: false };
     }
     
-    // Award prize to winner (after commission)
+    // Award prize to winner
     const { error: prizeError } = await supabase
       .from('users')
       .update({
-        balance: supabase.raw(`balance + ${playerPrize}`)
+        balance: winner.balance + winnerPayout
       })
       .eq('id', winnerId);
     
     if (prizeError) {
       console.error('Error awarding prize:', prizeError);
+      return { success: false };
     }
     
-    // Log commission to transaction_history (optional - for tracking)
+    console.log(`✅ Prize awarded! Winner balance updated: ${winner.balance} → ${winner.balance + winnerPayout}`);
+    
+    // Log win to transaction_history
     await supabase
       .from('transaction_history')
       .insert({
         user_id: winnerId,
         type: 'game_win',
-        amount: playerPrize,
-        description: `Won game ${gameId} (Prize: ${playerPrize} ETB, Commission: ${commission} ETB)`
+        amount: winnerPayout,
+        description: `Won game ${gameId} - Prize: ${winnerPayout} Birr (after ${commission} Birr commission)`
       });
     
-    console.log(`✅ Game ${gameId} ended. Winner: ${winnerId}, Prize: ${playerPrize} ETB (Commission: ${commission} ETB)`);
+    console.log(`✅ Game ${gameId} ended. Winner: ${winnerId}, Payout: ${winnerPayout} Birr (Commission: ${commission} Birr)`);
     
     // Send notifications to all players
     try {
@@ -517,7 +532,7 @@ export async function endGame(gameId, winnerId) {
             userId: winnerId,
             gameId,
             result: 'win',
-            prizeAmount: playerPrize
+            prizeAmount: winnerPayout
           })
         });
         

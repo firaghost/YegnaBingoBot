@@ -120,7 +120,7 @@ function GamesPageContent() {
             >
               <div className="text-gray-600 text-sm">Waiting Games</div>
               <div className="text-3xl font-bold text-yellow-600 mt-2">
-                {games.filter(g => g.status === 'waiting' || g.status === 'countdown').length}
+                {games.filter(g => g.status === 'waiting').length}
               </div>
               <div className="text-xs text-gray-500 mt-2">Click to view →</div>
             </button>

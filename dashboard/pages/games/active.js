@@ -68,7 +68,7 @@ function ActiveGamesContent() {
           >
             <h3 className="text-gray-600 text-sm font-medium">Waiting Games</h3>
             <p className="text-3xl font-bold text-yellow-600 mt-2">
-              {games.filter(g => g.status === 'waiting' || g.status === 'countdown').length}
+              {games.filter(g => g.status === 'waiting').length}
             </p>
             <p className="text-xs text-gray-500 mt-2">Click to view →</p>
           </button>

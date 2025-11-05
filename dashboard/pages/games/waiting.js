@@ -32,7 +32,7 @@ function WaitingGamesContent() {
 
   async function loadGames() {
     try {
-      const response = await fetch('/api/get-games?status=waiting,countdown');
+      const response = await fetch('/api/get-games?status=waiting');
       const { games, error } = await response.json();
 
       if (error) throw new Error(error);
@@ -88,7 +88,7 @@ function WaitingGamesContent() {
     }
   }
 
-  const waitingGames = games.filter(g => g.status === 'waiting' || g.status === 'countdown');
+  const waitingGames = games.filter(g => g.status === 'waiting');
 
   return (
     <AdminLayout>
@@ -156,10 +156,8 @@ function WaitingGamesContent() {
                   <div>
                     <h3 className="text-xl font-bold text-gray-900">{game.entry_fee} Birr Game</h3>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        game.status === 'countdown' ? 'bg-orange-100 text-orange-800' : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {game.status === 'countdown' ? '⏰ Countdown' : '⏳ Waiting'}
+                      <span className="px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+                        ⏳ Waiting
                       </span>
                     </div>
                   </div>
