@@ -56,21 +56,25 @@ function GamesPageContent() {
 
   async function startGame(gameId) {
     try {
-      const { error } = await supabase
-        .from('games')
-        .update({ 
-          status: 'active',
-          started_at: new Date().toISOString()
-        })
-        .eq('id', gameId);
+      // Call the backend API to properly start the game
+      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
+      const response = await fetch(`${botUrl}/api/start-game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      });
 
-      if (error) throw error;
-      
-      alert('Game started successfully!');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to start game');
+      }
+
+      alert(`Game started! ${data.playersCharged} players charged.`);
       router.push(`/games/live/${gameId}`);
     } catch (error) {
       console.error('Error starting game:', error);
-      alert('Failed to start game');
+      alert('Failed to start game: ' + error.message);
     }
   }
 
@@ -78,16 +82,23 @@ function GamesPageContent() {
     if (!confirm('Are you sure you want to delete this game?')) return;
 
     try {
-      const { error } = await supabase
-        .from('games')
-        .delete()
-        .eq('id', gameId);
+      const response = await fetch('/api/delete-game', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      });
 
-      if (error) throw error;
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete game');
+      }
+
       alert('Game deleted successfully!');
+      loadGames(); // Reload the games list
     } catch (error) {
       console.error('Error deleting game:', error);
-      alert('Failed to delete game');
+      alert('Failed to delete game: ' + error.message);
     }
   }
 
