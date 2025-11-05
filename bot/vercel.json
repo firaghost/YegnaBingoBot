@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",
@@ -15,6 +9,5 @@
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
       ]
     }
-  ],
-  "ignoreCommand": "bash -c '[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ] && exit 1; git diff HEAD^ HEAD --quiet . && exit 1 || exit 0'"
+  ]
 }
