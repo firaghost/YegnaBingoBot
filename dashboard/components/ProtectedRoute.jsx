@@ -9,27 +9,43 @@ export default function ProtectedRoute({ children }) {
   const [sessionInfo, setSessionInfo] = useState(null);
 
   useEffect(() => {
-    // Initialize auth system
-    auth.init();
+    async function checkAuth() {
+      try {
+        // Initialize auth system
+        auth.init();
 
-    // Check authentication
-    if (!auth.isAuthenticated()) {
-      router.push('/login');
-      return;
+        // Check authentication
+        if (!auth.isAuthenticated()) {
+          setIsChecking(false);
+          router.push('/login');
+          return;
+        }
+
+        setIsChecking(false);
+
+        // Update session info every minute
+        const updateSessionInfo = () => {
+          const info = auth.getSessionInfo();
+          setSessionInfo(info);
+          
+          // If session expired, redirect to login
+          if (info && info.timeUntilExpiry <= 0) {
+            router.push('/login');
+          }
+        };
+
+        updateSessionInfo();
+        const interval = setInterval(updateSessionInfo, 60000);
+
+        return () => clearInterval(interval);
+      } catch (error) {
+        console.error('Auth check error:', error);
+        setIsChecking(false);
+        router.push('/login');
+      }
     }
 
-    setIsChecking(false);
-
-    // Update session info every minute
-    const updateSessionInfo = () => {
-      const info = auth.getSessionInfo();
-      setSessionInfo(info);
-    };
-
-    updateSessionInfo();
-    const interval = setInterval(updateSessionInfo, 60000);
-
-    return () => clearInterval(interval);
+    checkAuth();
   }, []);
 
   if (isChecking) {

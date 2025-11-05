@@ -124,27 +124,38 @@ export default function LiveGameControl() {
         
       console.log(`Deducted ${game.entry_fee} Birr from ${players.length} players. Prize pool: ${totalPrize} Birr`);
     } catch (error) {
-      console.error('Error deducting fees:', error);
     }
   }
 
   async function callNumber() {
     if (calling) return;
+    
+    // Check if game is still active
+    if (game?.status !== 'active') {
+      console.log('Game not active, stopping auto-call');
+      if (autoInterval) {
+        clearInterval(autoInterval);
+        setAutoInterval(null);
+        setAutoCalling(false);
+      }
+      return;
+    }
+    
     setCalling(true);
-
     try {
       const calledNumbers = game.called_numbers || [];
       
-      // If first number, deduct fees from all players
-      if (calledNumbers.length === 0) {
-        await deductAllPlayersFees();
-      }
-      
-      const availableNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
-        .filter(n => !calledNumbers.includes(n));
+      // All numbers 1-75
+      const allNumbers = Array.from({ length: 75 }, (_, i) => i + 1);
+      const availableNumbers = allNumbers.filter(n => !calledNumbers.includes(n));
 
       if (availableNumbers.length === 0) {
         alert('All numbers have been called!');
+        if (autoInterval) {
+          clearInterval(autoInterval);
+          setAutoInterval(null);
+          setAutoCalling(false);
+        }
         return;
       }
 
@@ -154,23 +165,29 @@ export default function LiveGameControl() {
 
       const updatedNumbers = [...calledNumbers, newNumber];
 
+      console.log('Calling number:', newNumber);
+
       const { error } = await supabase
         .from('games')
         .update({ called_numbers: updatedNumbers })
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Number called successfully');
 
       // Check for winners after calling number
       await checkForWinners();
     } catch (error) {
       console.error('Error calling number:', error);
-      alert('Failed to call number');
+      alert(`Failed to call number: ${error.message}`);
     } finally {
       setCalling(false);
     }
   }
-
   async function checkForWinners() {
     // Check each player for BINGO
     for (const player of players) {

@@ -378,7 +378,18 @@ export default function GamePage() {
         {/* Waiting Popup */}
         {showWaitingPopup && (
           <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center">
+            <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center relative">
+              {/* Close/Cancel Button */}
+              <button
+                onClick={() => {
+                  setShowWaitingPopup(false);
+                  router.push('/');
+                }}
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 transition-colors"
+              >
+                <span className="text-gray-600 font-bold text-xl">×</span>
+              </button>
+
               <div className="w-20 h-20 bg-yellow-400 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
                 <span className="text-4xl">⏳</span>
               </div>
@@ -388,11 +399,22 @@ export default function GamePage() {
               <p className="text-gray-600 mb-4">
                 Waiting for game to start...
               </p>
-              <div className="flex items-center justify-center space-x-1">
+              <div className="flex items-center justify-center space-x-1 mb-4">
                 <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
                 <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
                 <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
               </div>
+              
+              {/* Cancel Button */}
+              <button
+                onClick={() => {
+                  setShowWaitingPopup(false);
+                  router.push('/');
+                }}
+                className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+              >
+                Cancel Participation
+              </button>
             </div>
           </div>
         )}
