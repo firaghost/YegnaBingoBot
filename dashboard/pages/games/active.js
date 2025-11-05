@@ -60,24 +60,36 @@ function ActiveGamesContent() {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats - Clickable Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Active Games</h3>
-            <p className="text-3xl font-bold text-green-600 mt-2">{activeGames.length}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Players</h3>
-            <p className="text-3xl font-bold text-blue-600 mt-2">
-              {activeGames.reduce((sum, g) => sum + (g.game_players?.length || 0), 0)}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Prize Pool</h3>
+          <button
+            onClick={() => router.push('/games/waiting')}
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Waiting Games</h3>
             <p className="text-3xl font-bold text-yellow-600 mt-2">
-              {activeGames.reduce((sum, g) => sum + (g.prize_pool || 0), 0)} Birr
+              {games.filter(g => g.status === 'waiting' || g.status === 'countdown').length}
             </p>
-          </div>
+            <p className="text-xs text-gray-500 mt-2">Click to view →</p>
+          </button>
+          <button
+            onClick={() => router.push('/games/active')}
+            className="bg-green-50 border-2 border-green-400 rounded-lg shadow p-6 hover:shadow-lg transition-all text-left"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Active Games</h3>
+            <p className="text-3xl font-bold text-green-600 mt-2">{activeGames.length}</p>
+            <p className="text-xs text-green-600 mt-2 font-medium">● Current Page</p>
+          </button>
+          <button
+            onClick={() => router.push('/games/completed')}
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Completed Games</h3>
+            <p className="text-3xl font-bold text-gray-900 mt-2">
+              {games.filter(g => g.status === 'completed').length}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">Click to view →</p>
+          </button>
         </div>
 
         {/* Games List */}

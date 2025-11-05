@@ -296,21 +296,60 @@ export async function markNumber(gamePlayerId, number) {
 
 // Check for BINGO and end game if won
 export async function checkBingo(gamePlayerId) {
-  const { data: player } = await supabase
+  console.log('🔍 checkBingo called for player ID:', gamePlayerId);
+  
+  const { data: player, error: playerError } = await supabase
     .from('game_players')
-    .select('card, marked_numbers, game_id, user_id')
+    .select('card, marked_numbers, game_id, user_id, games(status, called_numbers, prize_pool)')
     .eq('id', gamePlayerId)
     .single();
   
-  if (!player) return { hasBingo: false };
+  if (playerError) {
+    console.error('❌ Error fetching player:', playerError);
+    return { hasBingo: false };
+  }
+  
+  if (!player) {
+    console.log('❌ Player not found');
+    return { hasBingo: false };
+  }
+  
+  console.log('📊 Player data:', {
+    user_id: player.user_id,
+    game_id: player.game_id,
+    game_status: player.games?.status,
+    called_numbers_count: player.games?.called_numbers?.length || 0,
+    marked_numbers_count: player.marked_numbers?.length || 0,
+    prize_pool: player.games?.prize_pool
+  });
+  
+  // CRITICAL: Only check BINGO if game is active
+  if (!player.games || player.games.status !== 'active') {
+    console.log('⚠️ Game not active (status:', player.games?.status, '), skipping BINGO check');
+    return { hasBingo: false };
+  }
+  
+  // CRITICAL: Only check if numbers have been called
+  const calledNumbers = player.games?.called_numbers || [];
+  if (!Array.isArray(calledNumbers) || calledNumbers.length === 0) {
+    console.log('⚠️ No numbers called yet (length:', calledNumbers.length, '), skipping BINGO check');
+    return { hasBingo: false };
+  }
+  
+  // CRITICAL: Only check if marked numbers exist
+  const marked = player.marked_numbers || [];
+  if (!Array.isArray(marked) || marked.length === 0) {
+    console.log('⚠️ No numbers marked yet, skipping BINGO check');
+    return { hasBingo: false };
+  }
   
   const card = player.card;
-  const marked = player.marked_numbers || [];
   let hasBingo = false;
   
   console.log('🔍 Checking BINGO for player:', player.user_id);
   console.log('📋 Card structure:', JSON.stringify(card));
   console.log('✅ Marked numbers:', marked);
+  console.log('🎲 Called numbers:', calledNumbers.length);
   
   // Check rows - card is stored as [col][row] (column-major)
   for (let row = 0; row < 5; row++) {
@@ -387,14 +426,32 @@ export async function endGame(gameId, winnerId) {
     // Get game details
     const { data: game } = await supabase
       .from('games')
-      .select('prize_pool, status')
+      .select('prize_pool, status, called_numbers')
       .eq('id', gameId)
       .single();
     
-    if (!game || game.status !== 'active') {
-      console.log('Game already ended or not active');
+    // CRITICAL VALIDATIONS
+    if (!game) {
+      console.error('❌ Game not found:', gameId);
       return { success: false };
     }
+    
+    if (game.status !== 'active') {
+      console.error('❌ Game not active (status:', game.status, '), cannot end');
+      return { success: false };
+    }
+    
+    if (!game.called_numbers || game.called_numbers.length === 0) {
+      console.error('❌ No numbers called, cannot have winner yet');
+      return { success: false };
+    }
+    
+    if (!game.prize_pool || game.prize_pool === 0) {
+      console.error('❌ Prize pool is 0, game not properly started');
+      return { success: false };
+    }
+    
+    console.log('✅ Validations passed, ending game:', gameId, 'Winner:', winnerId);
     
     // Calculate commission (10% for app owner)
     const COMMISSION_RATE = 0.10;

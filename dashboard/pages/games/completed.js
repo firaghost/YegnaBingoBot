@@ -44,30 +44,36 @@ function CompletedGamesContent() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Completed</h3>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{completedGames.length}</p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Players</h3>
-            <p className="text-3xl font-bold text-blue-600 mt-2">
-              {completedGames.reduce((sum, g) => sum + (g.game_players?.length || 0), 0)}
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Prizes Paid</h3>
-            <p className="text-3xl font-bold text-green-600 mt-2">
-              {completedGames.reduce((sum, g) => sum + (g.prize_pool || 0) * 0.9, 0).toFixed(2)} Birr
-            </p>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-gray-500 text-sm font-medium">Total Commission</h3>
+        {/* Stats - Clickable Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <button
+            onClick={() => router.push('/games/waiting')}
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Waiting Games</h3>
             <p className="text-3xl font-bold text-yellow-600 mt-2">
-              {completedGames.reduce((sum, g) => sum + (g.prize_pool || 0) * 0.1, 0).toFixed(2)} Birr
+              {games.filter(g => g.status === 'waiting' || g.status === 'countdown').length}
             </p>
-          </div>
+            <p className="text-xs text-gray-500 mt-2">Click to view →</p>
+          </button>
+          <button
+            onClick={() => router.push('/games/active')}
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Active Games</h3>
+            <p className="text-3xl font-bold text-green-600 mt-2">
+              {games.filter(g => g.status === 'active').length}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">Click to view →</p>
+          </button>
+          <button
+            onClick={() => router.push('/games/completed')}
+            className="bg-gray-50 border-2 border-gray-400 rounded-lg shadow p-6 hover:shadow-lg transition-all text-left"
+          >
+            <h3 className="text-gray-600 text-sm font-medium">Completed Games</h3>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{completedGames.length}</p>
+            <p className="text-xs text-gray-600 mt-2 font-medium">● Current Page</p>
+          </button>
         </div>
 
         {/* Games List */}
