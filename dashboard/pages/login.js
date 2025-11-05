@@ -32,45 +32,34 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // Query admin user from Supabase
-      const { data: admin, error: queryError } = await supabase
-        .from('admin_users')
-        .select('*')
-        .or(`username.eq.${username},email.eq.${username}`)
-        .single();
+      // Call admin auth API
+      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
+      const response = await fetch(`${botUrl}/api/admin-auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'login',
+          username,
+          password
+        })
+      });
 
-      if (queryError || !admin) {
-        setError('Invalid username or password');
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Invalid credentials');
         setLoading(false);
         return;
       }
 
-      // Check if account is active
-      if (!admin.is_active) {
-        setError('Account is disabled. Contact administrator.');
+      if (!data.success) {
+        setError('Login failed');
         setLoading(false);
         return;
       }
 
-      // For now, simple password check (in production, use bcrypt)
-      // Since we can't hash on client, we'll use a simple comparison
-      // TODO: Implement proper password hashing with backend API
-      const isValidPassword = password === 'YegnaBingo2025!'; // Default password
-
-      if (!isValidPassword) {
-        setError('Invalid username or password');
-        setLoading(false);
-        return;
-      }
-
-      // Update last login
-      await supabase
-        .from('admin_users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', admin.id);
-
-      // Generate session token
-      const sessionToken = generateSessionToken();
+      const admin = data.admin;
+      const sessionToken = data.sessionToken;
       
       // Store auth data
       localStorage.setItem('adminAuth', 'true');

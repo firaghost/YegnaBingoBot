@@ -29,6 +29,10 @@
       "dest": "/super-admin-auth.js"
     },
     {
+      "src": "/admin-auth",
+      "dest": "/admin-auth.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
     }
