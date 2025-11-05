@@ -71,8 +71,17 @@ export async function joinGame(gameId, userId, userBalance) {
       return { success: false, error: 'Already joined this game' };
     }
 
-    // Generate Bingo card
-    const card = generateBingoCard();
+    // Get existing cards in this game to ensure uniqueness
+    const { data: existingPlayers } = await supabase
+      .from('game_players')
+      .select('card')
+      .eq('game_id', gameId);
+    
+    const existingCards = existingPlayers?.map(p => p.card) || [];
+    console.log(`🎴 Generating unique card (${existingCards.length} existing cards)`);
+
+    // Generate unique Bingo card
+    const card = generateBingoCard(existingCards);
 
     // Add player to game (DON'T deduct money yet - only when game starts)
     const { data: player, error: playerError } = await supabase

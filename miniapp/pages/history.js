@@ -28,27 +28,36 @@ export default function History() {
   async function loadUserData() {
     try {
       const telegramId = getUserId();
+      console.log('Loading history for telegram ID:', telegramId);
+      
       if (!telegramId) {
+        console.error('No telegram ID found');
         router.push('/');
         return;
       }
 
       // Get user
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from('users')
         .select('*')
         .eq('telegram_id', telegramId)
         .single();
 
+      if (userError) {
+        console.error('Error fetching user:', userError);
+      }
+
       if (!userData) {
+        console.error('User not found');
         router.push('/');
         return;
       }
 
+      console.log('User found:', userData.id);
       setUser(userData);
 
       // Get user's games
-      const { data: gamesData } = await supabase
+      const { data: gamesData, error: gamesError } = await supabase
         .from('game_players')
         .select(`
           *,
@@ -67,13 +76,25 @@ export default function History() {
         .order('created_at', { ascending: false })
         .limit(50);
 
+      if (gamesError) {
+        console.error('Error fetching games:', gamesError);
+      }
+
+      console.log('Games found:', gamesData?.length || 0);
+
       // Get user's transactions
-      const { data: transactionsData } = await supabase
+      const { data: transactionsData, error: transError } = await supabase
         .from('transaction_history')
         .select('*')
         .eq('user_id', userData.id)
         .order('created_at', { ascending: false })
         .limit(100);
+
+      if (transError) {
+        console.error('Error fetching transactions:', transError);
+      }
+
+      console.log('Transactions found:', transactionsData?.length || 0);
 
       setGames(gamesData || []);
       setTransactions(transactionsData || []);

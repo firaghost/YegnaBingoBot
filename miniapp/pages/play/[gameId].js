@@ -27,37 +27,58 @@ export default function PlayGame() {
       return;
     }
     loadGameData();
+  }, [gameId]);
+
+  // Set back button handler (separate effect to update when game state changes)
+  useEffect(() => {
+    if (!gameId) return;
     
-    // Set back button with confirmation for active games
-    setBackButton(() => {
+    console.log('🔙 Setting back button handler. Game status:', game?.status, 'Game state:', gameState);
+    
+    const handleBackButton = () => {
+      console.log('🔙 Back button clicked! Game status:', game?.status, 'Game state:', gameState, 'Has player data:', !!playerData);
+      
+      // Prevent default navigation
       if (game?.status === 'active' || gameState === 'playing') {
         // Game is active - warn about losing stake
+        console.log('⚠️ Showing active game warning - BLOCKING EXIT');
         setExitModalConfig({
-          title: 'Warning!',
+          title: '⚠️ Warning!',
           message: 'The game has already started and your entry fee has been deducted.\n\nIf you leave now, you will LOSE your stake!\n\nAre you sure you want to exit?',
           type: 'danger',
           confirmText: 'Leave Anyway',
-          onConfirm: () => router.push('/')
+          onConfirm: () => {
+            console.log('User confirmed exit from active game');
+            router.push('/');
+          }
         });
         setShowExitModal(true);
+        return false; // Block navigation
       } else if (game?.status === 'waiting' && playerData) {
         // Game is waiting - allow leaving without penalty
+        console.log('ℹ️ Showing waiting game confirmation');
         setExitModalConfig({
           title: 'Cancel Participation?',
           message: 'Are you sure you want to cancel?\n\nYou can leave now without any penalty since the game hasn\'t started yet.',
           type: 'info',
           confirmText: 'Yes, Cancel',
           onConfirm: async () => {
+            console.log('User confirmed cancel from waiting game');
             await leaveGame();
             router.push('/');
           }
         });
         setShowExitModal(true);
+        return false; // Block navigation
       } else {
+        console.log('✅ No confirmation needed, navigating back');
         router.push('/');
+        return true; // Allow navigation
       }
-    });
-  }, [gameId, game?.status, gameState]);
+    };
+    
+    setBackButton(handleBackButton);
+  }, [gameId, game?.status, gameState, playerData]);
 
   // Warn before closing/refreshing if game is active
   useEffect(() => {

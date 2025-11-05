@@ -33,12 +33,11 @@ export default async function handler(req, res) {
     const entryFee = gameData.entry_fee || 5;
     console.log(`💰 Starting game ${gameId} with entry fee: ${entryFee} Birr`);
 
-    // Get all players who haven't paid yet
+    // Get all players in the game
     const { data: players, error: playersError } = await supabase
       .from('game_players')
       .select('*, users(balance)')
-      .eq('game_id', gameId)
-      .eq('paid', false);
+      .eq('game_id', gameId);
 
     if (playersError) throw playersError;
 
@@ -51,6 +50,14 @@ export default async function handler(req, res) {
 
     // Deduct entry fee from each player
     for (const player of players) {
+      // Skip if already paid
+      if (player.paid) {
+        console.log(`Player ${player.user_id} already paid, skipping`);
+        totalPrizePool += entryFee;
+        successfulPlayers++;
+        continue;
+      }
+
       const userBalance = player.users?.balance || 0;
       
       console.log(`Checking player ${player.user_id}: Balance ${userBalance}, Entry Fee ${entryFee}`);

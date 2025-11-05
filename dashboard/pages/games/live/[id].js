@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { supabase } from '../../../lib/supabaseClient';
@@ -127,23 +127,32 @@ export default function LiveGameControl() {
     }
   }
 
-  async function callNumber() {
-    if (calling) return;
-    
-    // Check if game is still active
-    if (game?.status !== 'active') {
-      console.log('Game not active, stopping auto-call');
-      if (autoInterval) {
-        clearInterval(autoInterval);
-        setAutoInterval(null);
-        setAutoCalling(false);
+  const callNumber = useCallback(async () => {
+    setCalling(prev => {
+      if (prev) {
+        console.log('⏭️ Already calling, skipping...');
+        return prev;
       }
-      return;
-    }
+      return true;
+    });
     
-    setCalling(true);
     try {
-      const calledNumbers = game.called_numbers || [];
+      // Fetch fresh game data
+      const { data: freshGame } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      // Check if game is still active
+      if (freshGame?.status !== 'active') {
+        console.log('Game not active, stopping auto-call');
+        setAutoCalling(false);
+        setCalling(false);
+        return;
+      }
+      
+      const calledNumbers = freshGame.called_numbers || [];
       
       // All numbers 1-75
       const allNumbers = Array.from({ length: 75 }, (_, i) => i + 1);
@@ -151,11 +160,8 @@ export default function LiveGameControl() {
 
       if (availableNumbers.length === 0) {
         alert('All numbers have been called!');
-        if (autoInterval) {
-          clearInterval(autoInterval);
-          setAutoInterval(null);
-          setAutoCalling(false);
-        }
+        setAutoCalling(false);
+        setCalling(false);
         return;
       }
 
@@ -165,7 +171,7 @@ export default function LiveGameControl() {
 
       const updatedNumbers = [...calledNumbers, newNumber];
 
-      console.log('Calling number:', newNumber);
+      console.log('🎲 Calling number:', newNumber);
 
       const { error } = await supabase
         .from('games')
@@ -177,17 +183,60 @@ export default function LiveGameControl() {
         throw error;
       }
 
-      console.log('Number called successfully');
+      console.log('✅ Number called successfully');
 
       // Check for winners after calling number
-      await checkForWinners();
+      const { data: playersData } = await supabase
+        .from('game_players')
+        .select('*, users (username, telegram_id)')
+        .eq('game_id', id);
+      
+      for (const player of playersData || []) {
+        const hasBingo = checkPlayerBingo(player, updatedNumbers);
+        if (hasBingo) {
+          await declareWinner(player);
+          break;
+        }
+      }
     } catch (error) {
       console.error('Error calling number:', error);
       alert(`Failed to call number: ${error.message}`);
     } finally {
       setCalling(false);
     }
-  }
+  }, [id]);
+
+  // Restore auto-calling state on mount
+  useEffect(() => {
+    if (!id) return;
+    const savedAutoCall = localStorage.getItem(`autoCall-${id}`);
+    if (savedAutoCall === 'true') {
+      console.log('🔄 Restoring auto-call state');
+      setAutoCalling(true);
+    }
+  }, [id]);
+
+  // Auto-calling interval effect
+  useEffect(() => {
+    if (!autoCalling || !id) {
+      localStorage.removeItem(`autoCall-${id}`);
+      return;
+    }
+    
+    console.log('▶️ Starting auto-call (every 5 seconds)');
+    localStorage.setItem(`autoCall-${id}`, 'true');
+    
+    const interval = setInterval(() => {
+      console.log('⏰ Auto-call interval triggered');
+      callNumber();
+    }, 5000);
+    
+    return () => {
+      console.log('⏹️ Clearing auto-call interval');
+      clearInterval(interval);
+    };
+  }, [autoCalling, id, callNumber]);
+
   async function checkForWinners() {
     // Check each player for BINGO
     for (const player of players) {
@@ -199,10 +248,10 @@ export default function LiveGameControl() {
     }
   }
 
-  function checkPlayerBingo(player) {
+  function checkPlayerBingo(player, calledNumbers = null) {
     const card = player.card;
     const marked = player.marked_numbers || [];
-    const called = game.called_numbers || [];
+    const called = calledNumbers || game?.called_numbers || [];
 
     // Only check numbers that have been called
     const validMarked = marked.filter(n => called.includes(n));
@@ -284,21 +333,8 @@ export default function LiveGameControl() {
   }
 
   function toggleAutoCalling() {
-    if (autoCalling) {
-      // Stop auto-calling
-      if (autoInterval) {
-        clearInterval(autoInterval);
-        setAutoInterval(null);
-      }
-      setAutoCalling(false);
-    } else {
-      // Start auto-calling (every 5 seconds)
-      setAutoCalling(true);
-      const interval = setInterval(() => {
-        callNumber();
-      }, 5000);
-      setAutoInterval(interval);
-    }
+    // Just toggle the state - the effect will handle starting/stopping
+    setAutoCalling(!autoCalling);
   }
 
   async function endGame() {
