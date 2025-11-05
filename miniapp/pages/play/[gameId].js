@@ -560,3 +560,10 @@ export default function PlayGame() {
     </>
   );
 }
+
+// Prevent static generation - this page needs dynamic routing
+export async function getServerSideProps() {
+  return {
+    props: {}
+  };
+}

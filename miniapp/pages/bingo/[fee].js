@@ -197,3 +197,10 @@ export default function BingoPage() {
     </>
   );
 }
+
+// Prevent static generation - this page needs dynamic routing
+export async function getServerSideProps() {
+  return {
+    props: {}
+  };
+}

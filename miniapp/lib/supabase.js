@@ -308,17 +308,24 @@ export async function checkBingo(gamePlayerId) {
   const marked = player.marked_numbers || [];
   let hasBingo = false;
   
-  // Check rows
+  console.log('🔍 Checking BINGO for player:', player.user_id);
+  console.log('📋 Card structure:', JSON.stringify(card));
+  console.log('✅ Marked numbers:', marked);
+  
+  // Check rows - card is stored as [col][row] (column-major)
   for (let row = 0; row < 5; row++) {
     let rowComplete = true;
+    const rowNumbers = [];
     for (let col = 0; col < 5; col++) {
       const num = card[col][row];
+      rowNumbers.push(num);
       if (num !== '#' && !marked.includes(num)) {
         rowComplete = false;
-        break;
       }
     }
+    console.log(`Row ${row}: [${rowNumbers.join(', ')}] - Complete: ${rowComplete}`);
     if (rowComplete) {
+      console.log(`🎉 BINGO! Row ${row} is complete!`);
       hasBingo = true;
       break;
     }
@@ -328,14 +335,17 @@ export async function checkBingo(gamePlayerId) {
   if (!hasBingo) {
     for (let col = 0; col < 5; col++) {
       let colComplete = true;
+      const colNumbers = [];
       for (let row = 0; row < 5; row++) {
         const num = card[col][row];
+        colNumbers.push(num);
         if (num !== '#' && !marked.includes(num)) {
           colComplete = false;
-          break;
         }
       }
+      console.log(`Col ${col}: [${colNumbers.join(', ')}] - Complete: ${colComplete}`);
       if (colComplete) {
+        console.log(`🎉 BINGO! Column ${col} is complete!`);
         hasBingo = true;
         break;
       }
@@ -345,12 +355,20 @@ export async function checkBingo(gamePlayerId) {
   // Check diagonals
   if (!hasBingo) {
     let diag1 = true, diag2 = true;
+    const diag1Numbers = [];
+    const diag2Numbers = [];
     for (let i = 0; i < 5; i++) {
       const num1 = card[i][i];
       const num2 = card[i][4 - i];
+      diag1Numbers.push(num1);
+      diag2Numbers.push(num2);
       if (num1 !== '#' && !marked.includes(num1)) diag1 = false;
       if (num2 !== '#' && !marked.includes(num2)) diag2 = false;
     }
+    console.log(`Diag 1 (\\): [${diag1Numbers.join(', ')}] - Complete: ${diag1}`);
+    console.log(`Diag 2 (/): [${diag2Numbers.join(', ')}] - Complete: ${diag2}`);
+    if (diag1) console.log('🎉 BINGO! Diagonal \\ is complete!');
+    if (diag2) console.log('🎉 BINGO! Diagonal / is complete!');
     hasBingo = diag1 || diag2;
   }
   

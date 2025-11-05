@@ -3,8 +3,10 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { getUserId, hapticFeedback, setMainButton, hideMainButton, setBackButton } from '../../lib/telegram';
 import { getUserByTelegramId, supabase } from '../../lib/supabase';
+
 export default function GamePage() {
   const router = useRouter();
+  const { fee } = router.query;
   const [user, setUser] = useState(null);
   const [selectedNumbers, setSelectedNumbers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -228,6 +230,7 @@ export default function GamePage() {
     
     for (let col = 0; col < 5; col++) {
       const columnNumbers = [];
+      const usedNumbers = new Set();
       const min = col * 15 + 1;
       const max = min + 14;
       
@@ -235,7 +238,11 @@ export default function GamePage() {
         if (col === 2 && row === 2) {
           columnNumbers.push('#');
         } else {
-          const num = Math.floor(Math.random() * (max - min + 1)) + min;
+          let num;
+          do {
+            num = Math.floor(Math.random() * (max - min + 1)) + min;
+          } while (usedNumbers.has(num));
+          usedNumbers.add(num);
           columnNumbers.push(num);
         }
       }
@@ -392,4 +399,11 @@ export default function GamePage() {
       </div>
     </>
   );
+}
+
+// Prevent static generation - this page needs dynamic routing
+export async function getServerSideProps() {
+  return {
+    props: {}
+  };
 }

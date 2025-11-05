@@ -51,32 +51,62 @@ export function generateBingoCard() {
 
 /**
  * Check if a card has won with the given called numbers
- * Winning conditions: any row, column, or diagonal
+ * Winning conditions: any row, column, or diagonal (5 in a row)
  */
 export function checkBingoWin(card, calledNumbers) {
   const calledSet = new Set(calledNumbers);
   
+  console.log('🔍 Checking BINGO win condition');
+  console.log('📋 Card:', JSON.stringify(card));
+  console.log('🎲 Called numbers:', calledNumbers);
+  
   const isComplete = (line) => {
-    return line.every(n => n === 'FREE' || calledSet.has(n));
+    const complete = line.every(n => n === 'FREE' || calledSet.has(n));
+    return complete;
   };
 
-  // Check rows
+  // Check rows - card is [row][col] (row-major)
   for (let i = 0; i < 5; i++) {
-    if (isComplete(card[i])) return true;
+    const row = card[i];
+    const complete = isComplete(row);
+    console.log(`Row ${i}: [${row.join(', ')}] - Complete: ${complete}`);
+    if (complete) {
+      console.log(`🎉 BINGO! Row ${i} is complete!`);
+      return true;
+    }
   }
 
   // Check columns
   for (let col = 0; col < 5; col++) {
     const column = card.map(row => row[col]);
-    if (isComplete(column)) return true;
+    const complete = isComplete(column);
+    console.log(`Col ${col}: [${column.join(', ')}] - Complete: ${complete}`);
+    if (complete) {
+      console.log(`🎉 BINGO! Column ${col} is complete!`);
+      return true;
+    }
   }
 
   // Check diagonals
   const diagonal1 = card.map((row, i) => row[i]);
   const diagonal2 = card.map((row, i) => row[4 - i]);
   
-  if (isComplete(diagonal1) || isComplete(diagonal2)) return true;
+  const diag1Complete = isComplete(diagonal1);
+  const diag2Complete = isComplete(diagonal2);
+  
+  console.log(`Diag 1 (\\): [${diagonal1.join(', ')}] - Complete: ${diag1Complete}`);
+  console.log(`Diag 2 (/): [${diagonal2.join(', ')}] - Complete: ${diag2Complete}`);
+  
+  if (diag1Complete) {
+    console.log('🎉 BINGO! Diagonal \\ is complete!');
+    return true;
+  }
+  if (diag2Complete) {
+    console.log('🎉 BINGO! Diagonal / is complete!');
+    return true;
+  }
 
+  console.log('❌ No BINGO yet');
   return false;
 }
 
