@@ -5,8 +5,18 @@
       "runtime": "nodejs18.x"
     }
   },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+      ]
+    }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" }
   ],
-  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- bot/ && exit 1 || exit 0'"
+  "ignoreCommand": "bash -c '[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ] && exit 1; git diff HEAD^ HEAD --quiet . && exit 1 || exit 0'"
 }

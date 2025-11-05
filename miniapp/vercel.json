@@ -4,5 +4,5 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm install",
-  "ignoreCommand": "bash -c 'git diff HEAD^ HEAD --quiet -- miniapp/ && exit 1 || exit 0'"
+  "ignoreCommand": "bash -c '[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ] && exit 1; git diff HEAD^ HEAD --quiet . && exit 1 || exit 0'"
 }

@@ -5,23 +5,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
 export default async function handler(req, res) {
+  // Set CORS headers for all requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).json({});
+    return res.status(200).end();
   }
-
-  // Set CORS headers
-  Object.entries(corsHeaders).forEach(([key, value]) => {
-    res.setHeader(key, value);
-  });
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
