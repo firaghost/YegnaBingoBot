@@ -193,120 +193,162 @@ export default function SuperAdmin() {
         <title>Super Admin Dashboard - Yegna Bingo</title>
       </Head>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="p-4 sm:p-6 space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Super Admin Dashboard</h1>
-            <p className="text-gray-600 mt-1">Real-time system monitoring and analytics</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
+              Platform Overview
+            </h1>
+            <p className="text-base text-gray-600 mt-2">
+              Real-time system monitoring and analytics
+            </p>
           </div>
-          <button
-            onClick={loadAllData}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            🔄 Refresh
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Last updated</p>
+              <p className="text-sm font-medium text-gray-900">
+                {new Date().toLocaleTimeString()}
+              </p>
+            </div>
+            <button
+              onClick={loadAllData}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            >
+              <span>🔄</span>
+              Refresh
+            </button>
+          </div>
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Revenue */}
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold opacity-90">Total Revenue</h3>
-              <span className="text-2xl">💰</span>
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                <span className="text-2xl">💰</span>
+              </div>
             </div>
-            <div className="text-3xl font-bold">{stats.totalRevenue.toFixed(2)} Birr</div>
-            <div className="text-xs opacity-75 mt-1">10% commission from games</div>
+            <h3 className="text-sm font-medium opacity-90 mb-1">Total Revenue</h3>
+            <p className="text-3xl font-bold mb-1">{stats.totalRevenue.toFixed(2)} Birr</p>
+            <p className="text-xs opacity-75">10% commission from games</p>
           </div>
 
           {/* Total Deposits */}
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold opacity-90">Total Deposits</h3>
-              <span className="text-2xl">📥</span>
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                <span className="text-2xl">📥</span>
+              </div>
             </div>
-            <div className="text-3xl font-bold">{stats.totalDeposits.toFixed(2)} Birr</div>
-            <div className="text-xs opacity-75 mt-1">
+            <h3 className="text-sm font-medium opacity-90 mb-1">Total Deposits</h3>
+            <p className="text-3xl font-bold mb-1">{stats.totalDeposits.toFixed(2)} Birr</p>
+            <p className="text-xs opacity-75">
               {stats.approvedDeposits} approved • {stats.pendingDeposits} pending
-            </div>
+            </p>
           </div>
 
           {/* Total Withdrawals */}
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold opacity-90">Total Withdrawals</h3>
-              <span className="text-2xl">📤</span>
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                <span className="text-2xl">📤</span>
+              </div>
             </div>
-            <div className="text-3xl font-bold">{stats.totalWithdrawals.toFixed(2)} Birr</div>
-            <div className="text-xs opacity-75 mt-1">
+            <h3 className="text-sm font-medium opacity-90 mb-1">Total Withdrawals</h3>
+            <p className="text-3xl font-bold mb-1">{stats.totalWithdrawals.toFixed(2)} Birr</p>
+            <p className="text-xs opacity-75">
               {stats.approvedWithdrawals} approved • {stats.pendingWithdrawals} pending
-            </div>
+            </p>
           </div>
 
           {/* Total Users */}
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold opacity-90">Total Users</h3>
-              <span className="text-2xl">👥</span>
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                <span className="text-2xl">👥</span>
+              </div>
             </div>
-            <div className="text-3xl font-bold">{stats.totalUsers}</div>
-            <div className="text-xs opacity-75 mt-1">Registered players</div>
+            <h3 className="text-sm font-medium opacity-90 mb-1">Total Users</h3>
+            <p className="text-3xl font-bold mb-1">{stats.totalUsers}</p>
+            <p className="text-xs opacity-75">Registered players</p>
           </div>
         </div>
 
         {/* Games Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-gray-600 text-sm mb-1">Total Games</div>
-            <div className="text-3xl font-bold text-gray-900">{stats.totalGames}</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <span className="text-xl">🎮</span>
+                </div>
+                <h3 className="text-sm font-medium text-gray-600">Total Games</h3>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">{stats.totalGames}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-gray-600 text-sm mb-1">Active Games</div>
-            <div className="text-3xl font-bold text-green-600">{stats.activeGames}</div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <span className="text-xl">🟢</span>
+                </div>
+                <h3 className="text-sm font-medium text-gray-600">Active Games</h3>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-green-600">{stats.activeGames}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-gray-600 text-sm mb-1">Completed Games</div>
-            <div className="text-3xl font-bold text-blue-600">{stats.completedGames}</div>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <span className="text-xl">✅</span>
+                </div>
+                <h3 className="text-sm font-medium text-gray-600">Completed Games</h3>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-blue-600">{stats.completedGames}</p>
           </div>
         </div>
 
         {/* Payment Stats */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Payment Statistics</h2>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Payment Statistics</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{stats.approvedDeposits}</div>
-              <div className="text-sm text-gray-600">Approved Deposits</div>
+            <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+              <span className="text-sm text-gray-600">Approved Deposits</span>
+              <span className="text-xl font-bold text-green-600">{stats.approvedDeposits}</span>
             </div>
-            <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">{stats.pendingDeposits}</div>
-              <div className="text-sm text-gray-600">Pending Deposits</div>
+            <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg">
+              <span className="text-sm text-gray-600">Pending Deposits</span>
+              <span className="text-xl font-bold text-yellow-600">{stats.pendingDeposits}</span>
             </div>
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{stats.rejectedDeposits}</div>
-              <div className="text-sm text-gray-600">Rejected Deposits</div>
+            <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
+              <span className="text-sm text-gray-600">Rejected Deposits</span>
+              <span className="text-xl font-bold text-red-600">{stats.rejectedDeposits}</span>
             </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{stats.approvedWithdrawals}</div>
-              <div className="text-sm text-gray-600">Approved Withdrawals</div>
+            <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+              <span className="text-sm text-gray-600">Approved Withdrawals</span>
+              <span className="text-xl font-bold text-green-600">{stats.approvedWithdrawals}</span>
             </div>
-            <div className="text-center p-4 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">{stats.pendingWithdrawals}</div>
-              <div className="text-sm text-gray-600">Pending Withdrawals</div>
+            <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg">
+              <span className="text-sm text-gray-600">Pending Withdrawals</span>
+              <span className="text-xl font-bold text-yellow-600">{stats.pendingWithdrawals}</span>
             </div>
-            <div className="text-center p-4 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{stats.rejectedWithdrawals}</div>
-              <div className="text-sm text-gray-600">Rejected Withdrawals</div>
+            <div className="flex items-center justify-between p-4 bg-red-50 rounded-lg">
+              <span className="text-sm text-gray-600">Rejected Withdrawals</span>
+              <span className="text-xl font-bold text-red-600">{stats.rejectedWithdrawals}</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Recent Activity */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
             </div>
             <div className="p-6 max-h-96 overflow-y-auto">
               {recentActivity.length === 0 ? (
@@ -341,9 +383,9 @@ export default function SuperAdmin() {
           </div>
 
           {/* Top Players */}
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b">
-              <h2 className="text-xl font-bold text-gray-900">Top Players by Balance</h2>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Top Players by Balance</h2>
             </div>
             <div className="p-6">
               {topPlayers.length === 0 ? (
@@ -367,9 +409,9 @@ export default function SuperAdmin() {
         </div>
 
         {/* Admin Actions Log */}
-        <div className="bg-white rounded-lg shadow mt-8">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-bold text-gray-900">Admin Actions Log</h2>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Admin Actions Log</h2>
           </div>
           <div className="p-6">
             {adminActions.length === 0 ? (

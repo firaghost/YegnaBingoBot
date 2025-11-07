@@ -23,6 +23,17 @@ import {
   handleConvertBonusBalance,
   handleCancel
 } from './commands/menu.js';
+import {
+  handleAdminPanel,
+  handleAdminStats,
+  handleAdminDeposits,
+  handleAdminWithdrawals,
+  handleAdminBroadcast,
+  handleBroadcastCommand,
+  approveDeposit,
+  approveWithdrawal,
+  rejectPayment
+} from './commands/admin.js';
 
 dotenv.config();
 
@@ -69,6 +80,10 @@ bot.command('cancel', handleCancel);
 bot.command('status', handleStatus);
 bot.command('help', handleHelp);
 
+// Admin commands
+bot.command('admin', handleAdminPanel);
+bot.command('broadcast', handleBroadcastCommand);
+
 // Handle contact sharing
 bot.on('contact', handleContact);
 
@@ -112,6 +127,35 @@ bot.action('withdraw_cancel', async (ctx) => {
   const { cancelUserAction } = await import('./services/paymentHandler.js');
   cancelUserAction(ctx.from.id.toString());
   return ctx.reply('❌ Withdrawal cancelled.\n\nUse /withdraw to try again.');
+});
+
+// Admin callback queries
+bot.action('admin_panel', handleAdminPanel);
+bot.action('admin_stats', handleAdminStats);
+bot.action('admin_deposits', handleAdminDeposits);
+bot.action('admin_withdrawals', handleAdminWithdrawals);
+bot.action('admin_broadcast', handleAdminBroadcast);
+
+// Approve/Reject deposits
+bot.action(/^approve_deposit_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return approveDeposit(ctx, paymentId);
+});
+
+bot.action(/^reject_deposit_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return rejectPayment(ctx, paymentId, 'deposit');
+});
+
+// Approve/Reject withdrawals
+bot.action(/^approve_withdrawal_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return approveWithdrawal(ctx, paymentId);
+});
+
+bot.action(/^reject_withdrawal_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return rejectPayment(ctx, paymentId, 'withdrawal');
 });
 
 // Handle text messages (for multi-step processes)

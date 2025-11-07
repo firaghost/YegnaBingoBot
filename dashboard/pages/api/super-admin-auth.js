@@ -59,8 +59,11 @@ export default async function handler(req, res) {
 
 async function handleLogin(req, res, username, password) {
   if (!username || !password) {
+    console.log('❌ Missing username or password');
     return res.status(400).json({ error: 'Username and password required' });
   }
+
+  console.log('🔍 Attempting login for username:', username);
 
   const { data: admin, error } = await supabase
     .from('super_admins')
@@ -69,9 +72,17 @@ async function handleLogin(req, res, username, password) {
     .eq('is_active', true)
     .single();
 
-  if (error || !admin) {
+  if (error) {
+    console.log('❌ Database error:', error.message);
     return res.status(401).json({ error: 'Invalid credentials' });
   }
+
+  if (!admin) {
+    console.log('❌ No admin found with username:', username);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  console.log('✅ Admin found:', admin.username);
 
   const isLocked = admin.locked_until && new Date(admin.locked_until) > new Date();
   if (isLocked) {
@@ -79,12 +90,17 @@ async function handleLogin(req, res, username, password) {
   }
 
   let passwordMatch = false;
+  console.log('🔐 Checking password...');
+  
   if (admin.password.includes(':')) {
+    console.log('🔑 Password is hashed (PBKDF2)');
     passwordMatch = verifyPassword(password, admin.password);
   } else {
+    console.log('🔑 Password is plain text');
     passwordMatch = password === admin.password;
     
     if (passwordMatch) {
+      console.log('✅ Password match! Hashing for next time...');
       const hashedPassword = hashPassword(password);
       await supabase
         .from('super_admins')
@@ -93,7 +109,10 @@ async function handleLogin(req, res, username, password) {
     }
   }
 
+  console.log('Password match result:', passwordMatch);
+
   if (!passwordMatch) {
+    console.log('❌ Password does not match');
     const newAttempts = admin.login_attempts + 1;
     const lockedUntil = newAttempts >= 5 ? new Date(Date.now() + 30 * 60 * 1000).toISOString() : null;
 

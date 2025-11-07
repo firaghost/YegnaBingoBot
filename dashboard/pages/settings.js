@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
+import AdminLayout from '../components/AdminLayout';
 
 export default function Settings() {
   const router = useRouter();
@@ -49,28 +50,22 @@ export default function Settings() {
   };
 
   return (
-    <>
+    <AdminLayout>
       <Head>
         <title>Settings - Yegna Bingo Admin</title>
       </Head>
 
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-2xl mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="mb-8">
-            <button
-              onClick={() => router.push('/games')}
-              className="text-blue-600 hover:text-blue-700 mb-4"
-            >
-              ← Back to Dashboard
-            </button>
-            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-            <p className="text-gray-600 mt-1">Manage your admin account</p>
-          </div>
+      <div className="p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Settings</h1>
+          <p className="text-base text-gray-600 mt-2">Manage your admin account</p>
+        </div>
 
+        <div className="max-w-2xl">
           {/* Change Password Form */}
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Change Password</h2>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
             
             {message && (
               <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
@@ -136,8 +131,8 @@ export default function Settings() {
           </div>
 
           {/* Account Actions */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Account Actions</h2>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Actions</h2>
             <button
               onClick={handleLogout}
               className="w-full bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors font-semibold"
@@ -147,6 +142,6 @@ export default function Settings() {
           </div>
         </div>
       </div>
-    </>
+    </AdminLayout>
   );
 }

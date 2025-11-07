@@ -15,9 +15,8 @@ export default function SuperLogin() {
     setLoading(true);
 
     try {
-      // Call super admin auth API
-      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
-      const response = await fetch(`${botUrl}/api/super-admin-auth`, {
+      // Call super admin auth API (local)
+      const response = await fetch('/api/super-admin-auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

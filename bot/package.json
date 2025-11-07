@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "node index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "setup-webhook": "node setup-webhook.js"
   },
   "dependencies": {
     "telegraf": "^4.15.0",

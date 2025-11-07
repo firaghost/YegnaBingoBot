@@ -74,10 +74,9 @@ export default function SuperSettings() {
     setLoading(true);
 
     try {
-      const botUrl = process.env.NEXT_PUBLIC_BOT_URL || 'https://yegna-bingo-bot.vercel.app';
       const sessionToken = localStorage.getItem('superAdminToken');
 
-      const response = await fetch(`${botUrl}/api/super-admin-auth`, {
+      const response = await fetch('/api/super-admin-auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -123,12 +122,15 @@ export default function SuperSettings() {
         <title>Super Admin Settings - Yegna Bingo</title>
       </Head>
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Super Admin Settings</h1>
+      <div className="p-4 sm:p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Settings</h1>
+          <p className="text-base text-gray-600 mt-2">Manage your super admin account</p>
+        </div>
 
         {/* Account Info */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Account Information</h2>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Account Information</h2>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <span className="text-gray-600 w-24">Username:</span>
@@ -146,8 +148,8 @@ export default function SuperSettings() {
         </div>
 
         {/* Change Password */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Change Password</h2>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Change Password</h2>
           
           {message && (
             <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4">
@@ -211,7 +213,7 @@ export default function SuperSettings() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-indigo-600 text-white font-medium py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Changing Password...' : 'Change Password'}
             </button>

@@ -6,6 +6,7 @@ export default function AdminLayout({ children }) {
   const router = useRouter();
   const [adminUsername, setAdminUsername] = useState('');
   const [sessionInfo, setSessionInfo] = useState(null);
+  const [expandedMenu, setExpandedMenu] = useState('Games');
 
   useEffect(() => {
     const username = localStorage.getItem('adminUsername') || 'Admin';
@@ -68,140 +69,134 @@ export default function AdminLayout({ children }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Navbar */}
-      <nav className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-                <span className="text-2xl">🎮</span>
+      {/* Top Bar */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">YB</span>
               </div>
               <div>
-                <h1 className="text-xl font-bold">Yegna Bingo</h1>
-                <p className="text-xs text-indigo-200">Admin Dashboard</p>
+                <h1 className="text-lg font-bold text-gray-900">
+                  Yegna Bingo Admin
+                </h1>
+                <p className="text-xs text-gray-500">
+                  Admin Dashboard
+                </p>
               </div>
             </div>
-
-            {/* Navigation Links */}
-            <div className="hidden md:flex items-center space-x-2">
-              {navItems.map((item) => (
-                item.submenu ? (
-                  <div key={item.name} className="relative group">
-                    <button className="px-4 py-2 rounded-lg transition-all hover:bg-white/10 flex items-center">
-                      <span className="mr-2">{item.icon}</span>
-                      {item.name}
-                      <span className="ml-1">▼</span>
-                    </button>
-                    <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl py-2 min-w-[200px] opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-                      {item.submenu.map((subItem) => (
-                        <Link
-                          key={subItem.path}
-                          href={subItem.path}
-                          className={`block px-4 py-2 hover:bg-indigo-50 transition-colors ${
-                            isActive(subItem.path) ? 'bg-indigo-100 text-indigo-600 font-semibold' : 'text-gray-700'
-                          }`}
-                        >
-                          <span className="mr-2">{subItem.icon}</span>
-                          {subItem.name}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <Link
-                    key={item.path}
-                    href={item.path}
-                    className={`px-4 py-2 rounded-lg transition-all ${
-                      isActive(item.path)
-                        ? 'bg-white text-indigo-600 font-semibold shadow-lg'
-                        : 'hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="mr-2">{item.icon}</span>
-                    {item.name}
-                  </Link>
-                )
-              ))}
-            </div>
-
-            {/* User Info & Logout */}
-            <div className="flex items-center space-x-4">
-              <div className="hidden lg:block text-right">
-                <p className="text-sm font-semibold">{adminUsername}</p>
-                {sessionInfo && (
-                  <p className="text-xs text-indigo-200">
-                    {Math.floor(sessionInfo.timeUntilExpiry / 60000)} min left
+            <div className="flex items-center gap-4">
+              {sessionInfo && (
+                <div className="hidden md:block text-right">
+                  <p className="text-xs text-gray-500">Session expires in</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {Math.floor(sessionInfo.timeUntilExpiry / 60000)} minutes
                   </p>
-                )}
-              </div>
+                </div>
+              )}
               <button
                 onClick={handleLogout}
-                className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg font-semibold transition-all transform hover:scale-105"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               >
+                <span>🚪</span>
                 Logout
               </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Mobile Navigation */}
-          <div className="md:hidden pb-3">
-            <div className="flex flex-col space-y-2">
-              {navItems.map((item) => (
-                item.submenu ? (
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className="w-64 bg-white border-r border-gray-200 min-h-[calc(100vh-73px)] sticky top-[73px]">
+          <nav className="p-4 space-y-1">
+            {navItems.map((item) => {
+              if (item.submenu) {
+                const isExpanded = expandedMenu === item.name;
+                const hasActiveChild = item.submenu.some(sub => isActive(sub.path));
+                return (
                   <div key={item.name}>
-                    <div className="px-3 py-1 text-sm font-semibold text-indigo-200">
-                      {item.icon} {item.name}
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-1 pl-4">
-                      {item.submenu.map((subItem) => (
-                        <Link
-                          key={subItem.path}
-                          href={subItem.path}
-                          className={`px-3 py-1 rounded-lg whitespace-nowrap text-sm ${
-                            isActive(subItem.path)
-                              ? 'bg-white text-indigo-600 font-semibold'
-                              : 'bg-white/10'
-                          }`}
-                        >
-                          {subItem.icon} {subItem.name}
-                        </Link>
-                      ))}
-                    </div>
+                    <button
+                      onClick={() => setExpandedMenu(isExpanded ? null : item.name)}
+                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-colors ${
+                        hasActiveChild
+                          ? 'bg-indigo-50 text-indigo-700'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{item.icon}</span>
+                        <span className="font-medium">{item.name}</span>
+                      </div>
+                      <span className={`text-sm transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                        ▼
+                      </span>
+                    </button>
+                    {isExpanded && (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {item.submenu.map((subItem) => {
+                          const active = isActive(subItem.path);
+                          return (
+                            <Link
+                              key={subItem.path}
+                              href={subItem.path}
+                              className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-colors text-sm ${
+                                active
+                                  ? 'bg-indigo-100 text-indigo-700 font-medium'
+                                  : 'text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              <span>{subItem.icon}</span>
+                              <span>{subItem.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <Link
-                    key={item.path}
-                    href={item.path}
-                    className={`px-3 py-1 rounded-lg whitespace-nowrap text-sm ${
-                      isActive(item.path)
-                        ? 'bg-white text-indigo-600 font-semibold'
-                        : 'bg-white/10'
-                    }`}
-                  >
-                    {item.icon} {item.name}
-                  </Link>
-                )
-              ))}
+                );
+              }
+              
+              const active = isActive(item.path);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.path}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    active
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  <span className="text-xl">{item.icon}</span>
+                  <span className="font-medium">{item.name}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          
+          {/* User Info in Sidebar */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-lg">👤</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {adminUsername}
+                </p>
+                <p className="text-xs text-gray-500">Administrator</p>
+              </div>
             </div>
           </div>
-        </div>
-      </nav>
+        </aside>
 
-      {/* Main Content */}
-      <main className="min-h-[calc(100vh-4rem)]">
-        {children}
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-4">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm text-gray-600">
-          <p>© 2025 Yegna Bingo. All rights reserved.</p>
-          <p className="text-xs text-gray-400 mt-1">
-            Admin Dashboard v1.0 • Secure Session Active
-          </p>
-        </div>
-      </footer>
+        {/* Main Content */}
+        <main className="flex-1">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

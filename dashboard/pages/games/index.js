@@ -97,76 +97,86 @@ function GamesPageContent() {
         <title>Games Management - Yegna Bingo</title>
       </Head>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Games Management</h1>
-              <p className="text-gray-600 mt-1">Create and manage Bingo games</p>
+      <div className="p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Games Management</h1>
+            <p className="text-base text-gray-600 mt-2">Create and manage Bingo games</p>
+          </div>
+          <button
+            onClick={() => router.push('/games/create')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+          >
+            <span>➕</span>
+            Create New Game
+          </button>
+        </div>
+
+        {/* Stats - Clickable Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <button
+            onClick={() => router.push('/games/waiting')}
+            className="bg-yellow-50 rounded-lg shadow-sm border border-yellow-200 p-6 hover:shadow-md transition-all text-left"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-2xl">⏰</span>
+              <span className="text-xs text-gray-500">View →</span>
             </div>
+            <div className="text-sm font-medium text-gray-600">Waiting Games</div>
+            <div className="text-3xl font-bold text-yellow-600 mt-1">
+              {games.filter(g => g.status === 'waiting').length}
+            </div>
+          </button>
+          <button
+            onClick={() => router.push('/games/active')}
+            className="bg-green-50 rounded-lg shadow-sm border border-green-200 p-6 hover:shadow-md transition-all text-left"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-2xl">🎮</span>
+              <span className="text-xs text-gray-500">View →</span>
+            </div>
+            <div className="text-sm font-medium text-gray-600">Active Games</div>
+            <div className="text-3xl font-bold text-green-600 mt-1">
+              {games.filter(g => g.status === 'active').length}
+            </div>
+          </button>
+          <button
+            onClick={() => router.push('/games/completed')}
+            className="bg-blue-50 rounded-lg shadow-sm border border-blue-200 p-6 hover:shadow-md transition-all text-left"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-2xl">✅</span>
+              <span className="text-xs text-gray-500">View →</span>
+            </div>
+            <div className="text-sm font-medium text-gray-600">Completed Games</div>
+            <div className="text-3xl font-bold text-blue-600 mt-1">
+              {games.filter(g => g.status === 'completed').length}
+            </div>
+          </button>
+        </div>
+
+        {/* Games List */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          </div>
+        ) : games.length === 0 ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+            <div className="text-gray-400 text-6xl mb-4">🎮</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Games Yet</h3>
+            <p className="text-gray-600 mb-6">Create your first game to get started</p>
             <button
               onClick={() => router.push('/games/create')}
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+              className="bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
             >
-              + Create New Game
+              Create Game
             </button>
           </div>
-
-          {/* Stats - Clickable Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <button
-              onClick={() => router.push('/games/waiting')}
-              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
-            >
-              <div className="text-gray-600 text-sm">Waiting Games</div>
-              <div className="text-3xl font-bold text-yellow-600 mt-2">
-                {games.filter(g => g.status === 'waiting').length}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
-            </button>
-            <button
-              onClick={() => router.push('/games/active')}
-              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
-            >
-              <div className="text-gray-600 text-sm">Active Games</div>
-              <div className="text-3xl font-bold text-green-600 mt-2">
-                {games.filter(g => g.status === 'active').length}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
-            </button>
-            <button
-              onClick={() => router.push('/games/completed')}
-              className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-all text-left hover:scale-105 transform"
-            >
-              <div className="text-gray-600 text-sm">Completed Games</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">
-                {games.filter(g => g.status === 'completed').length}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">Click to view →</div>
-            </button>
-          </div>
-
-          {/* Games List */}
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="text-gray-600">Loading games...</div>
-            </div>
-          ) : games.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-12 text-center">
-              <div className="text-gray-400 text-6xl mb-4">🎮</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Games Yet</h3>
-              <p className="text-gray-600 mb-6">Create your first game to get started</p>
-              <button
-                onClick={() => router.push('/games/create')}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Create Game
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {games.map((game) => (
-                <div key={game.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+        ) : (
+          <div className="space-y-4">
+            {games.map((game) => (
+              <div key={game.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
                   <div className="p-6">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
@@ -239,13 +249,13 @@ function GamesPageContent() {
                             <button
                               onClick={() => startGame(game.id)}
                               disabled={!game.game_players || game.game_players.length === 0}
-                              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed font-medium"
                             >
                               Start Game
                             </button>
                             <button
                               onClick={() => deleteGame(game.id)}
-                              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors"
+                              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors font-medium"
                             >
                               Delete
                             </button>
@@ -254,14 +264,14 @@ function GamesPageContent() {
                         {game.status === 'active' && (
                           <button
                             onClick={() => router.push(`/games/live/${game.id}`)}
-                            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                            className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
                           >
                             Control Game
                           </button>
                         )}
                         <button
                           onClick={() => router.push(`/games/${game.id}`)}
-                          className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                          className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition-colors font-medium"
                         >
                           View Details
                         </button>

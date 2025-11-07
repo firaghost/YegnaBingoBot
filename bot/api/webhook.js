@@ -23,6 +23,17 @@ import {
   handleConvertBonusBalance,
   handleCancel
 } from '../commands/menu.js';
+import {
+  handleAdminPanel,
+  handleAdminStats,
+  handleAdminDeposits,
+  handleAdminWithdrawals,
+  handleAdminBroadcast,
+  handleBroadcastCommand,
+  approveDeposit,
+  approveWithdrawal,
+  rejectPayment
+} from '../commands/admin.js';
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const bot = new Telegraf(BOT_TOKEN);
@@ -53,6 +64,10 @@ bot.command('convertbonusbalance', handleConvertBonusBalance);
 bot.command('cancel', handleCancel);
 bot.command('status', handleStatus);
 bot.command('help', handleHelp);
+
+// Admin commands
+bot.command('admin', handleAdminPanel);
+bot.command('broadcast', handleBroadcastCommand);
 
 // Handle contact sharing
 bot.on('contact', handleContact);
@@ -119,24 +134,75 @@ bot.action('withdraw_cancel', async (ctx) => {
   return ctx.reply('❌ Withdrawal cancelled.\n\nUse /withdraw to try again.');
 });
 
-bot.on('text', (ctx) => {
+// Admin callback queries
+bot.action('admin_panel', handleAdminPanel);
+bot.action('admin_stats', handleAdminStats);
+bot.action('admin_deposits', handleAdminDeposits);
+bot.action('admin_withdrawals', handleAdminWithdrawals);
+bot.action('admin_broadcast', handleAdminBroadcast);
+
+// Approve/Reject deposits
+bot.action(/^approve_deposit_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return approveDeposit(ctx, paymentId);
+});
+
+bot.action(/^reject_deposit_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return rejectPayment(ctx, paymentId, 'deposit');
+});
+
+// Approve/Reject withdrawals
+bot.action(/^approve_withdrawal_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return approveWithdrawal(ctx, paymentId);
+});
+
+bot.action(/^reject_withdrawal_(.+)$/, async (ctx) => {
+  const paymentId = ctx.match[1];
+  return rejectPayment(ctx, paymentId, 'withdrawal');
+});
+
+bot.on('text', async (ctx) => {
   const text = ctx.message.text;
+  
+  // Check if user has an active state (withdrawal/deposit in progress)
+  const { getUserState, processUserInput } = await import('../services/paymentHandler.js');
+  const state = getUserState(ctx.from.id.toString());
+  
+  if (state) {
+    // User is in the middle of withdrawal/deposit process
+    return processUserInput(ctx);
+  }
+  
+  // Handle unknown commands
   if (text.startsWith('/')) {
     ctx.reply('❌ Unknown command. Use /help to see available commands.');
   }
 });
 
+// Error handling
+bot.catch((err, ctx) => {
+  console.error('Bot error:', err);
+  console.error('Context:', ctx.update);
+  ctx.reply('❌ An error occurred. Please try again later.').catch(console.error);
+});
+
 // Vercel serverless function handler
 export default async (req, res) => {
   try {
+    console.log('Webhook called:', req.method);
+    
     if (req.method === 'POST') {
+      console.log('Processing update:', JSON.stringify(req.body, null, 2));
       await bot.handleUpdate(req.body);
       res.status(200).json({ ok: true });
     } else {
-      res.status(200).json({ status: 'Bot is running' });
+      res.status(200).json({ status: 'Bot is running', timestamp: new Date().toISOString() });
     }
   } catch (error) {
     console.error('Webhook error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 };

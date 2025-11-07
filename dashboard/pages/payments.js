@@ -57,13 +57,21 @@ export default function Payments() {
       const adminId = localStorage.getItem('adminId');
       
       // Update payment status
+      // Only set processed_by if adminId is a valid UUID
+      const updateData = {
+        status: 'approved',
+        processed_at: new Date().toISOString()
+      };
+      
+      // Check if adminId is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (adminId && uuidRegex.test(adminId)) {
+        updateData.processed_by = adminId;
+      }
+      
       const { error: paymentError } = await supabase
         .from('payments')
-        .update({
-          status: 'approved',
-          processed_at: new Date().toISOString(),
-          processed_by: adminId
-        })
+        .update(updateData)
         .eq('id', payment.id);
 
       if (paymentError) throw paymentError;
@@ -108,13 +116,21 @@ export default function Payments() {
       }
 
       // Update payment status
+      // Only set processed_by if adminId is a valid UUID
+      const updateData = {
+        status: 'approved',
+        processed_at: new Date().toISOString()
+      };
+      
+      // Check if adminId is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (adminId && uuidRegex.test(adminId)) {
+        updateData.processed_by = adminId;
+      }
+      
       const { error: paymentError } = await supabase
         .from('payments')
-        .update({
-          status: 'approved',
-          processed_at: new Date().toISOString(),
-          processed_by: adminId
-        })
+        .update(updateData)
         .eq('id', payment.id);
 
       if (paymentError) throw paymentError;
@@ -153,14 +169,22 @@ export default function Payments() {
     try {
       const adminId = localStorage.getItem('adminId');
       
+      // Only set processed_by if adminId is a valid UUID
+      const updateData = {
+        status: 'rejected',
+        admin_note: reason,
+        processed_at: new Date().toISOString()
+      };
+      
+      // Check if adminId is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (adminId && uuidRegex.test(adminId)) {
+        updateData.processed_by = adminId;
+      }
+      
       const { error } = await supabase
         .from('payments')
-        .update({
-          status: 'rejected',
-          admin_note: reason,
-          processed_at: new Date().toISOString(),
-          processed_by: adminId
-        })
+        .update(updateData)
         .eq('id', payment.id);
 
       if (error) throw error;
@@ -180,30 +204,32 @@ export default function Payments() {
         <title>Payments - Yegna Bingo Admin</title>
       </Head>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
+      <div className="p-4 sm:p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Payment Management</h1>
-            <p className="text-gray-600 mt-1">Approve deposits and withdrawals</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Payment Management</h1>
+            <p className="text-base text-gray-600 mt-2">Approve deposits and withdrawals</p>
           </div>
           <button
             onClick={fetchPayments}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
           >
-            🔄 Refresh
+            <span>🔄</span>
+            Refresh
           </button>
         </div>
 
         {/* Filter Tabs */}
-        <div className="mb-6 flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           {['pending', 'approved', 'rejected', 'all'].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg font-semibold capitalize ${
+              className={`px-4 py-2 rounded-lg font-medium capitalize transition-colors ${
                 filter === f
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
               }`}
             >
               {f}
@@ -213,18 +239,18 @@ export default function Payments() {
 
         {/* Payments List */}
         {loading ? (
-          <div className="text-center py-12">
-            <div className="text-xl text-gray-600">Loading...</div>
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
           </div>
         ) : payments.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <div className="text-6xl mb-4">📭</div>
             <div className="text-xl text-gray-600">No payments found</div>
           </div>
         ) : (
           <div className="space-y-4">
             {payments.map((payment) => (
-              <div key={payment.id} className="bg-white rounded-lg shadow p-6">
+              <div key={payment.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">

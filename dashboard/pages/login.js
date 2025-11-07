@@ -16,7 +16,7 @@ export default function Login() {
     // Check if already authenticated
     const isAuth = localStorage.getItem('adminAuth');
     if (isAuth) {
-      router.push('/games');
+      router.push('/');
     }
 
     // Check for logout reason
@@ -75,7 +75,7 @@ export default function Login() {
       localStorage.setItem('lastActivity', Date.now().toString());
 
       // Redirect to dashboard
-      router.push('/games');
+      router.push('/');
     } catch (err) {
       console.error('Login error:', err);
       setError('An error occurred. Please try again.');
