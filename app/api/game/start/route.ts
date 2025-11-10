@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import crypto from 'crypto'
 
+// Track running game loops to prevent duplicates
+const runningGames = new Set<string>()
+
 // Cryptographically secure random number generator
 function secureRandom(max: number): number {
   const randomBytes = crypto.randomBytes(4)
@@ -50,21 +53,21 @@ function getNextNumber(calledNumbers: number[], sequence: number[]): { letter: s
 
 // Start countdown and game with provably fair number calling
 async function runGameLoop(gameId: string) {
+  // Check if already running
+  if (runningGames.has(gameId)) {
+    console.log(`⚠️ Game loop already running for ${gameId}`)
+    return
+  }
+
+  runningGames.add(gameId)
   console.log(`🎮 Starting game loop for ${gameId}`)
   
-  // Generate cryptographically secure number sequence BEFORE game starts
-  const numberSequence = generateNumberSequence()
-  const sequenceHash = crypto.createHash('sha256').update(numberSequence.join(',')).digest('hex')
-  
-  console.log(`🔒 Number sequence hash: ${sequenceHash.substring(0, 16)}... (provably fair)`)
-  
-  // Store sequence hash for verification (optional - for transparency)
-  await supabase
-    .from('games')
-    .update({ 
-      number_sequence_hash: sequenceHash
-    })
-    .eq('id', gameId)
+  try {
+    // Generate cryptographically secure number sequence BEFORE game starts
+    const numberSequence = generateNumberSequence()
+    const sequenceHash = crypto.createHash('sha256').update(numberSequence.join(',')).digest('hex')
+    
+    console.log(`🔒 Number sequence hash: ${sequenceHash.substring(0, 16)}... (provably fair)`)
   
   // Countdown from 10 to 0
   for (let i = 10; i >= 0; i--) {
@@ -128,13 +131,12 @@ async function runGameLoop(gameId: string) {
     
     const updatedNumbers = [...calledNumbers, nextNumber.number]
     
-    // Atomic update with timestamp for audit trail
+    // Atomic update
     const { error: updateError } = await supabase
       .from('games')
       .update({
         called_numbers: updatedNumbers,
-        latest_number: nextNumber,
-        last_call_time: new Date().toISOString()
+        latest_number: nextNumber
       })
       .eq('id', gameId)
       .eq('status', 'active') // Only update if still active
@@ -160,6 +162,10 @@ async function runGameLoop(gameId: string) {
   }
   
   console.log(`🏁 Game loop ended for ${gameId}`)
+  } finally {
+    // Remove from running games set
+    runningGames.delete(gameId)
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -182,11 +188,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (game.status !== 'countdown') {
+      console.log(`⚠️ Game ${gameId} is not in countdown status: ${game.status}`)
       return NextResponse.json({ 
         message: 'Game already started or finished',
         status: game.status 
       })
     }
+
+    console.log(`🚀 Starting game loop for ${gameId}`)
 
     // Start game loop in background (don't await)
     runGameLoop(gameId).catch(error => {

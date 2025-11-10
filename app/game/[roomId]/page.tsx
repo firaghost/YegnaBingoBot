@@ -35,6 +35,7 @@ export default function GamePage() {
   const [redirectCountdown, setRedirectCountdown] = useState(5)
   const [findingNewGame, setFindingNewGame] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [autoWin, setAutoWin] = useState(false)
   const initializingRef = useRef(false)
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
 
@@ -321,6 +322,13 @@ export default function GamePage() {
       if (gameState.winner_id === user?.id) {
         // User won
         setWinAmount(gameState.prize_pool)
+        
+        // Check if it's an auto-win (opponent left)
+        // Auto-win if there's only 1 player in the finished game
+        if (gameState.players.length === 1) {
+          setAutoWin(true)
+        }
+        
         setShowWinDialog(true)
       } else {
         // User lost
@@ -364,21 +372,7 @@ export default function GamePage() {
     }
   }
 
-  // Auto-redirect countdown after losing
-  useEffect(() => {
-    if (showLoseDialog && !findingNewGame) {
-      const interval = setInterval(() => {
-        setRedirectCountdown(prev => {
-          if (prev <= 1) {
-            window.location.href = '/lobby'
-            return 0
-          }
-          return prev - 1
-        })
-      }, 1000)
-      return () => clearInterval(interval)
-    }
-  }, [showLoseDialog, findingNewGame])
+  // No auto-redirect - removed to let user choose
 
   const handleFindNewGame = () => {
     setFindingNewGame(true)
@@ -529,8 +523,8 @@ export default function GamePage() {
 
         {/* Active Game */}
         {gameStatus === 'active' && playerState === 'playing' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Panel - Game Info */}
+          <div className="max-w-2xl mx-auto space-y-6">
+            {/* Game Info */}
             <div className="space-y-4">
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <h3 className="font-bold text-lg mb-4 text-gray-800">Status:</h3>
@@ -554,22 +548,24 @@ export default function GamePage() {
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-                <h3 className="font-bold text-lg mb-4">Latest Number Called</h3>
-                {latestNumber ? (
-                  <div className="text-center">
-                    <div className="text-3xl font-bold mb-2">{latestNumber.letter}</div>
-                    <div className="w-24 h-24 mx-auto rounded-full bg-white text-blue-600 flex items-center justify-center text-4xl font-bold shadow-xl animate-pulse">
-                      {latestNumber.number}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center text-white/80">Calling...</div>
-                )}
-              </div>
             </div>
 
-            {/* Center - Bingo Card */}
+            {/* Latest Number Called */}
+            <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+              <h3 className="font-bold text-lg mb-4">Latest Number Called</h3>
+              {latestNumber ? (
+                <div className="text-center">
+                  <div className="text-3xl font-bold mb-2">{latestNumber.letter}</div>
+                  <div className="w-24 h-24 mx-auto rounded-full bg-white text-blue-600 flex items-center justify-center text-4xl font-bold shadow-xl animate-pulse">
+                    {latestNumber.number}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center text-white/80">Calling...</div>
+              )}
+            </div>
+
+            {/* Bingo Card */}
             <div>
               <div className="bg-white rounded-xl shadow-2xl p-6">
                 <h3 className="text-center font-bold text-2xl mb-4 text-gray-800">Your Bingo Card</h3>
@@ -622,36 +618,6 @@ export default function GamePage() {
                 </p>
               </div>
             </div>
-
-            {/* Right Panel - Called Numbers */}
-            <div>
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="font-bold text-lg mb-4 text-gray-800">Recently Called</h3>
-                <div className="grid grid-cols-5 gap-2 max-h-[600px] overflow-y-auto">
-                  {Array.from({ length: 75 }, (_, i) => i + 1).map(num => {
-                    const isCalled = calledNumbers.includes(num)
-                    const isLatest = latestNumber?.number === num
-
-                    return (
-                      <div
-                        key={num}
-                        className={`
-                          aspect-square rounded-md flex items-center justify-center text-sm font-semibold
-                          transition-all duration-300
-                          ${isCalled
-                            ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-md scale-110'
-                            : 'bg-gray-100 text-gray-400'
-                          }
-                          ${isLatest ? 'ring-4 ring-yellow-400 animate-pulse' : ''}
-                        `}
-                      >
-                        {num}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -661,7 +627,18 @@ export default function GamePage() {
             <div className="bg-white rounded-2xl p-12 max-w-md text-center shadow-2xl">
               <div className="text-8xl mb-6">🎉</div>
               <h2 className="text-4xl font-bold mb-4 text-gray-800">Congratulations!</h2>
-              <p className="text-2xl mb-6 text-gray-700">You've hit the BINGO!</p>
+              <p className="text-2xl mb-6 text-gray-700">
+                {autoWin ? "You won by default!" : "You've hit the BINGO!"}
+              </p>
+              
+              {autoWin && (
+                <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4 mb-6">
+                  <p className="text-gray-700">
+                    🏆 Your opponent left the game, so you win!
+                  </p>
+                </div>
+              )}
+              
               <div className="bg-green-50 border-2 border-green-300 rounded-lg p-6 mb-6">
                 <p className="text-lg text-gray-700 mb-2">You won:</p>
                 <p className="text-4xl font-bold text-green-600">{formatCurrency(winAmount)}</p>
@@ -717,20 +694,20 @@ export default function GamePage() {
                   <p className="text-sm text-blue-600 font-medium">🎮 Finding new game...</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-gray-500">
-                    Auto-redirecting in <span className="font-bold text-blue-600">{redirectCountdown}</span> seconds...
+                <div className="space-y-4">
+                  <p className="text-gray-600 mb-4">
+                    Choose what to do next:
                   </p>
                   <div className="flex gap-3 justify-center">
                     <button 
                       onClick={handleFindNewGame}
-                      className="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-lg"
+                      className="bg-green-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-lg text-lg"
                     >
-                      Find New Game
+                      🔄 Play Again
                     </button>
                     <Link href="/lobby">
-                      <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg">
-                        Go to Lobby
+                      <button className="bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg text-lg">
+                        🏠 Back to Lobby
                       </button>
                     </Link>
                   </div>
@@ -747,6 +724,11 @@ export default function GamePage() {
               <h2 className="text-3xl font-bold mb-4 text-gray-800">Leave Game?</h2>
               <p className="text-gray-600 mb-6 leading-relaxed">
                 Are you sure you want to leave this game? Your stake will be forfeited.
+                {gameState && gameState.players.length === 2 && gameState.status === 'active' && (
+                  <span className="block mt-2 text-orange-600 font-semibold">
+                    ⚠️ If you leave, your opponent will win automatically!
+                  </span>
+                )}
               </p>
               <div className="flex gap-4">
                 <button 
@@ -755,11 +737,26 @@ export default function GamePage() {
                 >
                   Cancel
                 </button>
-                <Link href="/lobby" className="flex-1">
-                  <button className="w-full bg-red-500 text-white py-3 rounded-lg font-semibold hover:bg-red-600 transition-colors">
-                    Leave Game
-                  </button>
-                </Link>
+                <button 
+                  onClick={async () => {
+                    if (gameId && user) {
+                      // Call leave API
+                      try {
+                        await fetch('/api/game/leave', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ gameId, userId: user.id })
+                        })
+                      } catch (error) {
+                        console.error('Error leaving game:', error)
+                      }
+                    }
+                    window.location.href = '/lobby'
+                  }}
+                  className="flex-1 bg-red-500 text-white py-3 rounded-lg font-semibold hover:bg-red-600 transition-colors"
+                >
+                  Leave Game
+                </button>
               </div>
             </div>
           </div>

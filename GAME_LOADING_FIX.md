@@ -1,5 +1,31 @@
 # Game Loading Issues - Fixed
 
+## 🚨 CRITICAL: Run Database Migration First!
+
+Before testing, you **MUST** run this SQL in Supabase SQL Editor:
+
+### Option 1: Complete Fix (Recommended)
+```sql
+-- Copy/paste contents of supabase/fix_all_issues.sql
+-- This fixes EVERYTHING: missing columns, RLS, stuck games
+```
+
+### Option 2: Individual Fixes
+```sql
+-- 1. Add missing columns
+\i supabase/add_missing_game_columns.sql
+
+-- 2. Disable RLS for development
+\i supabase/disable_rls_dev.sql
+```
+
+**Why?** 
+1. The game was crashing because the `games` table was missing columns
+2. The 406 errors are caused by RLS blocking queries
+3. Running `fix_all_issues.sql` fixes both problems at once
+
+---
+
 ## Problems Identified
 
 ### 1. ✅ Infinite Loop (FIXED)
@@ -28,7 +54,13 @@
 - Set `Accept: application/json` and `Content-Type: application/json`
 
 **Action Required**: 
-If 406 errors persist, run this SQL in Supabase SQL Editor:
+1. **CRITICAL**: Run this SQL migration first to add missing columns:
+```sql
+-- Run in Supabase SQL Editor
+\i supabase/add_missing_game_columns.sql
+```
+
+2. If 406 errors persist, run the RLS fix:
 ```sql
 -- Run the RLS fix
 \i supabase/fix_all_rls_simple.sql
@@ -53,11 +85,25 @@ If 406 errors persist, run this SQL in Supabase SQL Editor:
 1. Added debug logging for game state fetching
 2. Added error handling for failed game state fetch
 3. Logs now show: "📥 Fetching initial game state..." → "✅ Initial game state loaded: waiting"
+4. **Fixed `joinGame` stability** - now uses `useRef` for channel tracking
+5. **Removed dependencies** from `joinGame` useCallback (now `[]`)
+6. Channel cleanup no longer causes re-creation of `joinGame` function
 
 ### `lib/supabase.ts`
 1. Added explicit headers configuration
 2. Set schema to 'public'
 3. Added Accept and Content-Type headers
+
+### `app/api/game/start/route.ts`
+1. **Removed `last_call_time` update** - column didn't exist, causing crashes
+2. **Removed `number_sequence_hash` update** - column didn't exist
+3. Game loop now works without these optional audit columns
+
+### `supabase/add_missing_game_columns.sql` (NEW FILE)
+1. Adds `last_call_time` column for future use
+2. Adds `number_sequence_hash` column for provably fair gaming
+3. Adds `min_players` column
+4. Updates status constraint to include 'waiting' state
 
 ## Expected Behavior Now
 
@@ -97,3 +143,27 @@ If 406 errors persist, run this SQL in Supabase SQL Editor:
 1. Clear browser cache and reload
 2. Check if `initializingRef` is working (should see only one "🎮 Initializing game" log)
 3. Verify database transactions table for duplicate entries
+
+### If countdown gets stuck:
+1. Check browser console for "⚠️ Countdown appears stuck" message
+2. The system will automatically attempt to restart after 15 seconds
+3. Check server logs to see if game loop is running
+4. Verify the `/api/game/start` endpoint is accessible
+
+## Latest Updates (2025-11-10)
+
+### UI Changes
+- ✅ Removed "Back to Lobby" link from game page header
+- ✅ Only "Leave Game" button remains during gameplay
+- ✅ Cleaner header with just room name and leave button
+
+### Countdown Fix
+- ✅ Re-fetch game status after joining to ensure start API is called
+- ✅ Added 15-second countdown monitor with auto-restart
+- ✅ Better logging to diagnose countdown issues
+- ✅ Handles race condition where first player doesn't trigger start
+
+### Socket Stability
+- ✅ `joinGame` function now stable across renders
+- ✅ Uses `useRef` instead of state dependencies
+- ✅ No more premature cleanup causing game state loss

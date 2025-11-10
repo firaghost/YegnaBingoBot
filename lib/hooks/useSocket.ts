@@ -143,15 +143,23 @@ export function useSocket() {
   const claimBingo = async (gameId: string, userId: string, card: number[][]) => {
     console.log('🎰 Claiming bingo for game:', gameId)
     
-    // Call edge function or API to verify and process bingo
-    const { data, error } = await supabase.functions.invoke('claim-bingo', {
-      body: { gameId, userId, card }
-    })
+    try {
+      const response = await fetch('/api/game/claim-bingo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId, userId, card })
+      })
 
-    if (error) {
-      console.error('❌ Bingo claim error:', error)
-    } else {
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error('❌ Bingo claim error:', data.error)
+        return
+      }
+
       console.log('✅ Bingo claimed:', data)
+    } catch (error) {
+      console.error('❌ Bingo claim error:', error)
     }
   }
 
