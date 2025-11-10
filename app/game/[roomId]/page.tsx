@@ -8,7 +8,7 @@ import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 
-type GameStatus = 'countdown' | 'waiting' | 'active' | 'finished'
+type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
 
 interface CalledNumber {
   letter: string
@@ -66,29 +66,45 @@ export default function GamePage() {
           return
         }
 
-        // Find or create active game for this room
+        // Find active or waiting game for this room
         let { data: activeGame } = await supabase
           .from('games')
           .select('*')
           .eq('room_id', roomId)
-          .in('status', ['countdown', 'active'])
+          .in('status', ['waiting', 'countdown'])
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
 
+        // Check if there's an active game (player should be queued)
+        const { data: runningGame } = await supabase
+          .from('games')
+          .select('*')
+          .eq('room_id', roomId)
+          .eq('status', 'active')
+          .single()
+
+        if (runningGame) {
+          // Game is already running, put player in queue
+          setPlayerState('queue')
+          setLoading(false)
+          return
+        }
+
         if (!activeGame) {
-          // Create new game
+          // Create new game with waiting status
           const { data: newGame, error: createError } = await supabase
             .from('games')
             .insert({
               room_id: roomId,
-              status: 'countdown',
+              status: 'waiting',
               countdown_time: 10,
               players: [user.id],
               bots: [],
               called_numbers: [],
               stake: room.stake,
               prize_pool: room.stake,
+              min_players: 2,
               started_at: new Date().toISOString()
             })
             .select()
@@ -99,15 +115,27 @@ export default function GamePage() {
         } else {
           // Join existing game
           if (!activeGame.players.includes(user.id)) {
+            const updatedPlayers = [...activeGame.players, user.id]
+            const updatedPrizePool = activeGame.prize_pool + room.stake
+            
+            // If we now have enough players, start countdown
+            const newStatus = updatedPlayers.length >= 2 ? 'countdown' : 'waiting'
+            
             const { error: joinError } = await supabase
               .from('games')
               .update({
-                players: [...activeGame.players, user.id],
-                prize_pool: activeGame.prize_pool + room.stake
+                players: updatedPlayers,
+                prize_pool: updatedPrizePool,
+                status: newStatus
               })
               .eq('id', activeGame.id)
 
             if (joinError) throw joinError
+            
+            // Update local game state
+            activeGame.players = updatedPlayers
+            activeGame.prize_pool = updatedPrizePool
+            activeGame.status = newStatus
           }
         }
 
@@ -294,6 +322,32 @@ export default function GamePage() {
             Leave Game
           </button>
         </div>
+
+        {/* Waiting for Players State */}
+        {gameStatus === 'waiting' && (
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white rounded-2xl shadow-2xl p-12 text-center">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <div className="text-4xl animate-bounce">⏳</div>
+                <h2 className="text-3xl font-bold text-gray-800">Waiting for Players</h2>
+              </div>
+              <div className="text-6xl font-bold text-blue-600 mb-6">
+                {players}/{gameState?.min_players || 2}
+              </div>
+              <p className="text-gray-600 text-lg mb-4">
+                Waiting for at least {gameState?.min_players || 2} players to start the game...
+              </p>
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mt-6">
+                <p className="text-sm text-gray-600">
+                  💡 <strong>Tip:</strong> Share the game link with friends to start faster!
+                </p>
+              </div>
+              <div className="mt-6 text-sm text-gray-500">
+                Current Prize Pool: <span className="font-bold text-green-600">{formatCurrency(prizePool)}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Countdown State */}
         {gameStatus === 'countdown' && (

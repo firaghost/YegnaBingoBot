@@ -3,7 +3,7 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { supabase } from '../lib/supabase.js'
 
-const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || '3001', 10)
+const SOCKET_PORT = parseInt(process.env.PORT || process.env.SOCKET_PORT || '3001', 10)
 
 // Create HTTP server for Socket.IO only
 const httpServer = createServer()
@@ -11,7 +11,12 @@ const httpServer = createServer()
 // Initialize Socket.IO with CORS
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    origin: [
+      process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      'https://yegna-bingo-bot.vercel.app',
+      'https://yegnabingo.vercel.app',
+      'https://miniapo.vercel.app'
+    ],
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -24,9 +29,9 @@ io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id)
 
   // Join game room
-  socket.on('join-game', async (gameId: string) => {
+  socket.on('join-game', async ({ gameId, userId }: { gameId: string; userId: string }) => {
     socket.join(`game-${gameId}`)
-    console.log(`👤 User ${socket.id} joined game ${gameId}`)
+    console.log(`👤 User ${userId} (${socket.id}) joined game ${gameId}`)
     
     // Fetch game data
     const { data: game } = await supabase
@@ -36,14 +41,31 @@ io.on('connection', (socket) => {
       .single()
 
     if (game) {
-      socket.emit('game-data', game)
+      // Send game state to the joining player
+      socket.emit('game-state', {
+        id: game.id,
+        room_id: game.room_id,
+        status: game.status,
+        countdown_time: game.countdown_time || 10,
+        players: game.players || [],
+        bots: game.bots || [],
+        called_numbers: game.called_numbers || [],
+        latest_number: null,
+        stake: game.stake,
+        prize_pool: game.prize_pool,
+        winner_id: game.winner_id
+      })
+
+      // Notify other players
+      socket.to(`game-${gameId}`).emit('player-joined', { userId })
     }
   })
 
   // Leave game room
-  socket.on('leave-game', (gameId: string) => {
+  socket.on('leave-game', ({ gameId, userId }: { gameId: string; userId: string }) => {
     socket.leave(`game-${gameId}`)
-    console.log(`👋 User ${socket.id} left game ${gameId}`)
+    console.log(`👋 User ${userId} (${socket.id}) left game ${gameId}`)
+    socket.to(`game-${gameId}`).emit('player-left', { userId })
   })
 
   // Mark number on card

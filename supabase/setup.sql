@@ -29,7 +29,7 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   telegram_id TEXT UNIQUE NOT NULL,
   username TEXT NOT NULL,
-  balance DECIMAL(10, 2) DEFAULT 1000.00,
+  balance DECIMAL(10, 2) DEFAULT 5.00,
   games_played INTEGER DEFAULT 0,
   games_won INTEGER DEFAULT 0,
   total_winnings DECIMAL(10, 2) DEFAULT 0,
@@ -254,21 +254,30 @@ ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE broadcasts ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies
-CREATE POLICY "Public read access" ON users FOR SELECT USING (true);
-CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (true);
-CREATE POLICY "Public read rooms" ON rooms FOR SELECT USING (true);
-CREATE POLICY "Public read games" ON games FOR SELECT USING (true);
-CREATE POLICY "Users read own cards" ON player_cards FOR SELECT USING (true);
-CREATE POLICY "Users read own transactions" ON transactions FOR SELECT USING (true);
-CREATE POLICY "Public read admin_users" ON admin_users FOR SELECT USING (true);
-CREATE POLICY "Public read broadcasts" ON broadcasts FOR SELECT USING (true);
+-- Permissive policies for development (tighten in production)
+CREATE POLICY "Anyone can read users" ON users FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert users" ON users FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update users" ON users FOR UPDATE USING (true);
+
+CREATE POLICY "Anyone can read rooms" ON rooms FOR SELECT USING (true);
+
+CREATE POLICY "Anyone can read games" ON games FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert games" ON games FOR INSERT WITH CHECK (true);
+CREATE POLICY "Anyone can update games" ON games FOR UPDATE USING (true);
+
+CREATE POLICY "Anyone can manage player_cards" ON player_cards FOR ALL USING (true);
+
+CREATE POLICY "Anyone can read transactions" ON transactions FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert transactions" ON transactions FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Anyone can read admin_users" ON admin_users FOR SELECT USING (true);
+
+CREATE POLICY "Anyone can read broadcasts" ON broadcasts FOR SELECT USING (true);
+CREATE POLICY "Anyone can insert broadcasts" ON broadcasts FOR INSERT WITH CHECK (true);
 
 -- ============================================
 -- VIEWS
 -- ============================================
-
-CREATE VIEW leaderboard_view AS
 SELECT 
   id,
   username,

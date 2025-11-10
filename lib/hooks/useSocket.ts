@@ -1,14 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react'
-import { io, Socket } from 'socket.io-client'
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 
 export interface GameState {
   id: string
   room_id: string
-  status: 'countdown' | 'active' | 'finished'
+  status: 'waiting' | 'countdown' | 'active' | 'finished'
   countdown_time: number
   players: string[]
   bots: string[]
@@ -17,93 +16,122 @@ export interface GameState {
   stake: number
   prize_pool: number
   winner_id: string | null
+  min_players: number
 }
 
 export function useSocket() {
-  const socketRef = useRef<Socket | null>(null)
   const [connected, setConnected] = useState(false)
   const [gameState, setGameState] = useState<GameState | null>(null)
+  const [channel, setChannel] = useState<RealtimeChannel | null>(null)
 
   useEffect(() => {
-    // Initialize socket connection
-    socketRef.current = io(SOCKET_URL, {
-      transports: ['websocket'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5
-    })
-
-    const socket = socketRef.current
-
-    socket.on('connect', () => {
-      console.log('✅ Socket connected:', socket.id)
-      setConnected(true)
-    })
-
-    socket.on('disconnect', () => {
-      console.log('❌ Socket disconnected')
-      setConnected(false)
-    })
-
-    socket.on('game-state', (state: GameState) => {
-      setGameState(state)
-    })
-
-    socket.on('number-called', (data: { letter: string; number: number }) => {
-      setGameState(prev => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          called_numbers: [...prev.called_numbers, data.number],
-          latest_number: data
-        }
-      })
-    })
-
-    socket.on('countdown-update', (time: number) => {
-      setGameState(prev => {
-        if (!prev) return prev
-        return { ...prev, countdown_time: time }
-      })
-    })
-
-    socket.on('game-started', () => {
-      setGameState(prev => {
-        if (!prev) return prev
-        return { ...prev, status: 'active' }
-      })
-    })
-
-    socket.on('game-finished', (data: { winner_id: string; prize: number }) => {
-      setGameState(prev => {
-        if (!prev) return prev
-        return {
-          ...prev,
-          status: 'finished',
-          winner_id: data.winner_id
-        }
-      })
-    })
+    // Supabase is always connected
+    setConnected(true)
 
     return () => {
-      socket.disconnect()
+      if (channel) {
+        channel.unsubscribe()
+      }
     }
-  }, [])
+  }, [channel])
 
-  const joinGame = (gameId: string, userId: string) => {
-    socketRef.current?.emit('join-game', { gameId, userId })
+  const joinGame = async (gameId: string, userId: string) => {
+    console.log('🎮 Joining game:', gameId, 'User:', userId)
+
+    // Unsubscribe from previous channel if exists
+    if (channel) {
+      await channel.unsubscribe()
+    }
+
+    // Subscribe to game updates
+    const gameChannel = supabase
+      .channel(`game:${gameId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'games',
+          filter: `id=eq.${gameId}`
+        },
+        (payload) => {
+          console.log('🔄 Game update:', payload)
+          const game = payload.new as any
+          
+          setGameState({
+            id: game.id,
+            room_id: game.room_id,
+            status: game.status,
+            countdown_time: game.countdown_time || 10,
+            players: game.players || [],
+            bots: game.bots || [],
+            called_numbers: game.called_numbers || [],
+            latest_number: game.latest_number || null,
+            stake: game.stake,
+            prize_pool: game.prize_pool,
+            winner_id: game.winner_id,
+            min_players: game.min_players || 2
+          })
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status)
+      })
+
+    setChannel(gameChannel)
+
+    // Fetch initial game state
+    const { data: game } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single()
+
+    if (game) {
+      setGameState({
+        id: game.id,
+        room_id: game.room_id,
+        status: game.status,
+        countdown_time: game.countdown_time || 10,
+        players: game.players || [],
+        bots: game.bots || [],
+        called_numbers: game.called_numbers || [],
+        latest_number: game.latest_number || null,
+        stake: game.stake,
+        prize_pool: game.prize_pool,
+        winner_id: game.winner_id,
+        min_players: game.min_players || 2
+      })
+    }
   }
 
-  const leaveGame = (gameId: string, userId: string) => {
-    socketRef.current?.emit('leave-game', { gameId, userId })
+  const leaveGame = async (gameId: string, userId: string) => {
+    console.log('👋 Leaving game:', gameId)
+    if (channel) {
+      await channel.unsubscribe()
+      setChannel(null)
+    }
+    setGameState(null)
   }
 
-  const markNumber = (gameId: string, userId: string, number: number) => {
-    socketRef.current?.emit('mark-number', { gameId, userId, number })
+  const markNumber = async (gameId: string, userId: string, number: number) => {
+    // Numbers are marked locally, no need to broadcast
+    console.log('🎯 Marked number:', number)
   }
 
-  const claimBingo = (gameId: string, userId: string, card: number[][]) => {
-    socketRef.current?.emit('claim-bingo', { gameId, userId, card })
+  const claimBingo = async (gameId: string, userId: string, card: number[][]) => {
+    console.log('🎰 Claiming bingo for game:', gameId)
+    
+    // Call edge function or API to verify and process bingo
+    const { data, error } = await supabase.functions.invoke('claim-bingo', {
+      body: { gameId, userId, card }
+    })
+
+    if (error) {
+      console.error('❌ Bingo claim error:', error)
+    } else {
+      console.log('✅ Bingo claimed:', data)
+    }
   }
 
   return {

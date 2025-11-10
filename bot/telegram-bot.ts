@@ -18,41 +18,63 @@ bot.command('start', async (ctx) => {
       .from('users')
       .select('*')
       .eq('telegram_id', userId.toString())
-      .single()
+      .maybeSingle()
 
     if (!existingUser) {
-      // Create new user
+      // Create new user with starting balance of 5 ETB
       await supabase
         .from('users')
         .insert({
           telegram_id: userId.toString(),
           username: username,
-          balance: 0,
-          status: 'active'
+          balance: 5, // Starting balance
+          games_played: 0,
+          games_won: 0,
+          total_winnings: 0
         })
-    }
 
-    await ctx.reply(
-      `🎰 *Welcome to Bingo Royale!*\n\n` +
-      `Hello ${username}! 👋\n\n` +
-      `Get ready for exciting bingo games with real prizes!\n\n` +
-      `✨ *Features:*\n` +
-      `💰 Win ETB prizes\n` +
-      `🎮 Multiple game rooms\n` +
-      `⚡ Real-time gameplay\n` +
-      `🏆 Leaderboard rankings\n` +
-      `💸 Easy deposit & withdrawal\n\n` +
-      `Tap the button below to start playing!`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-          [Markup.button.callback('💰 Balance', 'balance')],
-          [Markup.button.callback('🏆 Leaderboard', 'leaderboard')],
-          [Markup.button.callback('❓ Help', 'help')]
-        ])
-      }
-    )
+      await ctx.reply(
+        `🎰 *Welcome to Bingo Royale!*\n\n` +
+        `Hello ${username}! 👋\n\n` +
+        `You've been registered successfully!\n` +
+        `🎁 *Starting bonus: 5 ETB*\n\n` +
+        `Get ready for exciting bingo games with real prizes!\n\n` +
+        `✨ *Features:*\n` +
+        `💰 Win ETB prizes\n` +
+        `🎮 Multiple game rooms\n` +
+        `⚡ Real-time gameplay\n` +
+        `🏆 Leaderboard rankings\n` +
+        `💸 Easy deposit & withdrawal\n\n` +
+        `Tap the button below to start playing!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+            [Markup.button.callback('💰 Balance', 'balance')],
+            [Markup.button.callback('🏆 Leaderboard', 'leaderboard')],
+            [Markup.button.callback('❓ Help', 'help')]
+          ])
+        }
+      )
+    } else {
+      await ctx.reply(
+        `🎰 *Welcome back to Bingo Royale!*\n\n` +
+        `Hello ${username}! 👋\n\n` +
+        `Your balance: *${existingUser.balance} ETB*\n` +
+        `Games played: ${existingUser.games_played}\n` +
+        `Games won: ${existingUser.games_won}\n\n` +
+        `Ready to play?`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+            [Markup.button.callback('💰 Balance', 'balance')],
+            [Markup.button.callback('🏆 Leaderboard', 'leaderboard')],
+            [Markup.button.callback('❓ Help', 'help')]
+          ])
+        }
+      )
+    }
   } catch (error) {
     console.error('Error in start command:', error)
     await ctx.reply('Sorry, something went wrong. Please try again later.')
@@ -134,9 +156,9 @@ bot.command('play', async (ctx) => {
 bot.command('leaderboard', async (ctx) => {
   try {
     const { data: leaderboard } = await supabase
-      .from('leaderboard')
-      .select('*')
-      .order('rank', { ascending: true })
+      .from('users')
+      .select('username, total_winnings, games_won, games_played')
+      .order('total_winnings', { ascending: false })
       .limit(10)
 
     if (!leaderboard || leaderboard.length === 0) {
@@ -148,7 +170,7 @@ bot.command('leaderboard', async (ctx) => {
     leaderboard.forEach((player, index) => {
       const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
       message += `${medal} ${player.username}\n`
-      message += `   💰 ${player.total_winnings} ETB | 🎯 ${player.total_wins} wins\n\n`
+      message += `   💰 ${player.total_winnings} ETB | 🎯 ${player.games_won} wins\n\n`
     })
 
     await ctx.reply(message, {
@@ -163,24 +185,160 @@ bot.command('leaderboard', async (ctx) => {
   }
 })
 
+// Rooms command
+bot.command('rooms', async (ctx) => {
+  try {
+    const { data: rooms } = await supabase
+      .from('rooms')
+      .select('*')
+      .order('stake', { ascending: true })
+
+    if (!rooms || rooms.length === 0) {
+      await ctx.reply('No game rooms available.')
+      return
+    }
+
+    let message = '🎮 *Available Game Rooms:*\n\n'
+    rooms.forEach(room => {
+      const emoji = room.stake <= 10 ? '🎯' : room.stake <= 50 ? '⚡' : '💎'
+      message += `${emoji} *${room.name}*\n`
+      message += `   Stake: ${room.stake} ETB\n`
+      message += `   Prize Pool: ${room.prize_pool} ETB\n`
+      message += `   Players: ${room.current_players}/${room.max_players}\n\n`
+    })
+
+    await ctx.reply(message, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('🎮 Play Now', `${MINI_APP_URL}/lobby`)]
+      ])
+    })
+  } catch (error) {
+    console.error('Error in rooms command:', error)
+    await ctx.reply('Failed to fetch rooms.')
+  }
+})
+
+// Account command
+bot.command('account', async (ctx) => {
+  await ctx.reply(
+    '👤 *Your Account*\n\nView your complete profile, stats, and transaction history.',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('📊 View Account', `${MINI_APP_URL}/account`)]
+      ])
+    }
+  )
+})
+
+// History command
+bot.command('history', async (ctx) => {
+  await ctx.reply(
+    '📜 *Game History*\n\nView your complete game and transaction history.',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('📜 View History', `${MINI_APP_URL}/history`)]
+      ])
+    }
+  )
+})
+
+// Deposit command
+bot.command('deposit', async (ctx) => {
+  await ctx.reply(
+    '💸 *Deposit Funds*\n\nAdd balance to your account to start playing.',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('💸 Deposit Now', `${MINI_APP_URL}/deposit`)]
+      ])
+    }
+  )
+})
+
+// Withdraw command
+bot.command('withdraw', async (ctx) => {
+  await ctx.reply(
+    '💰 *Withdraw Winnings*\n\nWithdraw your winnings to your account.',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('💰 Withdraw Now', `${MINI_APP_URL}/withdraw`)]
+      ])
+    }
+  )
+})
+
+// Stats command
+bot.command('stats', async (ctx) => {
+  const userId = ctx.from.id
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('You need to /start first!')
+      return
+    }
+
+    const winRate = user.games_played > 0 
+      ? ((user.games_won / user.games_played) * 100).toFixed(1) 
+      : '0'
+
+    await ctx.reply(
+      `📊 *Your Statistics*\n\n` +
+      `💰 Balance: *${user.balance} ETB*\n` +
+      `🎮 Games Played: ${user.games_played}\n` +
+      `🏆 Games Won: ${user.games_won}\n` +
+      `💸 Total Winnings: ${user.total_winnings} ETB\n` +
+      `📈 Win Rate: ${winRate}%\n` +
+      `📅 Member Since: ${new Date(user.created_at).toLocaleDateString()}`,
+      { parse_mode: 'Markdown' }
+    )
+  } catch (error) {
+    console.error('Error in stats command:', error)
+    await ctx.reply('Failed to fetch stats.')
+  }
+})
+
 // Help command
 bot.command('help', async (ctx) => {
   await ctx.reply(
-    `📖 *Bingo Royale Help*\n\n` +
-    `*Commands:*\n` +
-    `/start - Start the bot\n` +
-    `/play - Join a game\n` +
+    `📖 *Bingo Royale - Help & Commands*\n\n` +
+    `*Game Commands:*\n` +
+    `/start - Register & get 1000 ETB bonus\n` +
+    `/play - Join a game room\n` +
+    `/rooms - View all available rooms\n\n` +
+    `*Account Commands:*\n` +
     `/balance - Check your balance\n` +
+    `/account - View your profile\n` +
+    `/stats - View detailed statistics\n` +
+    `/history - View game & transaction history\n\n` +
+    `*Money Commands:*\n` +
+    `/deposit - Add funds to your account\n` +
+    `/withdraw - Withdraw your winnings\n\n` +
+    `*Info Commands:*\n` +
     `/leaderboard - View top players\n` +
     `/help - Show this help message\n\n` +
     `*How to Play:*\n` +
-    `1. Deposit funds to your account\n` +
-    `2. Choose a game room\n` +
+    `1. Use /start to register (5 ETB free!)\n` +
+    `2. Choose a room with /play or /rooms\n` +
     `3. Mark numbers as they're called\n` +
-    `4. Complete a row, column, or diagonal to win!\n\n` +
-    `*Need Support?*\n` +
-    `Contact @YourSupportUsername`,
-    { parse_mode: 'Markdown' }
+    `4. Complete a line, column, or diagonal to win!\n\n` +
+    `💡 *Tip:* Use inline mode by typing @YourBotUsername in any chat!\n\n` +
+    `🎮 *Ready to play? Tap the button below!*`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+      ])
+    }
   )
 })
 
@@ -216,19 +374,19 @@ bot.action('help', async (ctx) => {
   await ctx.answerCbQuery()
   await ctx.reply(
     `📖 *Bingo Royale Help*\n\n` +
-    `*Commands:*\n` +
-    `/start - Start the bot\n` +
+    `*Quick Commands:*\n` +
+    `/start - Register & get bonus\n` +
     `/play - Join a game\n` +
     `/balance - Check your balance\n` +
-    `/deposit - Deposit funds\n` +
+    `/deposit - Add funds\n` +
     `/withdraw - Withdraw winnings\n` +
-    `/leaderboard - View top players\n` +
-    `/help - Show this help message\n\n` +
+    `/leaderboard - View rankings\n` +
+    `/help - Show all commands\n\n` +
     `*How to Play:*\n` +
-    `1. Deposit funds to your account\n` +
+    `1. Register with /start (5 ETB free!)\n` +
     `2. Choose a game room\n` +
     `3. Mark numbers as they're called\n` +
-    `4. Complete a row, column, or diagonal to win!\n\n` +
+    `4. Complete a line to win!\n\n` +
     `*Need Support?*\n` +
     `Contact @YourSupportUsername`,
     { parse_mode: 'Markdown' }
@@ -438,8 +596,13 @@ bot.on('inline_query', async (ctx) => {
         title: '📖 Help & Commands',
         description: 'View all available commands',
         input_message_content: {
-          message_text: `📖 *Bingo Royale Commands*\n\n/start - Start the bot\n/play - Join a game\n/balance - Check balance\n/deposit - Deposit funds\n/withdraw - Withdraw winnings\n/leaderboard - View rankings\n/rooms - View game rooms\n/account - View profile\n/help - Show help`,
+          message_text: `📖 *Bingo Royale Commands*\n\n/start - Register & get 5 ETB\n/play - Join a game\n/balance - Check balance\n/deposit - Add funds\n/withdraw - Withdraw winnings\n/leaderboard - View rankings\n/rooms - View game rooms\n/account - View profile\n/stats - View statistics\n/history - View history\n/help - Show help`,
           parse_mode: 'Markdown'
+        },
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎮 Play Now', web_app: { url: MINI_APP_URL } }]
+          ]
         }
       })
     }
@@ -450,14 +613,15 @@ bot.on('inline_query', async (ctx) => {
         type: 'article',
         id: 'play',
         title: '🎮 Play Bingo Royale',
-        description: 'Start playing now!',
+        description: 'Start playing now! Get 5 ETB bonus on signup',
         input_message_content: {
-          message_text: '🎰 *Bingo Royale*\n\nJoin exciting bingo games and win real prizes!',
+          message_text: '🎰 *Bingo Royale*\n\nJoin exciting bingo games and win real prizes!\n\n🎁 New players get 5 ETB bonus!\n💰 Multiple game rooms\n⚡ Real-time gameplay\n🏆 Leaderboard rankings',
           parse_mode: 'Markdown'
         },
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🎮 Play Now', web_app: { url: MINI_APP_URL } }]
+            [{ text: '🎮 Play Now', web_app: { url: MINI_APP_URL } }],
+            [{ text: '📖 Help', callback_data: 'help' }]
           ]
         }
       })

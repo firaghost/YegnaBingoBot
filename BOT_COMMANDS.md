@@ -1,29 +1,35 @@
 # 🤖 Telegram Bot Commands - Bingo Royale
 
-## 📋 **Complete Command List**
+## Add these commands to your bot via @BotFather
 
-### **User Commands**
+Use `/setcommands` with @BotFather and paste this:
 
-| Command | Description | Action |
-|---------|-------------|--------|
- /start | Start the bot and register 
- /play | Join a game 
- /balance | Check your balance 
- /deposit | Deposit funds 
- /withdraw | Withdraw winnings 
- /account | View profile 
- /leaderboard | View top players 
- /rooms | View available rooms 
- /help | Show help message 
+```
+start - Register & get 5 ETB bonus
+play - Join a game room
+rooms - View all available rooms
+balance - Check your balance
+account - View your profile
+stats - View detailed statistics
+history - View game & transaction history
+deposit - Add funds to your account
+withdraw - Withdraw your winnings
+leaderboard - View top players
+help - Show help & commands
+```
 
----
+## Alternative: Use `/mybots` → Select your bot → Edit Bot → Edit Commands
+
+Then paste the commands above.
+
 
 ## 🎮 **Bot Features**
 
 ### **1. User Registration**
 - Automatically creates user in Supabase on `/start`
 - Stores Telegram ID and username
-- Sets initial balance to 0 ETB
+- Sets initial balance to **5 ETB** (starting bonus)
+- Shows different welcome message for new vs returning users
 
 ### **2. Balance Management**
 - Real-time balance checking
@@ -127,10 +133,15 @@ npm run dev  # Starts both server and bot
 ## 📝 **Bot Responses**
 
 ### **Welcome Message** (`/start`)
+
+**For New Users:**
 ```
 🎰 Welcome to Bingo Royale!
 
 Hello [username]! 👋
+
+You've been registered successfully!
+🎁 Starting bonus: 5 ETB
 
 Get ready for exciting bingo games with real prizes!
 
@@ -142,6 +153,19 @@ Get ready for exciting bingo games with real prizes!
 💸 Easy deposit & withdrawal
 
 Tap the button below to start playing!
+```
+
+**For Returning Users:**
+```
+🎰 Welcome back to Bingo Royale!
+
+Hello [username]! 👋
+
+Your balance: 1,250 ETB
+Games played: 45
+Games won: 12
+
+Ready to play?
 ```
 
 ### **Balance Message** (`/balance`)
