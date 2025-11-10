@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
@@ -35,6 +35,8 @@ export default function GamePage() {
   const [redirectCountdown, setRedirectCountdown] = useState(5)
   const [findingNewGame, setFindingNewGame] = useState(false)
   const [loading, setLoading] = useState(true)
+  const initializingRef = useRef(false)
+  const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
 
   // Check authentication - only redirect after auth is loaded
   useEffect(() => {
@@ -49,20 +51,29 @@ export default function GamePage() {
     if (authLoading) return
     if (!user || !roomId) return
     if (gameId) return // Already initialized
+    if (initializingRef.current) return // Already initializing
 
     let isMounted = true
+    initializingRef.current = true
 
     const initializeGame = async () => {
       if (!isMounted) return
+      console.log('🎮 Initializing game for room:', roomId)
+      
       try {
         // Fetch room data
+        console.log('📡 Fetching room data...')
         const { data: room, error: roomError } = await supabase
           .from('rooms')
           .select('*')
           .eq('id', roomId)
           .single()
 
-        if (roomError) throw roomError
+        if (roomError) {
+          console.error('❌ Room error:', roomError)
+          throw roomError
+        }
+        console.log('✅ Room data:', room)
         setRoomData(room)
 
         // Check if user has sufficient balance
@@ -184,8 +195,13 @@ export default function GamePage() {
           onConflict: 'game_id,user_id'
         })
 
-        // Join socket room
-        joinGame(activeGame.id, user.id)
+        // Join socket room and wait for initial state
+        console.log('🔌 About to join socket game:', activeGame.id)
+        await joinGame(activeGame.id, user.id)
+        console.log('🔌 Socket join completed')
+        
+        // Store cleanup info
+        cleanupRef.current = { gameId: activeGame.id, userId: user.id }
 
         // If game just moved to countdown, trigger game start
         if (activeGame.status === 'countdown') {
@@ -220,10 +236,12 @@ export default function GamePage() {
         }
 
       } catch (error) {
-        console.error('Error initializing game:', error)
-        alert('Failed to join game')
+        console.error('❌ Error initializing game:', error)
+        alert('Failed to join game: ' + (error as any).message)
+        initializingRef.current = false
         router.push('/lobby')
       } finally {
+        console.log('✅ Game initialization complete')
         setLoading(false)
       }
     }
@@ -232,11 +250,32 @@ export default function GamePage() {
 
     return () => {
       isMounted = false
-      if (gameId && user) {
-        leaveGame(gameId, user.id)
+    }
+  }, [user, roomId, router, authLoading, gameId])
+
+  // Cleanup socket connection on unmount only
+  useEffect(() => {
+    return () => {
+      if (cleanupRef.current) {
+        leaveGame(cleanupRef.current.gameId, cleanupRef.current.userId)
       }
     }
-  }, [user, roomId, router, joinGame, leaveGame, authLoading, gameId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Safety timeout - if gameState doesn't load within 10 seconds, show error
+  useEffect(() => {
+    if (!loading && !gameState && gameId) {
+      const timeout = setTimeout(() => {
+        console.error('⚠️ Game state failed to load after 10 seconds')
+        console.log('Debug - gameId:', gameId, 'loading:', loading, 'gameState:', gameState)
+        alert('Failed to connect to game. Please try again.')
+        router.push('/lobby')
+      }, 10000)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [loading, gameState, gameId, router])
 
   // Handle game state updates from Socket.IO
   useEffect(() => {
@@ -329,11 +368,23 @@ export default function GamePage() {
     )
   }
 
-  if (!gameState || !roomData) {
+  if (!roomData) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-xl text-gray-600">Loading game...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // If gameState hasn't loaded yet, show a brief loading state
+  if (!gameState) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-xl text-gray-600">Connecting to game...</p>
         </div>
       </div>
     )

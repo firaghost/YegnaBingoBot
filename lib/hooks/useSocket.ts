@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -23,6 +23,7 @@ export function useSocket() {
   const [connected, setConnected] = useState(false)
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [channel, setChannel] = useState<RealtimeChannel | null>(null)
+  const channelRef = useRef<RealtimeChannel | null>(null)
 
   useEffect(() => {
     setConnected(true)
@@ -36,11 +37,13 @@ export function useSocket() {
 
   const joinGame = useCallback(async (gameId: string, userId: string) => {
     console.log(`🎮 Joining game: ${gameId} User: ${userId}`)
+    console.log('Current channel state:', channelRef.current ? 'exists' : 'null')
 
-    // Prevent duplicate subscriptions
-    if (channel) {
-      console.log('⚠️ Already subscribed, skipping...')
-      return
+    // Clean up existing channel if any
+    if (channelRef.current) {
+      console.log('⚠️ Cleaning up existing channel...')
+      await channelRef.current.unsubscribe()
+      channelRef.current = null
     }
 
     // Subscribe to game updates with throttling
@@ -83,21 +86,27 @@ export function useSocket() {
         }
       )
       .subscribe((status) => {
+        console.log('📡 Subscription status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('✅ Subscribed to game updates')
         }
       })
 
+    channelRef.current = gameChannel
     setChannel(gameChannel)
 
     // Fetch initial game state
-    const { data: game } = await supabase
+    console.log('📥 Fetching initial game state...')
+    const { data: game, error } = await supabase
       .from('games')
       .select('*')
       .eq('id', gameId)
       .single()
 
-    if (game) {
+    if (error) {
+      console.error('❌ Error fetching game state:', error)
+    } else if (game) {
+      console.log('✅ Initial game state loaded:', game.status)
       setGameState({
         id: game.id,
         room_id: game.room_id,
@@ -112,8 +121,10 @@ export function useSocket() {
         winner_id: game.winner_id,
         min_players: game.min_players || 2
       })
+    } else {
+      console.warn('⚠️ No game found with ID:', gameId)
     }
-  }, [channel, setChannel])
+  }, [])
 
   const leaveGame = async (gameId: string, userId: string) => {
     console.log('👋 Leaving game:', gameId)
