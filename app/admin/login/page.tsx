@@ -4,26 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        initData: string
-        initDataUnsafe: {
-          user?: {
-            id: number
-            first_name: string
-            last_name?: string
-            username?: string
-          }
-        }
-        ready: () => void
-        expand: () => void
-      }
-    }
-  }
-}
-
 export default function AdminLoginPage() {
   const router = useRouter()
   const { loginWithTelegram, isAuthenticated } = useAdminAuth()

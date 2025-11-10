@@ -5,27 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp: {
-        initData: string
-        initDataUnsafe: {
-          user?: {
-            id: number
-            first_name: string
-            last_name?: string
-            username?: string
-            language_code?: string
-          }
-        }
-        ready: () => void
-        expand: () => void
-      }
-    }
-  }
-}
-
 export default function LoginPage() {
   const router = useRouter()
   const { loginWithTelegram, isAuthenticated } = useAuth()
