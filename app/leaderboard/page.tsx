@@ -1,22 +1,47 @@
 "use client"
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 
+interface LeaderboardEntry {
+  id: string
+  username: string
+  games_won: number
+  total_winnings: number
+  games_played: number
+}
+
 export default function LeaderboardPage() {
-  const [leaderboard] = useState([
-    { rank: 1, username: 'BingoMaster_999', totalWins: 156, totalWinnings: 450000, gamesPlayed: 523 },
-    { rank: 2, username: 'LuckyQueen_777', totalWins: 134, totalWinnings: 380000, gamesPlayed: 487 },
-    { rank: 3, username: 'Champion_888', totalWins: 128, totalWinnings: 365000, gamesPlayed: 456 },
-    { rank: 4, username: 'StarPlayer_555', totalWins: 112, totalWinnings: 298000, gamesPlayed: 412 },
-    { rank: 5, username: 'KingBingo_321', totalWins: 98, totalWinnings: 267000, gamesPlayed: 389 },
-    { rank: 6, username: 'ProGamer_456', totalWins: 87, totalWinnings: 234000, gamesPlayed: 356 },
-    { rank: 7, username: 'AceWinner_789', totalWins: 76, totalWinnings: 198000, gamesPlayed: 334 },
-    { rank: 8, username: 'Phoenix_123', totalWins: 65, totalWinnings: 176000, gamesPlayed: 312 },
-    { rank: 9, username: 'Dragon_444', totalWins: 54, totalWinnings: 145000, gamesPlayed: 289 },
-    { rank: 10, username: 'Eagle_666', totalWins: 48, totalWinnings: 132000, gamesPlayed: 267 },
-  ])
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('all')
+
+  useEffect(() => {
+    fetchLeaderboard()
+  }, [period])
+
+  const fetchLeaderboard = async () => {
+    try {
+      setLoading(true)
+      
+      let query = supabase
+        .from('users')
+        .select('id, username, games_won, total_winnings, games_played')
+        .order('total_winnings', { ascending: false })
+        .limit(10)
+
+      const { data, error } = await query
+
+      if (error) throw error
+      setLeaderboard(data || [])
+    } catch (error) {
+      console.error('Error fetching leaderboard:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getMedalEmoji = (rank: number) => {
     if (rank === 1) return '🥇'
@@ -41,16 +66,22 @@ export default function LeaderboardPage() {
 
         {/* Period Selector */}
         <div className="flex justify-center gap-4 mb-12">
-          {['Daily', 'Weekly', 'Monthly', 'All Time'].map((period) => (
+          {[
+            { label: 'Daily', value: 'daily' as const },
+            { label: 'Weekly', value: 'weekly' as const },
+            { label: 'Monthly', value: 'monthly' as const },
+            { label: 'All Time', value: 'all' as const }
+          ].map((p) => (
             <button
-              key={period}
+              key={p.value}
+              onClick={() => setPeriod(p.value)}
               className={`px-6 py-2 rounded-lg font-semibold transition-all ${
-                period === 'All Time'
+                period === p.value
                   ? 'bg-blue-600 text-white shadow-lg'
                   : 'bg-white text-gray-600 hover:bg-gray-100'
               }`}
             >
-              {period}
+              {p.label}
             </button>
           ))}
         </div>
@@ -71,9 +102,13 @@ export default function LeaderboardPage() {
 
             {/* Table Body */}
             <div className="divide-y divide-gray-200">
-              {leaderboard.map((player, index) => (
+              {loading ? (
+                <div className="flex justify-center items-center py-20">
+                  <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : leaderboard.map((player, index) => (
                 <div 
-                  key={player.rank}
+                  key={player.id}
                   className={`p-6 hover:bg-gray-50 transition-colors ${
                     index < 3 ? 'bg-gradient-to-r from-yellow-50 to-orange-50' : ''
                   }`}
@@ -81,12 +116,12 @@ export default function LeaderboardPage() {
                   <div className="grid grid-cols-12 gap-4 items-center text-sm md:text-base">
                     <div className="col-span-1">
                       <div className={`text-2xl font-bold ${
-                        player.rank === 1 ? 'text-yellow-500' :
-                        player.rank === 2 ? 'text-gray-400' :
-                        player.rank === 3 ? 'text-orange-600' :
+                        index === 0 ? 'text-yellow-500' :
+                        index === 1 ? 'text-gray-400' :
+                        index === 2 ? 'text-orange-600' :
                         'text-gray-600'
                       }`}>
-                        {getMedalEmoji(player.rank)}
+                        {getMedalEmoji(index + 1)}
                       </div>
                     </div>
                     <div className="col-span-3">
@@ -101,18 +136,18 @@ export default function LeaderboardPage() {
                       </div>
                     </div>
                     <div className="col-span-2 text-center">
-                      <span className="font-bold text-green-600">{player.totalWins}</span>
+                      <span className="font-bold text-green-600">{player.games_won}</span>
                     </div>
                     <div className="col-span-2 text-center">
-                      <span className="text-gray-600">{player.gamesPlayed}</span>
+                      <span className="text-gray-600">{player.games_played}</span>
                     </div>
                     <div className="col-span-2 text-center">
                       <span className="font-semibold text-blue-600">
-                        {((player.totalWins / player.gamesPlayed) * 100).toFixed(1)}%
+                        {player.games_played > 0 ? ((player.games_won / player.games_played) * 100).toFixed(1) : '0.0'}%
                       </span>
                     </div>
                     <div className="col-span-2 text-right">
-                      <span className="font-bold text-purple-600">{formatCurrency(player.totalWinnings)}</span>
+                      <span className="font-bold text-purple-600">{formatCurrency(player.total_winnings)}</span>
                     </div>
                   </div>
                 </div>

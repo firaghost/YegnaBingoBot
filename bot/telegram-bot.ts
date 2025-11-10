@@ -337,6 +337,196 @@ bot.command('rooms', async (ctx) => {
   }
 })
 
+// Inline query handler
+bot.on('inline_query', async (ctx) => {
+  const query = ctx.inlineQuery.query.toLowerCase()
+  
+  try {
+    const results = []
+
+    // Game rooms inline results
+    if (query.includes('room') || query.includes('game') || query === '') {
+      const { data: rooms } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('status', 'active')
+        .order('stake', { ascending: true })
+
+      if (rooms) {
+        rooms.forEach((room, index) => {
+          const emoji = room.stake <= 10 ? '🎯' : room.stake <= 50 ? '⚡' : '💎'
+          results.push({
+            type: 'article',
+            id: `room_${room.id}`,
+            title: `${emoji} ${room.name}`,
+            description: `Entry: ${room.stake} ETB | Players: ${room.current_players}/${room.max_players}`,
+            input_message_content: {
+              message_text: `🎮 *${room.name}*\n\nEntry Fee: ${room.stake} ETB\nPlayers: ${room.current_players}/${room.max_players}\nPrize Pool: ${room.prize_pool} ETB\n\n${room.description}`,
+              parse_mode: 'Markdown'
+            },
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🎮 Join Game', web_app: { url: `${MINI_APP_URL}/game/${room.id}` } }]
+              ]
+            }
+          })
+        })
+      }
+    }
+
+    // Balance inline result
+    if (query.includes('balance') || query.includes('account')) {
+      const userId = ctx.inlineQuery.from.id
+      const { data: user } = await supabase
+        .from('users')
+        .select('balance, games_played, games_won')
+        .eq('telegram_id', userId.toString())
+        .single()
+
+      if (user) {
+        results.push({
+          type: 'article',
+          id: 'balance',
+          title: '💰 My Balance',
+          description: `${user.balance} ETB | ${user.games_won}/${user.games_played} wins`,
+          input_message_content: {
+            message_text: `💰 *My Account*\n\nBalance: ${user.balance} ETB\nGames Played: ${user.games_played}\nGames Won: ${user.games_won}\nWin Rate: ${user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : 0}%`,
+            parse_mode: 'Markdown'
+          }
+        })
+      }
+    }
+
+    // Leaderboard inline result
+    if (query.includes('leader') || query.includes('top')) {
+      const { data: leaderboard } = await supabase
+        .from('users')
+        .select('username, total_winnings, games_won')
+        .order('total_winnings', { ascending: false })
+        .limit(5)
+
+      if (leaderboard && leaderboard.length > 0) {
+        let leaderText = '🏆 *Top Players*\n\n'
+        leaderboard.forEach((player, index) => {
+          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
+          leaderText += `${medal} ${player.username} - ${player.total_winnings} ETB\n`
+        })
+
+        results.push({
+          type: 'article',
+          id: 'leaderboard',
+          title: '🏆 Leaderboard',
+          description: 'View top players',
+          input_message_content: {
+            message_text: leaderText,
+            parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📊 Full Leaderboard', web_app: { url: `${MINI_APP_URL}/leaderboard` } }]
+            ]
+          }
+        })
+      }
+    }
+
+    // Help inline result
+    if (query.includes('help') || query.includes('command')) {
+      results.push({
+        type: 'article',
+        id: 'help',
+        title: '📖 Help & Commands',
+        description: 'View all available commands',
+        input_message_content: {
+          message_text: `📖 *Bingo Royale Commands*\n\n/start - Start the bot\n/play - Join a game\n/balance - Check balance\n/deposit - Deposit funds\n/withdraw - Withdraw winnings\n/leaderboard - View rankings\n/rooms - View game rooms\n/account - View profile\n/help - Show help`,
+          parse_mode: 'Markdown'
+        }
+      })
+    }
+
+    // Default: Show play option
+    if (results.length === 0) {
+      results.push({
+        type: 'article',
+        id: 'play',
+        title: '🎮 Play Bingo Royale',
+        description: 'Start playing now!',
+        input_message_content: {
+          message_text: '🎰 *Bingo Royale*\n\nJoin exciting bingo games and win real prizes!',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎮 Play Now', web_app: { url: MINI_APP_URL } }]
+          ]
+        }
+      })
+    }
+
+    await ctx.answerInlineQuery(results, {
+      cache_time: 10,
+      is_personal: true
+    })
+  } catch (error) {
+    console.error('Inline query error:', error)
+    await ctx.answerInlineQuery([])
+  }
+})
+
+// History command
+bot.command('history', async (ctx) => {
+  await ctx.reply(
+    '📜 *Game History*\n\n' +
+    'View your complete game and transaction history:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('📊 View History', `${MINI_APP_URL}/history`)]
+      ])
+    }
+  )
+})
+
+// Stats command
+bot.command('stats', async (ctx) => {
+  const userId = ctx.from.id
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('You need to /start first!')
+      return
+    }
+
+    const winRate = user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : '0.0'
+
+    await ctx.reply(
+      `📊 *Your Statistics*\n\n` +
+      `💰 Balance: ${user.balance} ETB\n` +
+      `🎮 Games Played: ${user.games_played}\n` +
+      `🏆 Games Won: ${user.games_won}\n` +
+      `📈 Win Rate: ${winRate}%\n` +
+      `💵 Total Winnings: ${user.total_winnings} ETB\n\n` +
+      `Keep playing to improve your stats!`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)],
+          [Markup.button.webApp('📊 Full Stats', `${MINI_APP_URL}/account`)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in stats command:', error)
+    await ctx.reply('Failed to fetch statistics.')
+  }
+})
+
 // Error handling
 bot.catch((err, ctx) => {
   console.error(`Error for ${ctx.updateType}`, err)
@@ -345,7 +535,9 @@ bot.catch((err, ctx) => {
 // Launch bot
 export function startBot() {
   bot.launch()
-  console.log('Telegram bot started')
+  console.log('✅ Telegram bot started successfully')
+  console.log('📱 Inline mode enabled')
+  console.log('🎮 All commands registered')
 
   // Enable graceful stop
   process.once('SIGINT', () => bot.stop('SIGINT'))

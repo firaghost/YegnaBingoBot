@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
 export default function AdminDashboard() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const router = useRouter()
+  const { admin, isAuthenticated, loading: authLoading, logout } = useAdminAuth()
   const [loading, setLoading] = useState(false)
   
   const [stats, setStats] = useState({
@@ -26,12 +27,12 @@ export default function AdminDashboard() {
   const [recentWithdrawals, setRecentWithdrawals] = useState<any[]>([])
 
   useEffect(() => {
-    const adminAuth = localStorage.getItem('adminAuth')
-    if (adminAuth === 'true') {
-      setIsAuthenticated(true)
+    if (!authLoading && !isAuthenticated) {
+      router.push('/admin/login')
+    } else if (isAuthenticated) {
       fetchDashboardData()
     }
-  }, [])
+  }, [authLoading, isAuthenticated, router])
 
   const fetchDashboardData = async () => {
     try {
@@ -40,10 +41,13 @@ export default function AdminDashboard() {
         .from('users')
         .select('*', { count: 'exact', head: true })
       
+      // Active users (users who played in last 7 days)
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
       const { count: activeUsers } = await supabase
         .from('users')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'active')
+        .gte('updated_at', sevenDaysAgo.toISOString())
 
       // Fetch games stats
       const { count: totalGames } = await supabase
@@ -65,11 +69,17 @@ export default function AdminDashboard() {
       const todayRevenue = allGames?.filter(g => g.created_at?.startsWith(today))
         .reduce((sum, g) => sum + (g.prize_pool || 0), 0) || 0
 
-      // Fetch pending withdrawals
-      const { count: pendingWithdrawals } = await supabase
-        .from('withdrawals')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending')
+      // Fetch pending withdrawals (if table exists)
+      let pendingWithdrawals = 0
+      try {
+        const { count } = await supabase
+          .from('withdrawals')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'pending')
+        pendingWithdrawals = count || 0
+      } catch (e) {
+        // Table doesn't exist yet
+      }
 
       // Fetch transactions count
       const { count: totalTransactions } = await supabase
@@ -134,91 +144,10 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleLogin = async () => {
-    setLoading(true)
-    try {
-      // Query admin_users table
-      const { data, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('username', username)
-        .eq('password', password)
-        .eq('status', 'active')
-        .single()
-
-      if (error || !data) {
-        alert('Invalid username or password')
-        setLoading(false)
-        return
-      }
-
-      // Store admin info in localStorage
-      localStorage.setItem('adminAuth', 'true')
-      localStorage.setItem('adminId', data.id)
-      localStorage.setItem('adminUsername', data.username)
-      
-      setIsAuthenticated(true)
-      fetchDashboardData()
-    } catch (error) {
-      console.error('Login error:', error)
-      alert('Login failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('adminAuth')
-    localStorage.removeItem('adminId')
-    localStorage.removeItem('adminUsername')
-    setIsAuthenticated(false)
-  }
-
-  if (!isAuthenticated) {
+  if (authLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-6">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-3xl shadow-2xl p-10">
-            <div className="text-center mb-8">
-              <div className="text-7xl mb-4">🔐</div>
-              <h1 className="text-4xl font-bold text-gray-800 mb-2">Admin Panel</h1>
-              <p className="text-gray-600">Enter password to continue</p>
-            </div>
-
-            <div className="space-y-4">
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
-                className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-lg"
-              />
-              
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                placeholder="Enter password"
-                className="w-full px-4 py-4 border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none text-lg"
-              />
-
-              <button
-                onClick={handleLogin}
-                disabled={loading || !username || !password}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Authenticating...' : 'Login'}
-              </button>
-            </div>
-
-            <div className="mt-8 text-center">
-              <Link href="/" className="text-blue-600 hover:underline text-sm">
-                ← Back to Home
-              </Link>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
@@ -233,11 +162,12 @@ export default function AdminDashboard() {
               <h1 className="text-2xl font-bold text-white">🎰 Bingo Royale Admin</h1>
               <p className="text-gray-400 text-sm">Dashboard & Management</p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex items-center gap-4">
+              <span className="text-gray-300">Welcome, {admin?.username}</span>
               <Link href="/" className="text-gray-300 hover:text-white transition-colors">
                 View Site
               </Link>
-              <button onClick={handleLogout} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+              <button onClick={logout} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
                 Logout
               </button>
             </div>

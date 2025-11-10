@@ -1,98 +1,225 @@
 "use client"
 
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
-import { GameSimulator, GameStatus, CalledNumber } from '@/lib/gameSimulator'
-import { generateBingoCard, checkBingoWin, getBingoLetter, generateBotName, formatCurrency } from '@/lib/utils'
+import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useSocket } from '@/lib/hooks/useSocket'
+import { supabase } from '@/lib/supabase'
+import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
+
+type GameStatus = 'countdown' | 'waiting' | 'active' | 'finished'
+
+interface CalledNumber {
+  letter: string
+  number: number
+}
 
 export default function GamePage() {
   const params = useParams()
+  const router = useRouter()
   const roomId = params?.roomId as string
-  const simulatorRef = useRef<GameSimulator | null>(null)
+  const { user, isAuthenticated } = useAuth()
+  const { connected, gameState, joinGame, leaveGame, markNumber, claimBingo } = useSocket()
 
-  const [gameStatus, setGameStatus] = useState<GameStatus>('countdown')
-  const [countdownTime, setCountdownTime] = useState(10)
+  const [gameId, setGameId] = useState<string | null>(null)
+  const [roomData, setRoomData] = useState<any>(null)
   const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
   const [bingoCard, setBingoCard] = useState<number[][]>([])
   const [markedCells, setMarkedCells] = useState<boolean[][]>([])
-  const [calledNumbers, setCalledNumbers] = useState<number[]>([])
-  const [latestNumber, setLatestNumber] = useState<CalledNumber | null>(null)
-  const [players, setPlayers] = useState(124)
-  const [prizePool, setPrizePool] = useState(1000)
-  const [stake] = useState(10)
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showWinDialog, setShowWinDialog] = useState(false)
   const [showLoseDialog, setShowLoseDialog] = useState(false)
   const [winAmount, setWinAmount] = useState(0)
-  const [botWinnerName] = useState(generateBotName())
+  const [winnerName, setWinnerName] = useState('')
   const [redirectCountdown, setRedirectCountdown] = useState(5)
   const [findingNewGame, setFindingNewGame] = useState(false)
-  const [lobbyInfo, setLobbyInfo] = useState({
-    isActive: false,
-    isInitiator: false,
-    playersReady: 0
-  })
+  const [loading, setLoading] = useState(true)
 
-  // Initialize game
+  // Check authentication
   useEffect(() => {
-    const card = generateBingoCard()
-    setBingoCard(card)
-    
-    const marked: boolean[][] = []
-    for (let i = 0; i < 5; i++) {
-      marked[i] = []
-      for (let j = 0; j < 5; j++) {
-        marked[i][j] = (i === 2 && j === 2) // Free space
+    if (!isAuthenticated) {
+      router.push('/login')
+    }
+  }, [isAuthenticated, router])
+
+  // Fetch room data and join/create game
+  useEffect(() => {
+    if (!user || !roomId) return
+
+    const initializeGame = async () => {
+      try {
+        // Fetch room data
+        const { data: room, error: roomError } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('id', roomId)
+          .single()
+
+        if (roomError) throw roomError
+        setRoomData(room)
+
+        // Check if user has sufficient balance
+        if (user.balance < room.stake) {
+          alert('Insufficient balance!')
+          router.push('/lobby')
+          return
+        }
+
+        // Find or create active game for this room
+        let { data: activeGame } = await supabase
+          .from('games')
+          .select('*')
+          .eq('room_id', roomId)
+          .in('status', ['countdown', 'active'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (!activeGame) {
+          // Create new game
+          const { data: newGame, error: createError } = await supabase
+            .from('games')
+            .insert({
+              room_id: roomId,
+              status: 'countdown',
+              countdown_time: 10,
+              players: [user.id],
+              bots: [],
+              called_numbers: [],
+              stake: room.stake,
+              prize_pool: room.stake,
+              started_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+
+          if (createError) throw createError
+          activeGame = newGame
+        } else {
+          // Join existing game
+          if (!activeGame.players.includes(user.id)) {
+            const { error: joinError } = await supabase
+              .from('games')
+              .update({
+                players: [...activeGame.players, user.id],
+                prize_pool: activeGame.prize_pool + room.stake
+              })
+              .eq('id', activeGame.id)
+
+            if (joinError) throw joinError
+          }
+        }
+
+        setGameId(activeGame.id)
+
+        // Deduct stake from user balance
+        await supabase.rpc('deduct_balance', {
+          user_id: user.id,
+          amount: room.stake
+        })
+
+        // Create transaction record
+        await supabase.from('transactions').insert({
+          user_id: user.id,
+          type: 'stake',
+          amount: -room.stake,
+          game_id: activeGame.id,
+          status: 'completed'
+        })
+
+        // Generate bingo card
+        const card = generateBingoCard()
+        setBingoCard(card)
+        
+        const marked: boolean[][] = []
+        for (let i = 0; i < 5; i++) {
+          marked[i] = []
+          for (let j = 0; j < 5; j++) {
+            marked[i][j] = (i === 2 && j === 2) // Free space
+          }
+        }
+        setMarkedCells(marked)
+
+        // Save card to database
+        await supabase.from('player_cards').insert({
+          game_id: activeGame.id,
+          user_id: user.id,
+          card: card
+        })
+
+        // Join socket room
+        joinGame(activeGame.id, user.id)
+
+      } catch (error) {
+        console.error('Error initializing game:', error)
+        alert('Failed to join game')
+        router.push('/lobby')
+      } finally {
+        setLoading(false)
       }
     }
-    setMarkedCells(marked)
 
-    // Initialize game simulator
-    simulatorRef.current = new GameSimulator(stake)
-    const unsubscribe = simulatorRef.current.subscribe((state) => {
-      setGameStatus(state.status)
-      setCountdownTime(state.countdownTime)
-      setCalledNumbers(state.calledNumbers)
-      setLatestNumber(state.latestNumber)
-      setPlayers(state.players)
-      setPrizePool(state.prizePool)
-    })
-
-    simulatorRef.current.start()
+    initializeGame()
 
     return () => {
-      unsubscribe()
-      simulatorRef.current?.cleanup()
+      if (gameId && user) {
+        leaveGame(gameId, user.id)
+      }
     }
-  }, [stake])
+  }, [user, roomId, router, joinGame, leaveGame])
+
+  // Handle game state updates from Socket.IO
+  useEffect(() => {
+    if (!gameState) return
+
+    // Check if game finished
+    if (gameState.status === 'finished') {
+      if (gameState.winner_id === user?.id) {
+        // User won
+        setWinAmount(gameState.prize_pool)
+        setShowWinDialog(true)
+      } else {
+        // User lost
+        setWinAmount(gameState.prize_pool)
+        setShowLoseDialog(true)
+        
+        // Fetch winner name
+        if (gameState.winner_id) {
+          supabase
+            .from('users')
+            .select('username')
+            .eq('id', gameState.winner_id)
+            .single()
+            .then(({ data }) => {
+              if (data) setWinnerName(data.username)
+            })
+        }
+      }
+    }
+  }, [gameState, user])
 
   // Handle cell click
   const handleCellClick = (row: number, col: number) => {
-    if (gameStatus !== 'active') return
+    if (!gameState || gameState.status !== 'active') return
+    if (!gameId || !user) return
+    
     const num = bingoCard[row][col]
     if (num === 0) return
-    if (!calledNumbers.includes(num)) return
+    if (!gameState.called_numbers.includes(num)) return
 
     const newMarked = markedCells.map(r => [...r])
     newMarked[row][col] = !newMarked[row][col]
     setMarkedCells(newMarked)
 
+    // Emit mark event to server
+    markNumber(gameId, user.id, num)
+
     // Check for win
     if (checkBingoWin(newMarked)) {
-      setWinAmount(prizePool)
-      setShowWinDialog(true)
-      simulatorRef.current?.cleanup()
+      claimBingo(gameId, user.id, bingoCard)
     }
   }
-
-  // Simulate bot win
-  useEffect(() => {
-    if (gameStatus === 'finished' && !showWinDialog) {
-      setShowLoseDialog(true)
-      setWinAmount(prizePool)
-    }
-  }, [gameStatus, showWinDialog, prizePool])
 
   // Auto-redirect countdown after losing
   useEffect(() => {
@@ -112,25 +239,44 @@ export default function GamePage() {
 
   const handleFindNewGame = () => {
     setFindingNewGame(true)
-    setLobbyInfo({
-      isActive: true,
-      isInitiator: Math.random() > 0.5,
-      playersReady: Math.floor(Math.random() * 5) + 1
-    })
-    // In production, this would emit socket event: 'request-new-game'
+    // Reload the page to join a new game
     setTimeout(() => {
       window.location.href = `/game/${roomId}`
-    }, 3000)
+    }, 1500)
   }
 
-  const getRoomName = (id: string) => {
-    const names: Record<string, string> = {
-      classic: 'Classic Room',
-      speed: 'Speed Bingo',
-      mega: 'Mega Jackpot'
-    }
-    return names[id] || 'Bingo Room'
+  const getRoomName = () => {
+    return roomData?.name || 'Bingo Room'
   }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-xl text-gray-600">Joining game...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!gameState || !roomData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-xl text-gray-600">Loading game...</p>
+        </div>
+      </div>
+    )
+  }
+
+  const gameStatus = gameState.status
+  const countdownTime = gameState.countdown_time
+  const calledNumbers = gameState.called_numbers
+  const latestNumber = gameState.latest_number
+  const players = gameState.players.length
+  const prizePool = gameState.prize_pool
+  const stake = roomData.stake
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
@@ -140,7 +286,7 @@ export default function GamePage() {
           <Link href="/lobby" className="text-blue-600 hover:text-blue-800 font-medium transition-colors">
             ← Back to Lobby
           </Link>
-          <h1 className="text-2xl font-bold text-gray-800">{getRoomName(roomId)}</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{getRoomName()}</h1>
           <button 
             onClick={() => setShowLeaveDialog(true)}
             className="text-red-500 hover:text-red-700 font-medium transition-colors"
@@ -184,7 +330,7 @@ export default function GamePage() {
                 </p>
               </div>
               <div className="text-sm text-gray-500">
-                Your stake: {stake} ETB • Room: {getRoomName(roomId)}
+                Your stake: {formatCurrency(stake)} • Room: {getRoomName()}
               </div>
             </div>
           </div>
@@ -366,9 +512,9 @@ export default function GamePage() {
                   Stake lost: <span className="font-bold text-red-600">{formatCurrency(stake)}</span>
                 </p>
                 
-                {botWinnerName && (
+                {winnerName && (
                   <p className="text-xl">
-                    The winner is: <span className="font-semibold text-blue-600">{botWinnerName}</span>
+                    The winner is: <span className="font-semibold text-blue-600">{winnerName}</span>
                   </p>
                 )}
                 
@@ -391,14 +537,6 @@ export default function GamePage() {
                     <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                   </div>
                   <p className="text-sm text-blue-600 font-medium">🎮 Finding new game...</p>
-                  {lobbyInfo.isActive && (
-                    <p className="text-xs text-gray-600">
-                      {lobbyInfo.isInitiator 
-                        ? `Started lobby with ${lobbyInfo.playersReady} players ready`
-                        : `Joined lobby with ${lobbyInfo.playersReady} players ready`
-                      }
-                    </p>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-3">

@@ -17,6 +17,7 @@ export default function AdminBroadcast() {
 
   useEffect(() => {
     fetchEstimatedRecipients()
+    fetchPreviousBroadcasts()
   }, [targetAll, activeOnly, minBalance, minGames])
 
   const fetchEstimatedRecipients = async () => {
@@ -50,38 +51,63 @@ export default function AdminBroadcast() {
       return
     }
 
+    if (!confirm(`Send broadcast to ${estimatedRecipients} users?`)) {
+      return
+    }
+
     setIsSending(true)
     try {
-      // Get users based on filters
-      let query = supabase.from('users').select('telegram_id')
+      const response = await fetch('/api/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          message,
+          filters: {
+            activeOnly,
+            minBalance: minBalance ? parseInt(minBalance) : null,
+            minGames: minGames ? parseInt(minGames) : null
+          }
+        })
+      })
 
-      if (activeOnly) {
-        const yesterday = new Date()
-        yesterday.setDate(yesterday.getDate() - 1)
-        query = query.gte('last_active', yesterday.toISOString())
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send broadcast')
       }
 
-      if (minBalance) {
-        query = query.gte('balance', parseInt(minBalance))
-      }
-
-      if (minGames) {
-        query = query.gte('games_played', parseInt(minGames))
-      }
-
-      const { data: users } = await query
-
-      // TODO: Implement actual Telegram broadcast via bot
-      console.log(`Broadcasting to ${users?.length} users:`, { title, message })
-
-      alert(`Broadcast sent to ${estimatedRecipients} users!`)
+      alert(
+        `✅ Broadcast sent successfully!\n\n` +
+        `Total: ${data.results.total}\n` +
+        `Sent: ${data.results.sent}\n` +
+        `Failed: ${data.results.failed}`
+      )
+      
       setTitle('')
       setMessage('')
+      
+      // Refresh previous broadcasts
+      fetchPreviousBroadcasts()
     } catch (error) {
       console.error('Error sending broadcast:', error)
-      alert('Failed to send broadcast')
+      alert(`Failed to send broadcast: ${error}`)
     } finally {
       setIsSending(false)
+    }
+  }
+
+  const fetchPreviousBroadcasts = async () => {
+    try {
+      const { data } = await supabase
+        .from('broadcasts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      setPreviousBroadcasts(data || [])
+    } catch (error) {
+      console.error('Error fetching broadcasts:', error)
     }
   }
 
@@ -239,11 +265,17 @@ export default function AdminBroadcast() {
                     <div key={broadcast.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
                       <div className="font-semibold text-white mb-2">{broadcast.title}</div>
                       <div className="text-sm text-gray-400 mb-2">
-                        Recipients: {broadcast.recipients.toLocaleString()}
+                        Sent: {broadcast.sent}/{broadcast.recipients}
                       </div>
-                      <div className="text-xs text-gray-500">{broadcast.sent}</div>
-                      <span className="inline-block mt-2 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
-                        {broadcast.status}
+                      <div className="text-xs text-gray-500">
+                        {new Date(broadcast.created_at).toLocaleString()}
+                      </div>
+                      <span className={`inline-block mt-2 px-2 py-1 text-xs rounded ${
+                        broadcast.failed === 0 
+                          ? 'bg-green-500/20 text-green-400'
+                          : 'bg-yellow-500/20 text-yellow-400'
+                      }`}>
+                        {broadcast.failed === 0 ? 'Success' : `${broadcast.failed} failed`}
                       </span>
                     </div>
                   ))
@@ -251,17 +283,7 @@ export default function AdminBroadcast() {
               </div>
             </div>
 
-            {/* Tips */}
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 mt-6">
-              <h3 className="text-lg font-bold text-white mb-4">💡 Tips</h3>
-              <ul className="text-sm text-gray-300 space-y-2">
-                <li>• Keep messages short and clear</li>
-                <li>• Use emojis to grab attention</li>
-                <li>• Target specific user groups</li>
-                <li>• Preview before sending</li>
-                <li>• Send during peak hours</li>
-              </ul>
-            </div>
+            
           </div>
         </div>
       </div>

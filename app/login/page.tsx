@@ -2,18 +2,76 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/hooks/useAuth'
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp: {
+        initData: string
+        initDataUnsafe: {
+          user?: {
+            id: number
+            first_name: string
+            last_name?: string
+            username?: string
+            language_code?: string
+          }
+        }
+        ready: () => void
+        expand: () => void
+      }
+    }
+  }
+}
 
 export default function LoginPage() {
   const router = useRouter()
+  const { loginWithTelegram, isAuthenticated } = useAuth()
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleTelegramLogin = () => {
-    setLoading(true)
-    // Telegram Web App integration would go here
-    setTimeout(() => {
+  useEffect(() => {
+    // Redirect if already authenticated
+    if (isAuthenticated) {
       router.push('/lobby')
-    }, 1500)
+    }
+
+    // Initialize Telegram Web App
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.ready()
+      window.Telegram.WebApp.expand()
+    }
+  }, [isAuthenticated, router])
+
+  const handleTelegramLogin = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Check if running in Telegram Web App
+      if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+        const telegramUser = window.Telegram.WebApp.initDataUnsafe.user
+        
+        await loginWithTelegram({
+          id: telegramUser.id,
+          username: telegramUser.username || `${telegramUser.first_name}${telegramUser.last_name || ''}`,
+          first_name: telegramUser.first_name,
+          last_name: telegramUser.last_name
+        })
+
+        router.push('/lobby')
+      } else {
+        // For development/testing without Telegram
+        setError('Please open this app through Telegram')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error('Login error:', err)
+      setError('Failed to login. Please try again.')
+      setLoading(false)
+    }
   }
 
   return (
@@ -27,6 +85,12 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
             {/* Telegram Login */}
             <button
               onClick={handleTelegramLogin}
@@ -47,13 +111,6 @@ export default function LoginPage() {
                 </>
               )}
             </button>
-
-            {/* Guest Mode */}
-            <Link href="/lobby">
-              <button className="w-full bg-gray-100 text-gray-800 py-4 rounded-xl font-semibold hover:bg-gray-200 transition-all">
-                Continue as Guest
-              </button>
-            </Link>
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-200">

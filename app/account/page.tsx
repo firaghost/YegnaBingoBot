@@ -1,29 +1,78 @@
 "use client"
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+
+interface Transaction {
+  id: string
+  type: 'stake' | 'win' | 'deposit' | 'withdrawal'
+  amount: number
+  game_id: string | null
+  created_at: string
+  games?: {
+    rooms: {
+      name: string
+    }
+  }
+}
 
 export default function AccountPage() {
-  const [user] = useState({
-    username: 'Player_1234',
-    balance: 5250,
-    gamesPlayed: 47,
-    gamesWon: 12,
-    totalWinnings: 15800,
-    winRate: 25.5,
-    rank: 156,
-    level: 8,
-    joinedDate: '2025-01-15',
-  })
+  const router = useRouter()
+  const { user, isAuthenticated, loading: authLoading, refreshUser } = useAuth()
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const [transactions] = useState([
-    { id: 1, type: 'win', amount: 1000, game: 'Classic Room', date: '2025-11-10 09:30' },
-    { id: 2, type: 'stake', amount: -10, game: 'Speed Bingo', date: '2025-11-10 09:15' },
-    { id: 3, type: 'win', amount: 500, game: 'Speed Bingo', date: '2025-11-10 08:45' },
-    { id: 4, type: 'stake', amount: -50, game: 'Mega Jackpot', date: '2025-11-10 08:30' },
-    { id: 5, type: 'deposit', amount: 1000, game: 'Deposit', date: '2025-11-10 08:00' },
-  ])
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login')
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  useEffect(() => {
+    if (!user) return
+
+    const fetchTransactions = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select(`
+            *,
+            games (
+              rooms (
+                name
+              )
+            )
+          `)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(20)
+
+        if (error) throw error
+        setTransactions(data || [])
+      } catch (error) {
+        console.error('Error fetching transactions:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTransactions()
+    refreshUser()
+  }, [user, refreshUser])
+
+  if (authLoading || loading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
+  }
+
+  const winRate = user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : '0.0'
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
@@ -55,33 +104,25 @@ export default function AccountPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-gray-600">Games Played:</span>
-                  <span className="font-bold text-lg">{user.gamesPlayed}</span>
+                  <span className="font-bold text-lg">{user.games_played}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-gray-600">Games Won:</span>
-                  <span className="font-bold text-lg text-green-600">{user.gamesWon}</span>
+                  <span className="font-bold text-lg text-green-600">{user.games_won}</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-gray-600">Win Rate:</span>
-                  <span className="font-bold text-lg text-blue-600">{user.winRate}%</span>
+                  <span className="font-bold text-lg text-blue-600">{winRate}%</span>
                 </div>
                 <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                   <span className="text-gray-600">Total Winnings:</span>
-                  <span className="font-bold text-lg text-purple-600">{formatCurrency(user.totalWinnings)}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-600">Leaderboard Rank:</span>
-                  <span className="font-bold text-lg text-orange-600">#{user.rank}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                  <span className="text-gray-600">Level:</span>
-                  <span className="font-bold text-lg text-indigo-600">{user.level}</span>
+                  <span className="font-bold text-lg text-purple-600">{formatCurrency(user.total_winnings)}</span>
                 </div>
               </div>
 
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <p className="text-sm text-gray-500 text-center mb-4">
-                  Member since {new Date(user.joinedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  Member since {new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                 </p>
                 
                 {/* Action Buttons */}
@@ -116,8 +157,20 @@ export default function AccountPage() {
                          '💰'}
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-800">{tx.game}</p>
-                        <p className="text-sm text-gray-500">{tx.date}</p>
+                        <p className="font-semibold text-gray-800">
+                          {tx.type === 'deposit' || tx.type === 'withdrawal' 
+                            ? tx.type.charAt(0).toUpperCase() + tx.type.slice(1)
+                            : tx.games?.rooms?.name || 'Game'
+                          }
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {new Date(tx.created_at).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
                       </div>
                     </div>
                     <div className={`text-xl font-bold ${
