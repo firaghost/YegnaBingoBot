@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -25,7 +25,6 @@ export function useSocket() {
   const [channel, setChannel] = useState<RealtimeChannel | null>(null)
 
   useEffect(() => {
-    // Supabase is always connected
     setConnected(true)
 
     return () => {
@@ -35,27 +34,36 @@ export function useSocket() {
     }
   }, [channel])
 
-  const joinGame = async (gameId: string, userId: string) => {
-    console.log('🎮 Joining game:', gameId, 'User:', userId)
+  const joinGame = useCallback(async (gameId: string, userId: string) => {
+    console.log(`🎮 Joining game: ${gameId} User: ${userId}`)
 
-    // Unsubscribe from previous channel if exists
+    // Prevent duplicate subscriptions
     if (channel) {
-      await channel.unsubscribe()
+      console.log('⚠️ Already subscribed, skipping...')
+      return
     }
 
-    // Subscribe to game updates
+    // Subscribe to game updates with throttling
+    let lastUpdate = 0
+    const UPDATE_THROTTLE = 500 // Only update every 500ms max
+
     const gameChannel = supabase
       .channel(`game:${gameId}`)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'games',
           filter: `id=eq.${gameId}`
         },
         (payload) => {
-          console.log('🔄 Game update:', payload)
+          const now = Date.now()
+          if (now - lastUpdate < UPDATE_THROTTLE) {
+            return // Throttle updates
+          }
+          lastUpdate = now
+
           const game = payload.new as any
           
           setGameState({
@@ -75,7 +83,9 @@ export function useSocket() {
         }
       )
       .subscribe((status) => {
-        console.log('📡 Subscription status:', status)
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Subscribed to game updates')
+        }
       })
 
     setChannel(gameChannel)
@@ -103,7 +113,7 @@ export function useSocket() {
         min_players: game.min_players || 2
       })
     }
-  }
+  }, [channel, setChannel])
 
   const leaveGame = async (gameId: string, userId: string) => {
     console.log('👋 Leaving game:', gameId)

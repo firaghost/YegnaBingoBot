@@ -706,7 +706,7 @@ bot.on('inline_query', async (ctx) => {
       })
     }
 
-    await ctx.answerInlineQuery(results, {
+    await ctx.answerInlineQuery(results as any, {
       cache_time: 10,
       is_personal: true
     })

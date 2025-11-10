@@ -187,6 +187,26 @@ export default function GamePage() {
         // Join socket room
         joinGame(activeGame.id, user.id)
 
+        // If game just moved to countdown, trigger game start
+        if (activeGame.status === 'countdown') {
+          try {
+            const response = await fetch('/api/game/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ gameId: activeGame.id })
+            })
+            
+            if (!response.ok) {
+              console.error('Failed to start game:', await response.text())
+            } else {
+              console.log('✅ Game start triggered successfully')
+            }
+          } catch (error) {
+            console.error('❌ Error starting game:', error)
+            // Don't fail the game join if start trigger fails
+          }
+        }
+
         // Update daily streak (only when actually playing a game)
         try {
           await fetch('/api/game/update-streak', {
