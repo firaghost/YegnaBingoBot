@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 
 export interface AuthUser {
   id: string
-  telegram_id: number
+  telegram_id: string
   username: string
   balance: number
   games_played: number
@@ -51,20 +51,22 @@ export function useAuth() {
     try {
       setLoading(true)
 
+      const telegramId = String(telegramData.id)
+
       // Check if user exists
-      let { data: existingUser } = await supabase
+      let { data: existingUser, error: fetchError } = await supabase
         .from('users')
         .select('*')
-        .eq('telegram_id', telegramData.id)
-        .single()
+        .eq('telegram_id', telegramId)
+        .maybeSingle()
 
       if (!existingUser) {
         // Create new user
         const { data: newUser, error } = await supabase
           .from('users')
           .insert({
-            telegram_id: telegramData.id,
-            username: telegramData.username || `Player_${telegramData.id}`,
+            telegram_id: telegramId,
+            username: telegramData.username || `Player_${telegramId}`,
             balance: 1000, // Starting balance
             games_played: 0,
             games_won: 0,
@@ -73,7 +75,10 @@ export function useAuth() {
           .select()
           .single()
 
-        if (error) throw error
+        if (error) {
+          console.error('Error creating user:', error)
+          throw error
+        }
         existingUser = newUser
       }
 

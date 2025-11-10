@@ -126,8 +126,10 @@ CREATE INDEX idx_transactions_type ON transactions(type);
 -- ============================================
 CREATE TABLE admin_users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  telegram_id TEXT UNIQUE NOT NULL,
-  username TEXT NOT NULL,
+  telegram_id TEXT UNIQUE,
+  username TEXT UNIQUE NOT NULL,
+  email TEXT,
+  password_hash TEXT,
   role TEXT DEFAULT 'admin' CHECK (role IN ('super_admin', 'admin', 'moderator')),
   permissions JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -135,10 +137,19 @@ CREATE TABLE admin_users (
 );
 
 CREATE INDEX idx_admin_users_telegram_id ON admin_users(telegram_id);
+CREATE INDEX idx_admin_users_username ON admin_users(username);
+CREATE INDEX idx_admin_users_email ON admin_users(email);
 
--- Seed super admin (CHANGE THIS TO YOUR TELEGRAM ID)
-INSERT INTO admin_users (telegram_id, username, role, permissions) VALUES
-  ('YOUR_TELEGRAM_ID_HERE', 'SuperAdmin', 'super_admin', '{"all": true}'::jsonb);
+-- Seed default admin with username/password
+-- Password: admin123 (CHANGE THIS IN PRODUCTION!)
+INSERT INTO admin_users (telegram_id, username, email, password_hash, role, permissions) VALUES
+  (NULL, 'admin', 'admin@bingo.com', 'admin123', 'super_admin', '{"all": true}'::jsonb)
+ON CONFLICT (username) DO NOTHING;
+
+-- Optional: Seed super admin with Telegram ID (CHANGE THIS TO YOUR TELEGRAM ID)
+-- INSERT INTO admin_users (telegram_id, username, role, permissions) VALUES
+--   ('YOUR_TELEGRAM_ID_HERE', 'SuperAdmin', 'super_admin', '{"all": true}'::jsonb)
+-- ON CONFLICT (telegram_id) DO NOTHING;
 
 -- ============================================
 -- BROADCASTS TABLE
