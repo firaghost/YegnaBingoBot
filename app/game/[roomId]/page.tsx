@@ -523,64 +523,90 @@ export default function GamePage() {
 
         {/* Active Game */}
         {gameStatus === 'active' && playerState === 'playing' && (
-          <div className="max-w-2xl mx-auto space-y-6">
-            {/* Game Info */}
-            <div className="space-y-4">
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="font-bold text-lg mb-4 text-gray-800">Status:</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Players:</span>
-                    <span className="font-bold text-lg">{players}</span>
+          <div className="flex flex-col h-screen">
+            {/* Fixed Header with Game Info */}
+            <div className="bg-white border-b border-gray-200 px-3 py-2 flex-shrink-0">
+              <div className="flex justify-between items-center text-xs">
+                <div className="flex items-center gap-2">
+                  <div>
+                    <span className="text-gray-500">Players:</span>
+                    <span className="font-bold ml-0.5">{players}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Prize Pool:</span>
-                    <span className="font-bold text-lg text-green-600">{formatCurrency(prizePool)}</span>
+                  <div>
+                    <span className="text-gray-500">Prize:</span>
+                    <span className="font-bold text-green-600 ml-0.5">{formatCurrency(prizePool)}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Progress:</span>
-                    <span className="font-bold text-lg text-blue-600">{calledNumbers.length}/75</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <span className="text-gray-500">Progress:</span>
+                    <span className="font-bold text-blue-600 ml-0.5">{calledNumbers.length}/75</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Your Stake:</span>
-                    <span className="font-bold text-lg">{formatCurrency(stake)}</span>
+                  <div>
+                    <span className="text-gray-500">Stake:</span>
+                    <span className="font-bold ml-0.5">{formatCurrency(stake)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+              {/* Latest Number & History */}
+              <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-lg p-3 text-white">
+                <h3 className="font-bold text-xs mb-2">Latest Number Called</h3>
+                <div className="flex items-center gap-3">
+                  {/* Latest Number - Large */}
+                  <div className="flex-shrink-0">
+                    {latestNumber ? (
+                      <div className="text-center">
+                        <div className="text-lg font-bold mb-0.5">{latestNumber.letter}</div>
+                        <div className="w-16 h-16 rounded-full bg-white text-blue-600 flex items-center justify-center text-2xl font-bold shadow-xl animate-pulse">
+                          {latestNumber.number}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-xs">
+                        Wait...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recent History - Compact */}
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold mb-1.5 opacity-90">Recent:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {[...calledNumbers].reverse().slice(1, 11).map((num) => {
+                        const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
+                        return (
+                          <div
+                            key={num}
+                            className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-semibold"
+                          >
+                            {letter}{num}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
 
-            </div>
-
-            {/* Latest Number Called */}
-            <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-              <h3 className="font-bold text-lg mb-4">Latest Number Called</h3>
-              {latestNumber ? (
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-2">{latestNumber.letter}</div>
-                  <div className="w-24 h-24 mx-auto rounded-full bg-white text-blue-600 flex items-center justify-center text-4xl font-bold shadow-xl animate-pulse">
-                    {latestNumber.number}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center text-white/80">Calling...</div>
-              )}
-            </div>
-
-            {/* Bingo Card */}
-            <div>
-              <div className="bg-white rounded-xl shadow-2xl p-6">
-                <h3 className="text-center font-bold text-2xl mb-4 text-gray-800">Your Bingo Card</h3>
+              {/* Bingo Card */}
+              <div className="bg-white rounded-lg shadow-2xl p-3">
+                <h3 className="text-center font-bold text-lg mb-2 text-gray-800">Your Bingo Card</h3>
                 
                 {/* B-I-N-G-O Headers */}
-                <div className="grid grid-cols-5 gap-2 mb-4">
+                <div className="grid grid-cols-5 gap-1.5 mb-2">
                   {['B', 'I', 'N', 'G', 'O'].map(letter => (
-                    <div key={letter} className="text-center font-bold text-3xl text-blue-600">
+                    <div key={letter} className="text-center font-bold text-xl text-blue-600">
                       {letter}
                     </div>
                   ))}
                 </div>
 
                 {/* Bingo Grid */}
-                <div className="grid grid-cols-5 gap-2">
+                <div className="grid grid-cols-5 gap-1.5">
                   {bingoCard.map((row, ri) =>
                     row.map((num, ci) => {
                       const isMarked = markedCells[ri][ci]
@@ -593,7 +619,7 @@ export default function GamePage() {
                           onClick={() => handleCellClick(ri, ci)}
                           disabled={!isCalled && !isFree}
                           className={`
-                            aspect-square rounded-lg flex items-center justify-center text-lg font-bold
+                            aspect-square rounded-md flex items-center justify-center text-sm font-bold
                             transition-all duration-200 transform
                             ${isMarked
                               ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-lg scale-95'
@@ -613,9 +639,6 @@ export default function GamePage() {
                   )}
                 </div>
 
-                <p className="text-center text-sm text-gray-500 mt-4">
-                  Click on called numbers to mark them
-                </p>
               </div>
             </div>
           </div>

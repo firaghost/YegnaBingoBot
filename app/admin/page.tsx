@@ -19,6 +19,7 @@ export default function AdminDashboard() {
     activeGames: 0,
     totalRevenue: 0,
     todayRevenue: 0,
+    pendingDeposits: 0,
     pendingWithdrawals: 0,
     totalTransactions: 0,
   })
@@ -69,6 +70,13 @@ export default function AdminDashboard() {
       const todayRevenue = allGames?.filter(g => g.created_at?.startsWith(today))
         .reduce((sum, g) => sum + (g.prize_pool || 0), 0) || 0
 
+      // Fetch pending deposits
+      const { count: pendingDepositsCount } = await supabase
+        .from('transactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('type', 'deposit')
+        .eq('status', 'pending')
+
       // Fetch pending withdrawals (if table exists)
       let pendingWithdrawals = 0
       try {
@@ -93,6 +101,7 @@ export default function AdminDashboard() {
         activeGames: activeGames || 0,
         totalRevenue,
         todayRevenue,
+        pendingDeposits: pendingDepositsCount || 0,
         pendingWithdrawals: pendingWithdrawals || 0,
         totalTransactions: totalTransactions || 0,
       })
@@ -207,6 +216,15 @@ export default function AdminDashboard() {
 
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300">Pending Deposits</span>
+              <span className="text-3xl">💰</span>
+            </div>
+            <div className="text-3xl font-bold text-green-400">{stats.pendingDeposits}</div>
+            <div className="text-sm text-gray-400 mt-2">Awaiting approval</div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Pending Withdrawals</span>
               <span className="text-3xl">⏳</span>
             </div>
@@ -216,11 +234,17 @@ export default function AdminDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Link href="/admin/users" className="bg-blue-600 hover:bg-blue-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
             <div className="text-4xl mb-3">👥</div>
             <h3 className="text-xl font-bold mb-2">User Management</h3>
             <p className="text-blue-100">Manage users, ban/suspend accounts</p>
+          </Link>
+
+          <Link href="/admin/deposits" className="bg-green-600 hover:bg-green-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
+            <div className="text-4xl mb-3">💵</div>
+            <h3 className="text-xl font-bold mb-2">Deposits</h3>
+            <p className="text-green-100">Approve/reject deposit requests</p>
           </Link>
 
           <Link href="/admin/withdrawals" className="bg-yellow-600 hover:bg-yellow-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
@@ -229,10 +253,10 @@ export default function AdminDashboard() {
             <p className="text-yellow-100">Approve/reject withdrawal requests</p>
           </Link>
 
-          <Link href="/admin/games" className="bg-green-600 hover:bg-green-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
+          <Link href="/admin/games" className="bg-purple-600 hover:bg-purple-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
             <div className="text-4xl mb-3">📊</div>
             <h3 className="text-xl font-bold mb-2">Live Tracking</h3>
-            <p className="text-green-100">Monitor active games in real-time</p>
+            <p className="text-purple-100">Monitor active games in real-time</p>
           </Link>
         </div>
 

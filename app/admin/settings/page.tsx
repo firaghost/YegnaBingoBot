@@ -12,6 +12,7 @@ export default function AdminSettings() {
     minWithdrawal: 100,
     maxWithdrawal: 100000,
     withdrawalFee: 0,
+    commissionRate: 10,
     depositBonus: 10,
     referralBonus: 50,
     dailyStreakBonus: 20,
@@ -193,6 +194,20 @@ export default function AdminSettings() {
                   onChange={(e) => setSettings({...settings, withdrawalFee: parseInt(e.target.value)})}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Game Commission Rate (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={settings.commissionRate}
+                  onChange={(e) => setSettings({...settings, commissionRate: parseFloat(e.target.value)})}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Commission deducted from prize pool before awarding winner</p>
               </div>
 
               <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">

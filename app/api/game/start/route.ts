@@ -149,6 +149,18 @@ async function runGameLoop(gameId: string) {
     callCount++
     console.log(`📢 [${callCount}/75] Called ${nextNumber.letter}${nextNumber.number} for game ${gameId}`)
     
+    // Check immediately if someone won (don't wait 3 seconds)
+    const { data: checkGame } = await supabase
+      .from('games')
+      .select('status, winner_id')
+      .eq('id', gameId)
+      .single()
+    
+    if (checkGame && (checkGame.status === 'finished' || checkGame.winner_id)) {
+      console.log(`🏆 Game ${gameId} has a winner! Stopping number calls.`)
+      break
+    }
+    
     // Safety check: if game has been running too long, end it
     const gameRunTime = Date.now() - new Date(startTime).getTime()
     if (gameRunTime > 10 * 60 * 1000) { // 10 minutes max

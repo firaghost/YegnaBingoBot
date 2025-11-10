@@ -59,21 +59,24 @@ export function checkBingoWin(marked: boolean[][]): boolean {
 
   // Check diagonals
   if (marked[0][0] && marked[1][1] && marked[2][2] && marked[3][3] && marked[4][4]) return true
-  if (marked[0][4] && marked[1][3] && marked[2][2] && marked[3][1] && marked[4][0]) return true
 
   return false
 }
 
 // Format currency
-export function formatCurrency(amount: number, currency: string = 'ETB'): string {
-  return `${amount.toLocaleString()} ${currency}`
+export function formatCurrency(amount: number | null | undefined, currency: string = 'ETB'): string {
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return `0 ${currency}`
+  }
+  return `${amount.toLocaleString()} ${currency}` 
 }
 
 // Random bot name generator
 export function generateBotName(): string {
   const names = [
     'Player', 'Gamer', 'Winner', 'Lucky', 'Star', 'Champion', 'Pro', 'Master',
-    'Ace', 'King', 'Queen', 'Knight', 'Ninja', 'Dragon', 'Phoenix', 'Eagle'
+    'Ace', 'King', 'Queen', 'Knight', 'Ninja', 'Dragon', 'Phoenix', 'Eagle',
+    'Warrior', 'Hunter', 'Mage', 'Priest', 'Rogue', 'Paladin', 'Shaman', 'Druid'
   ]
   const name = names[Math.floor(Math.random() * names.length)]
   const number = Math.floor(Math.random() * 9999) + 1

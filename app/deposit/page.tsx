@@ -2,27 +2,105 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
 
 export default function DepositPage() {
+  const { user } = useAuth()
   const [amount, setAmount] = useState('')
+  const [transactionRef, setTransactionRef] = useState('')
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [proofPreview, setProofPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
 
   const quickAmounts = [100, 500, 1000, 5000, 10000]
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setError('File size must be less than 5MB')
+        return
+      }
+      setProofFile(file)
+      setProofPreview(URL.createObjectURL(file))
+      setError('')
+    }
+  }
+
   const handleDeposit = async () => {
-    if (!amount || parseFloat(amount) <= 0) return
+    if (!amount || parseFloat(amount) <= 0) {
+      setError('Please enter a valid amount')
+      return
+    }
+
+    if (parseFloat(amount) < 100) {
+      setError('Minimum deposit is 100 ETB')
+      return
+    }
+
+    if (!user) {
+      setError('Please login first')
+      return
+    }
     
     setLoading(true)
-    // TODO: Implement actual deposit logic
-    setTimeout(() => {
-      setLoading(false)
+    setError('')
+
+    try {
+      let proofUrl = null
+
+      // Upload proof file if provided
+      if (proofFile) {
+        const fileExt = proofFile.name.split('.').pop()
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`
+        const filePath = `deposit-proofs/${fileName}`
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('transaction-proofs')
+          .upload(filePath, proofFile)
+
+        if (uploadError) {
+          throw new Error('Failed to upload proof image')
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('transaction-proofs')
+          .getPublicUrl(filePath)
+
+        proofUrl = publicUrl
+      }
+
+      const response = await fetch('/api/wallet/deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          amount: parseFloat(amount),
+          paymentMethod: 'bank_transfer',
+          transactionRef: transactionRef || null,
+          proofUrl: proofUrl
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit deposit request')
+      }
+
       setSuccess(true)
       setTimeout(() => {
         window.location.href = '/account'
-      }, 2000)
-    }, 1500)
+      }, 3000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to submit deposit request')
+      setLoading(false)
+    }
   }
 
   return (
@@ -40,14 +118,19 @@ export default function DepositPage() {
           {success ? (
             <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
               <div className="text-8xl mb-6">✅</div>
-              <h2 className="text-3xl font-bold mb-4 text-gray-800">Deposit Successful!</h2>
+              <h2 className="text-3xl font-bold mb-4 text-gray-800">Request Submitted!</h2>
               <p className="text-gray-600 mb-6">
-                Your account has been credited with {formatCurrency(parseFloat(amount))}
+                Your deposit request for {formatCurrency(parseFloat(amount))} has been submitted to admin for approval.
               </p>
-              <p className="text-sm text-gray-500">Redirecting to your account...</p>
+              <p className="text-sm text-gray-500">You'll be notified once it's approved. Redirecting...</p>
             </div>
           ) : (
             <div className="bg-white rounded-2xl shadow-xl p-8">
+              {error && (
+                <div className="mb-6 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
+                  <p className="text-red-600 font-semibold">❌ {error}</p>
+                </div>
+              )}
               {/* Quick Amount Buttons */}
               <div className="mb-8">
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
@@ -89,6 +172,72 @@ export default function DepositPage() {
                     ETB
                   </span>
                 </div>
+              </div>
+
+              {/* Transaction Reference */}
+              <div className="mb-8">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Transaction Reference (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={transactionRef}
+                  onChange={(e) => setTransactionRef(e.target.value)}
+                  placeholder="Enter your bank transaction reference"
+                  className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Include your transaction reference to speed up approval
+                </p>
+              </div>
+
+              {/* Proof Upload */}
+              <div className="mb-8">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Upload Payment Proof (Screenshot/Receipt)
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
+                  {proofPreview ? (
+                    <div className="space-y-4">
+                      <img
+                        src={proofPreview}
+                        alt="Proof preview"
+                        className="max-h-64 mx-auto rounded-lg shadow-md"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProofFile(null)
+                          setProofPreview(null)
+                        }}
+                        className="text-red-600 hover:text-red-700 font-semibold"
+                      >
+                        Remove Image
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-6xl mb-4">📸</div>
+                      <label className="cursor-pointer">
+                        <span className="text-blue-600 hover:text-blue-700 font-semibold">
+                          Click to upload
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-sm text-gray-500 mt-2">
+                        PNG, JPG, or PDF up to 5MB
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Upload a screenshot of your bank transfer or Telebirr receipt
+                </p>
               </div>
 
               {/* Payment Methods */}

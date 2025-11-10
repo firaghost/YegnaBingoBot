@@ -42,44 +42,69 @@ export async function POST(request: NextRequest) {
       
       console.log(`🏆 Auto-win: Player ${winnerId} wins by default (opponent left)`)
 
-      // Update game with winner
+      // Get commission rate from settings
+      const { data: commissionSetting } = await supabase
+        .from('admin_settings')
+        .select('setting_value')
+        .eq('setting_key', 'commission_rate')
+        .single()
+
+      const commissionRate = commissionSetting ? parseFloat(commissionSetting.setting_value) : 10
+      const commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
+      const netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
+
+      // Update game with winner and commission info
       await supabase
         .from('games')
         .update({
           status: 'finished',
           winner_id: winnerId,
           ended_at: new Date().toISOString(),
-          players: updatedPlayers
+          players: updatedPlayers,
+          commission_rate: commissionRate,
+          commission_amount: commissionAmount,
+          net_prize: netPrize
         })
         .eq('id', gameId)
 
-      // Add winnings to winner
+      // Add NET winnings to winner (after commission)
       await supabase.rpc('add_balance', {
         user_id: winnerId,
-        amount: game.prize_pool
+        amount: netPrize
       })
 
-      // Create transaction for winner
+      // Create transaction for winner with commission details
       await supabase.from('transactions').insert({
         user_id: winnerId,
         type: 'win',
-        amount: game.prize_pool,
+        amount: netPrize,
         game_id: gameId,
-        status: 'completed'
+        status: 'completed',
+        metadata: {
+          gross_prize: game.prize_pool,
+          commission_rate: commissionRate,
+          commission_amount: commissionAmount,
+          net_prize: netPrize,
+          auto_win: true
+        }
       })
 
-      // Update winner stats
+      // Update winner stats with NET winnings
       await supabase.rpc('update_user_stats', {
         user_id: winnerId,
         won: true,
-        winnings: game.prize_pool
+        winnings: netPrize
       })
+
+      console.log(`💰 Auto-win prize: ${netPrize} ETB (after ${commissionRate}% commission)`)
 
       return NextResponse.json({
         success: true,
         message: 'Player left, remaining player wins',
         winner_id: winnerId,
-        auto_win: true
+        auto_win: true,
+        prize: netPrize,
+        commission_rate: commissionRate
       })
     }
 

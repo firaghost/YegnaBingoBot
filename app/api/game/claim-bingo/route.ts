@@ -129,13 +129,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update game with winner
+    // Get commission rate from settings
+    const { data: commissionSetting } = await supabase
+      .from('admin_settings')
+      .select('setting_value')
+      .eq('setting_key', 'commission_rate')
+      .single()
+
+    const commissionRate = commissionSetting ? parseFloat(commissionSetting.setting_value) : 10
+    const commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
+    const netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
+
+    console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
+    console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
+    console.log(`🎁 Net Prize: ${netPrize} ETB`)
+
+    // Update game with winner and commission info
     const { error: updateError } = await supabase
       .from('games')
       .update({
         status: 'finished',
         winner_id: userId,
-        ended_at: new Date().toISOString()
+        ended_at: new Date().toISOString(),
+        commission_rate: commissionRate,
+        commission_amount: commissionAmount,
+        net_prize: netPrize
       })
       .eq('id', gameId)
       .eq('status', 'active') // Only update if still active (race condition protection)
@@ -149,38 +167,49 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Add winnings to user balance
+    // Add NET winnings to user balance (after commission)
     const { error: balanceError } = await supabase.rpc('add_balance', {
       user_id: userId,
-      amount: game.prize_pool
+      amount: netPrize
     })
 
     if (balanceError) {
       console.error('Error adding balance:', balanceError)
     }
 
-    // Create transaction record
+    // Create transaction record with commission details
     await supabase.from('transactions').insert({
       user_id: userId,
       type: 'win',
-      amount: game.prize_pool,
+      amount: netPrize,
       game_id: gameId,
-      status: 'completed'
+      status: 'completed',
+      metadata: {
+        gross_prize: game.prize_pool,
+        commission_rate: commissionRate,
+        commission_amount: commissionAmount,
+        net_prize: netPrize
+      }
     })
 
-    // Update user stats
+    // Update user stats with NET winnings
     await supabase.rpc('update_user_stats', {
       user_id: userId,
       won: true,
-      winnings: game.prize_pool
+      winnings: netPrize
     })
 
-    console.log(`🎉 User ${userId} won game ${gameId} with prize ${game.prize_pool}`)
+    console.log(`🎉 User ${userId} won game ${gameId}`)
+    console.log(`💵 Gross Prize: ${game.prize_pool} ETB`)
+    console.log(`💰 Net Prize (after ${commissionRate}% commission): ${netPrize} ETB`)
 
     return NextResponse.json({
       success: true,
       message: 'Bingo claimed successfully!',
-      prize: game.prize_pool
+      prize: netPrize,
+      gross_prize: game.prize_pool,
+      commission_rate: commissionRate,
+      commission_amount: commissionAmount
     })
   } catch (error) {
     console.error('Error claiming bingo:', error)

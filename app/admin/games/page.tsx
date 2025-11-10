@@ -35,17 +35,11 @@ export default function AdminGamesPage() {
 
       if (error) throw error
 
-      // Get player counts for each game
-      const gamesWithPlayers = await Promise.all(
-        (data || []).map(async (game) => {
-          const { count } = await supabase
-            .from('game_players')
-            .select('*', { count: 'exact', head: true })
-            .eq('game_id', game.id)
-
-          return { ...game, player_count: count || 0 }
-        })
-      )
+      // Get player counts from the players array in games table
+      const gamesWithPlayers = (data || []).map((game) => ({
+        ...game,
+        player_count: game.players?.length || 0
+      }))
 
       setGames(gamesWithPlayers)
     } catch (error) {
@@ -79,7 +73,7 @@ export default function AdminGamesPage() {
         {/* Filter Tabs */}
         <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6 mb-6">
           <div className="flex gap-4">
-            {['waiting', 'countdown', 'active', 'completed', 'all'].map((status) => (
+            {['waiting', 'countdown', 'active', 'finished', 'all'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilter(status)}
@@ -89,7 +83,7 @@ export default function AdminGamesPage() {
                     : 'bg-white/10 text-gray-300 hover:bg-white/20'
                 }`}
               >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+                {status === 'finished' ? 'Finished' : status.charAt(0).toUpperCase() + status.slice(1)}
               </button>
             ))}
           </div>
@@ -114,36 +108,36 @@ export default function AdminGamesPage() {
                     <h3 className="font-semibold text-white mb-3">Game Information</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">ID:</span>
-                        <span className="font-mono text-xs">{game.id.slice(0, 8)}</span>
+                        <span className="text-gray-400">ID:</span>
+                        <span className="font-mono text-xs text-white">{game.id.slice(0, 8)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Room:</span>
-                        <span className="font-semibold">{game.rooms?.name || 'Unknown'}</span>
+                        <span className="text-gray-400">Room:</span>
+                        <span className="font-semibold text-white">{game.rooms?.name || 'Unknown'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Entry Fee:</span>
-                        <span className="font-semibold">{formatCurrency(game.entry_fee)}</span>
+                        <span className="text-gray-400">Entry Fee:</span>
+                        <span className="font-semibold text-white">{formatCurrency(game.rooms?.stake || 0)}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Players & Prize */}
                   <div>
-                    <h3 className="font-semibold text-gray-800 mb-3">Players & Prize</h3>
+                    <h3 className="font-semibold text-white mb-3">Players & Prize</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Players:</span>
-                        <span className="font-bold text-blue-600">{game.player_count}</span>
+                        <span className="text-gray-400">Players:</span>
+                        <span className="font-bold text-blue-400">{game.player_count}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Prize Pool:</span>
-                        <span className="font-bold text-green-600">{formatCurrency(game.prize_pool)}</span>
+                        <span className="text-gray-400">Prize Pool:</span>
+                        <span className="font-bold text-green-400">{formatCurrency(game.prize_pool || 0)}</span>
                       </div>
                       {game.winner_id && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Winner:</span>
-                          <span className="font-semibold text-purple-600">✓</span>
+                          <span className="text-gray-400">Winner:</span>
+                          <span className="font-semibold text-purple-400">✓</span>
                         </div>
                       )}
                     </div>
@@ -151,24 +145,24 @@ export default function AdminGamesPage() {
 
                   {/* Game Progress */}
                   <div>
-                    <h3 className="font-semibold text-gray-800 mb-3">Progress</h3>
+                    <h3 className="font-semibold text-white mb-3">Progress</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Numbers Called:</span>
-                        <span className="font-semibold">
+                        <span className="text-gray-400">Numbers Called:</span>
+                        <span className="font-semibold text-white">
                           {Array.isArray(game.called_numbers) ? game.called_numbers.length : 0} / 75
                         </span>
                       </div>
                       {game.countdown_time > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Countdown:</span>
-                          <span className="font-semibold">{game.countdown_time}s</span>
+                          <span className="text-gray-400">Countdown:</span>
+                          <span className="font-semibold text-white">{game.countdown_time}s</span>
                         </div>
                       )}
                       {game.latest_number && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Latest:</span>
-                          <span className="font-bold text-blue-600">
+                          <span className="text-gray-400">Latest:</span>
+                          <span className="font-bold text-blue-400">
                             {game.latest_number.letter}-{game.latest_number.number}
                           </span>
                         </div>
@@ -178,7 +172,7 @@ export default function AdminGamesPage() {
 
                   {/* Status & Timing */}
                   <div>
-                    <h3 className="font-semibold text-gray-800 mb-3">Status & Timing</h3>
+                    <h3 className="font-semibold text-white mb-3">Status & Timing</h3>
                     <div className="space-y-3">
                       <div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${

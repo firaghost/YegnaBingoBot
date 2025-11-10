@@ -15,8 +15,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get users based on filters
-    let query = supabase.from('users').select('telegram_id, username')
+    // Check if BOT_TOKEN is configured
+    if (!BOT_TOKEN || BOT_TOKEN === 'undefined') {
+      console.error('BOT_TOKEN is not configured')
+      return NextResponse.json(
+        { error: 'Bot token not configured. Please set BOT_TOKEN in environment variables.' },
+        { status: 500 }
+      )
+    }
+
+    // Get users based on filters - only users with telegram_id
+    let query = supabase
+      .from('users')
+      .select('telegram_id, username')
+      .not('telegram_id', 'is', null)
 
     if (filters?.activeOnly) {
       const yesterday = new Date()
@@ -38,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     if (!users || users.length === 0) {
       return NextResponse.json(
-        { error: 'No users found matching criteria' },
+        { error: 'No users found matching criteria (users must have Telegram ID)' },
         { status: 404 }
       )
     }
@@ -53,8 +65,19 @@ export async function POST(request: NextRequest) {
 
     const broadcastMessage = `📢 *${title}*\n\n${message}`
 
+    console.log(`📢 Starting broadcast to ${users.length} users`)
+
     for (const user of users) {
       try {
+        if (!user.telegram_id) {
+          console.log(`⚠️ Skipping user ${user.username} - no telegram_id`)
+          results.failed++
+          results.errors.push(`User ${user.username}: No telegram ID`)
+          continue
+        }
+
+        console.log(`Sending to user: ${user.username} (${user.telegram_id})`)
+
         const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -70,21 +93,29 @@ export async function POST(request: NextRequest) {
           })
         })
 
+        const responseData = await response.json()
+
         if (response.ok) {
           results.sent++
+          console.log(`✅ Sent to ${user.username}`)
         } else {
           results.failed++
-          const errorData = await response.json()
-          results.errors.push(`User ${user.username}: ${errorData.description}`)
+          const errorMsg = responseData.description || JSON.stringify(responseData)
+          console.error(`❌ Failed to send to ${user.username}: ${errorMsg}`)
+          results.errors.push(`User ${user.username}: ${errorMsg}`)
         }
 
         // Rate limiting: wait 50ms between messages
         await new Promise(resolve => setTimeout(resolve, 50))
-      } catch (err) {
+      } catch (err: any) {
         results.failed++
-        results.errors.push(`User ${user.username}: ${err}`)
+        const errorMsg = err.message || String(err)
+        console.error(`❌ Error sending to ${user.username}: ${errorMsg}`)
+        results.errors.push(`User ${user.username}: ${errorMsg}`)
       }
     }
+
+    console.log(`📊 Broadcast complete: ${results.sent} sent, ${results.failed} failed`)
 
     // Store broadcast record
     await supabase.from('broadcasts').insert({
@@ -99,12 +130,20 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      results
+      results: {
+        total: results.total,
+        sent: results.sent,
+        failed: results.failed,
+        errors: results.errors.slice(0, 10) // Return first 10 errors
+      }
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Broadcast error:', error)
     return NextResponse.json(
-      { error: 'Failed to send broadcast' },
+      { 
+        error: 'Failed to send broadcast',
+        details: error.message || String(error)
+      },
       { status: 500 }
     )
   }

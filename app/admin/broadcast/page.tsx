@@ -22,7 +22,10 @@ export default function AdminBroadcast() {
 
   const fetchEstimatedRecipients = async () => {
     try {
-      let query = supabase.from('users').select('*', { count: 'exact', head: true })
+      let query = supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .not('telegram_id', 'is', null) // Only count users with Telegram ID
 
       if (activeOnly) {
         const yesterday = new Date()
@@ -77,11 +80,16 @@ export default function AdminBroadcast() {
         throw new Error(data.error || 'Failed to send broadcast')
       }
 
+      const errorDetails = data.results.errors && data.results.errors.length > 0
+        ? `\n\nErrors:\n${data.results.errors.join('\n')}`
+        : ''
+
       alert(
-        `✅ Broadcast sent successfully!\n\n` +
+        `${data.results.sent > 0 ? '✅' : '❌'} Broadcast ${data.results.sent > 0 ? 'completed' : 'failed'}!\n\n` +
         `Total: ${data.results.total}\n` +
         `Sent: ${data.results.sent}\n` +
-        `Failed: ${data.results.failed}`
+        `Failed: ${data.results.failed}` +
+        errorDetails
       )
       
       setTitle('')
