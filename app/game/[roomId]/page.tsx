@@ -19,7 +19,7 @@ export default function GamePage() {
   const params = useParams()
   const router = useRouter()
   const roomId = params?.roomId as string
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, loading: authLoading } = useAuth()
   const { connected, gameState, joinGame, leaveGame, markNumber, claimBingo } = useSocket()
 
   const [gameId, setGameId] = useState<string | null>(null)
@@ -36,18 +36,24 @@ export default function GamePage() {
   const [findingNewGame, setFindingNewGame] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Check authentication
+  // Check authentication - only redirect after auth is loaded
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!authLoading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isAuthenticated, router])
+  }, [authLoading, isAuthenticated, router])
 
   // Fetch room data and join/create game
   useEffect(() => {
+    // Wait for auth to load before initializing game
+    if (authLoading) return
     if (!user || !roomId) return
+    if (gameId) return // Already initialized
+
+    let isMounted = true
 
     const initializeGame = async () => {
+      if (!isMounted) return
       try {
         // Fetch room data
         const { data: room, error: roomError } = await supabase
@@ -169,15 +175,29 @@ export default function GamePage() {
         }
         setMarkedCells(marked)
 
-        // Save card to database
-        await supabase.from('player_cards').insert({
+        // Save card to database (upsert to avoid conflicts)
+        await supabase.from('player_cards').upsert({
           game_id: activeGame.id,
           user_id: user.id,
           card: card
+        }, {
+          onConflict: 'game_id,user_id'
         })
 
         // Join socket room
         joinGame(activeGame.id, user.id)
+
+        // Update daily streak (only when actually playing a game)
+        try {
+          await fetch('/api/game/update-streak', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id })
+          })
+        } catch (streakError) {
+          console.error('Error updating streak:', streakError)
+          // Don't fail the game join if streak update fails
+        }
 
       } catch (error) {
         console.error('Error initializing game:', error)
@@ -191,11 +211,12 @@ export default function GamePage() {
     initializeGame()
 
     return () => {
+      isMounted = false
       if (gameId && user) {
         leaveGame(gameId, user.id)
       }
     }
-  }, [user, roomId, router, joinGame, leaveGame])
+  }, [user, roomId, router, joinGame, leaveGame, authLoading, gameId])
 
   // Handle game state updates from Socket.IO
   useEffect(() => {

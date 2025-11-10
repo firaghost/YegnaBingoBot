@@ -7,14 +7,17 @@ import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { loginWithTelegram, isAuthenticated } = useAuth()
+  const { loginWithTelegram, isAuthenticated, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [hasRedirected, setHasRedirected] = useState(false)
 
   useEffect(() => {
-    // Redirect if already authenticated
-    if (isAuthenticated) {
-      router.push('/lobby')
+    // Redirect if already authenticated (only once)
+    if (isAuthenticated && !authLoading && !hasRedirected) {
+      setHasRedirected(true)
+      router.replace('/lobby')
+      return
     }
 
     // Initialize Telegram Web App
@@ -22,7 +25,7 @@ export default function LoginPage() {
       window.Telegram.WebApp.ready()
       window.Telegram.WebApp.expand()
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, authLoading, router, hasRedirected])
 
   const handleTelegramLogin = async () => {
     try {
@@ -33,18 +36,41 @@ export default function LoginPage() {
       if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
         const telegramUser = window.Telegram.WebApp.initDataUnsafe.user
         
-        await loginWithTelegram({
+        const user = await loginWithTelegram({
           id: telegramUser.id,
           username: telegramUser.username || `${telegramUser.first_name}${telegramUser.last_name || ''}`,
           first_name: telegramUser.first_name,
           last_name: telegramUser.last_name
         })
 
-        router.push('/lobby')
+        if (user) {
+          // Wait a bit for state to update
+          setTimeout(() => {
+            router.replace('/lobby')
+          }, 100)
+        }
       } else {
         // For development/testing without Telegram
-        setError('Please open this app through Telegram')
-        setLoading(false)
+        // Create a test user
+        const isDev = process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost'
+        
+        if (isDev) {
+          const user = await loginWithTelegram({
+            id: Date.now(), // Random ID for testing
+            username: `TestUser_${Math.floor(Math.random() * 1000)}`,
+            first_name: 'Test',
+            last_name: 'User'
+          })
+          
+          if (user) {
+            setTimeout(() => {
+              router.replace('/lobby')
+            }, 100)
+          }
+        } else {
+          setError('Please open this app through Telegram')
+          setLoading(false)
+        }
       }
     } catch (err) {
       console.error('Login error:', err)

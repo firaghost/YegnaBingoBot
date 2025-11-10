@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
+import BottomNav from '@/app/components/BottomNav'
 
 interface Room {
   id: string
@@ -19,7 +20,7 @@ interface Room {
 }
 
 export default function LobbyPage() {
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, loading: authLoading } = useAuth()
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -56,113 +57,96 @@ export default function LobbyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
-      <div className="container mx-auto px-6 py-12">
-        <Link href="/" className="inline-block mb-8 text-blue-600 hover:text-blue-800 font-medium transition-colors">
-          ← Back to Home
-        </Link>
-
-        <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 text-gray-800">
+    <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 pb-24">
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <h1 className="text-4xl font-bold text-center mb-8 text-yellow-400">
           Select Your Bingo Room
         </h1>
 
         {!isAuthenticated && (
-          <div className="max-w-2xl mx-auto mb-12 bg-blue-50 border-2 border-blue-300 rounded-xl p-8 text-center shadow-lg">
+          <div className="mb-8 bg-purple-800 bg-opacity-50 border-2 border-purple-600 rounded-2xl p-8 text-center">
             <div className="text-5xl mb-4">🔒</div>
-            <h3 className="text-2xl font-bold mb-3 text-gray-800">
-              Log in with Telegram to join the royal bingo experience!
+            <h3 className="text-2xl font-bold mb-3 text-white">
+              Log in with Telegram to play!
             </h3>
-            <p className="text-gray-600 mb-6 leading-relaxed">
+            <p className="text-purple-200 mb-6">
               Welcome! Please log in to join games and win amazing prizes.
             </p>
             <Link href="/login">
-              <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md">
+              <button className="bg-yellow-500 text-purple-900 px-8 py-3 rounded-lg font-bold hover:bg-yellow-400 transition-colors">
                 Login with Telegram
               </button>
             </Link>
-            <p className="text-sm text-gray-500 mt-6">
-              You can browse rooms below
-            </p>
           </div>
         )}
 
-        {isAuthenticated && user && (
-          <div className="max-w-2xl mx-auto mb-12 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-300 rounded-xl p-6 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Welcome back,</p>
-                <p className="text-2xl font-bold text-gray-800">{user.username}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-600">Your Balance</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(user.balance)}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
+        {(loading || authLoading) ? (
           <div className="flex justify-center items-center py-20">
-            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-            {rooms.map(room => (
-              <div key={room.id} className="bg-white rounded-2xl shadow-xl hover:shadow-2xl transition-all overflow-hidden transform hover:-translate-y-1">
-                <div className={`bg-gradient-to-r ${room.color} p-6 text-white`}>
-                  <h3 className="text-2xl font-bold mb-2">{room.name}</h3>
-                  <div className="text-sm opacity-90">Entry: {formatCurrency(room.stake)}</div>
-                </div>
-                
-                <div className="p-6 space-y-4">
-                  <p className="text-sm text-gray-600 mb-4">{room.description}</p>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Players:</span>
-                    <span className="font-bold text-lg">{room.current_players}/{room.max_players}</span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Prize Pool:</span>
-                    <span className="font-bold text-lg text-green-600">{formatCurrency(room.prize_pool)}</span>
+          <div className="space-y-4">
+            {rooms.map(room => {
+              const hasInsufficientBalance = user && (user.balance + (user.bonus_balance || 0)) < room.stake
+              const roomIcon = room.stake <= 10 ? '🛡️' : room.stake <= 50 ? '🛡️' : room.stake <= 100 ? '💎' : '⭐'
+              
+              return (
+                <div key={room.id} className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 border-2 border-purple-700">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-2xl font-bold text-white mb-2">{room.name}</h3>
+                      <p className="text-purple-200 text-sm">{room.description}</p>
+                    </div>
+                    <div className="text-4xl">{roomIcon}</div>
                   </div>
 
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Status:</span>
-                    <span className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${room.status === 'active' ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></span>
-                      <span className="text-sm font-medium capitalize">{room.status}</span>
-                    </span>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-300 text-sm">💰 Stake:</span>
+                      <span className="text-white font-bold">{formatCurrency(room.stake)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-300 text-sm">🏆 Estimated Win:</span>
+                      <span className="text-white font-bold">{formatCurrency(room.prize_pool)}</span>
+                    </div>
                   </div>
 
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
-                      className={`bg-gradient-to-r ${room.color} h-3 rounded-full transition-all duration-500`}
-                      style={{ width: `${(room.current_players / room.max_players) * 100}%` }}
-                    />
-                  </div>
+                  {hasInsufficientBalance && isAuthenticated && (
+                    <div className="bg-red-600 text-white px-4 py-3 rounded-lg mb-4 text-sm">
+                      <strong>Insufficient Balance</strong>
+                      <br />
+                      You need at least {formatCurrency(room.stake)} to join this room. Your current balance is {formatCurrency(user.balance + (user.bonus_balance || 0))}. Please deposit first.
+                    </div>
+                  )}
 
-                  {isAuthenticated ? (
-                    <Link href={`/game/${room.id}`}>
+                  {authLoading ? (
+                    <button 
+                      disabled
+                      className="w-full bg-gray-600 text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 opacity-50 cursor-not-allowed"
+                    >
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Loading...</span>
+                    </button>
+                  ) : isAuthenticated ? (
+                    <Link href={hasInsufficientBalance ? '/deposit' : `/game/${room.id}`}>
                       <button 
-                        disabled={!user || user.balance < room.stake}
-                        className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-md mt-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full bg-yellow-500 text-purple-900 py-4 rounded-xl font-bold hover:bg-yellow-400 transition-colors flex items-center justify-center gap-2"
                       >
-                        <span>{user && user.balance < room.stake ? 'Insufficient Balance' : 'Join Room'}</span>
-                        <span>→</span>
+                        <span>⭐</span>
+                        <span>{hasInsufficientBalance ? 'Deposit' : 'Play'}</span>
+                        <span>⭐</span>
                       </button>
                     </Link>
                   ) : (
                     <Link href="/login">
-                      <button className="w-full bg-gray-400 text-white py-3 rounded-lg font-semibold hover:bg-gray-500 transition-colors shadow-md mt-4 flex items-center justify-center gap-2">
-                        <span>Login to Play</span>
-                        <span>🔒</span>
+                      <button className="w-full bg-gray-600 text-white py-4 rounded-xl font-bold hover:bg-gray-500 transition-colors flex items-center justify-center gap-2">
+                        <span>🔒 Login to Play</span>
                       </button>
                     </Link>
                   )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -173,6 +157,8 @@ export default function LobbyPage() {
           </div>
         )}
       </div>
+      
+      <BottomNav />
     </div>
   )
 }

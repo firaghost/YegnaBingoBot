@@ -8,9 +8,15 @@ export interface AuthUser {
   telegram_id: string
   username: string
   balance: number
+  bonus_balance: number
   games_played: number
   games_won: number
   total_winnings: number
+  referral_code: string
+  total_referrals: number
+  referral_earnings: number
+  daily_streak: number
+  last_play_date: string
   created_at: string
 }
 
@@ -61,16 +67,28 @@ export function useAuth() {
         .maybeSingle()
 
       if (!existingUser) {
+        // Get registration bonus from admin settings
+        const { data: bonusSetting } = await supabase
+          .from('admin_settings')
+          .select('setting_value')
+          .eq('setting_key', 'welcome_bonus')
+          .single()
+
+        const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
+
         // Create new user
         const { data: newUser, error } = await supabase
           .from('users')
           .insert({
             telegram_id: telegramId,
             username: telegramData.username || `Player_${telegramId}`,
-            balance: 1000, // Starting balance
+            balance: 0, // No main balance initially
+            bonus_balance: registrationBonus, // Registration bonus from admin settings
             games_played: 0,
             games_won: 0,
-            total_winnings: 0
+            total_winnings: 0,
+            referral_code: telegramId,
+            daily_streak: 0
           })
           .select()
           .single()

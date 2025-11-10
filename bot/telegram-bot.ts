@@ -1,16 +1,18 @@
 import 'dotenv/config'
 import { Telegraf, Markup } from 'telegraf'
 import { supabase } from '../lib/supabase.js'
-
 const BOT_TOKEN = process.env.BOT_TOKEN!
 const MINI_APP_URL = process.env.MINI_APP_URL || 'http://localhost:3000'
 
 const bot = new Telegraf(BOT_TOKEN)
 
-// Start command
+// Start command - Register user
 bot.command('start', async (ctx) => {
-  const userId = ctx.from.id
-  const username = ctx.from.username || ctx.from.first_name
+  const userId = ctx.from?.id
+  const username = ctx.from?.username || ctx.from?.first_name || 'Player'
+  const firstName = ctx.from?.first_name || 'Player'
+
+  if (!userId) return
 
   try {
     // Check if user exists
@@ -21,85 +23,160 @@ bot.command('start', async (ctx) => {
       .maybeSingle()
 
     if (!existingUser) {
-      // Create new user with starting balance of 5 ETB
-      await supabase
-        .from('users')
-        .insert({
-          telegram_id: userId.toString(),
-          username: username,
-          balance: 5, // Starting balance
-          games_played: 0,
-          games_won: 0,
-          total_winnings: 0
-        })
-
+      // New user - Show registration button
       await ctx.reply(
-        `🎰 *Welcome to Bingo Royale!*\n\n` +
-        `Hello ${username}! 👋\n\n` +
-        `You've been registered successfully!\n` +
-        `🎁 *Starting bonus: 5 ETB*\n\n` +
-        `Get ready for exciting bingo games with real prizes!\n\n` +
-        `✨ *Features:*\n` +
-        `💰 Win ETB prizes\n` +
+        `🎰 *Welcome to bingo Royale!*\n\n` +
+        `Hello ${firstName}! 👋\n\n` +
+        `To get started, please register by clicking the button below.\n` +
+        `You'll receive *3 ETB bonus* just for joining!\n\n` +
+        `✨ *What you'll get:*\n` +
+        `🎁 3 ETB registration bonus\n` +
+        `💰 Win real ETB prizes\n` +
         `🎮 Multiple game rooms\n` +
         `⚡ Real-time gameplay\n` +
         `🏆 Leaderboard rankings\n` +
-        `💸 Easy deposit & withdrawal\n\n` +
+        `🔥 Daily streak bonuses\n\n` +
+        `Click "Register Now" to begin!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Register Now', 'register')],
+            [Markup.button.callback('❓ Help', 'help')]
+          ])
+        }
+      )
+    } else {
+      // Existing user
+      await ctx.reply(
+        `👋 *Welcome back, ${username}!*\n\n` +
+        `Ready to play some bingo?\n\n` +
+        `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
+        `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n` +
+        `🎮 Games Played: ${existingUser.games_played}\n` +
+        `🏆 Games Won: ${existingUser.games_won}\n` +
+        `🔥 Daily Streak: ${existingUser.daily_streak || 0} days\n\n` +
         `Tap the button below to start playing!`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
             [Markup.button.callback('💰 Balance', 'balance')],
-            [Markup.button.callback('🏆 Leaderboard', 'leaderboard')],
-            [Markup.button.callback('❓ Help', 'help')]
-          ])
-        }
-      )
-    } else {
-      await ctx.reply(
-        `🎰 *Welcome back to Bingo Royale!*\n\n` +
-        `Hello ${username}! 👋\n\n` +
-        `Your balance: *${existingUser.balance} ETB*\n` +
-        `Games played: ${existingUser.games_played}\n` +
-        `Games won: ${existingUser.games_won}\n\n` +
-        `Ready to play?`,
-        {
-          parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-            [Markup.button.callback('💰 Balance', 'balance')],
-            [Markup.button.callback('🏆 Leaderboard', 'leaderboard')],
-            [Markup.button.callback('❓ Help', 'help')]
+            [Markup.button.callback('🏆 Leaderboard', 'leaderboard')]
           ])
         }
       )
     }
   } catch (error) {
     console.error('Error in start command:', error)
-    await ctx.reply('Sorry, something went wrong. Please try again later.')
+    await ctx.reply('❌ An error occurred. Please try again later.')
   }
 })
 
-// Balance command
-bot.command('balance', async (ctx) => {
+// Handle registration callback
+bot.action('register', async (ctx) => {
+  const userId = ctx.from?.id
+  const username = ctx.from?.username || ctx.from?.first_name || 'Player'
+  const firstName = ctx.from?.first_name || 'Player'
+
+  if (!userId) return
+
+  try {
+    // Check if already registered
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .maybeSingle()
+
+    if (existingUser) {
+      await ctx.answerCbQuery('You are already registered!')
+      await ctx.editMessageText(
+        `✅ You're already registered!\n\n` +
+        `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
+        `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n\n` +
+        `Tap "Play Now" to start!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          ])
+        }
+      )
+      return
+    }
+
+    // Get registration bonus from admin settings
+    const { data: bonusSetting } = await supabase
+      .from('admin_settings')
+      .select('setting_value')
+      .eq('setting_key', 'welcome_bonus')
+      .single()
+
+    const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
+
+    // Create new user with registration bonus
+    await supabase
+      .from('users')
+      .insert({
+        telegram_id: userId.toString(),
+        username: username,
+        balance: 0,
+        bonus_balance: registrationBonus,
+        games_played: 0,
+        games_won: 0,
+        total_winnings: 0,
+        referral_code: userId.toString(),
+        daily_streak: 0
+      })
+
+    await ctx.answerCbQuery('✅ Registration successful!')
+    await ctx.editMessageText(
+      `🎉 *Registration Successful!*\n\n` +
+      `Welcome to Bingo Royale, ${firstName}! 🎰\n\n` +
+      `🎁 You've received ${registrationBonus.toFixed(2)} ETB bonus!\n\n` +
+      `✨ *Your Account:*\n` +
+      `💰 Balance: 0.00 ETB\n` +
+      `🎁 Bonus: ${registrationBonus.toFixed(2)} ETB\n` +
+      `📊 Total: ${registrationBonus.toFixed(2)} ETB\n\n` +
+      `You can start playing right away!\n` +
+      `Tap "Play Now" to choose a room! 🎮`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.callback('💰 Balance', 'balance')],
+          [Markup.button.callback('❓ Help', 'help')]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in registration:', error)
+    await ctx.answerCbQuery('❌ Registration failed. Please try again.')
+  }
+})
+
+// Balance callback
+bot.action('balance', async (ctx) => {
   const userId = ctx.from.id
 
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('balance, games_played, games_won')
+      .select('balance, bonus_balance, games_played, games_won')
       .eq('telegram_id', userId.toString())
       .single()
 
     if (!user) {
-      await ctx.reply('You need to /start first!')
+      await ctx.answerCbQuery('You need to /start first!')
       return
     }
 
-    await ctx.reply(
+    await ctx.answerCbQuery()
+    await ctx.editMessageText(
       `💰 *Your Account*\n\n` +
-      `Balance: *${user.balance} ETB*\n` +
+      `Balance: *${user.balance.toFixed(2)} ETB*\n` +
+      `Bonus: *${(user.bonus_balance || 0).toFixed(2)} ETB*\n` +
+      `Total: *${(user.balance + (user.bonus_balance || 0)).toFixed(2)} ETB*\n\n` +
       `Games Played: ${user.games_played || 0}\n` +
       `Games Won: ${user.games_won || 0}\n` +
       `Win Rate: ${user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : 0}%`,
@@ -114,7 +191,7 @@ bot.command('balance', async (ctx) => {
     )
   } catch (error) {
     console.error('Error in balance command:', error)
-    await ctx.reply('Failed to fetch balance. Please try again.')
+    await ctx.answerCbQuery('Failed to fetch balance.')
   }
 })
 
@@ -327,10 +404,11 @@ bot.command('help', async (ctx) => {
     `/leaderboard - View top players\n` +
     `/help - Show this help message\n\n` +
     `*How to Play:*\n` +
-    `1. Use /start to register (5 ETB free!)\n` +
+    `1. Use /start to register (3 ETB bonus!)\n` +
     `2. Choose a room with /play or /rooms\n` +
     `3. Mark numbers as they're called\n` +
-    `4. Complete a line, column, or diagonal to win!\n\n` +
+    `4. Complete a line, column, or diagonal to win!\n` +
+    `5. Play daily to build your streak and earn bonuses!\n\n` +
     `💡 *Tip:* Use inline mode by typing @YourBotUsername in any chat!\n\n` +
     `🎮 *Ready to play? Tap the button below!*`,
     {
@@ -383,10 +461,11 @@ bot.action('help', async (ctx) => {
     `/leaderboard - View rankings\n` +
     `/help - Show all commands\n\n` +
     `*How to Play:*\n` +
-    `1. Register with /start (5 ETB free!)\n` +
+    `1. Register with /start (3 ETB bonus!)\n` +
     `2. Choose a game room\n` +
     `3. Mark numbers as they're called\n` +
-    `4. Complete a line to win!\n\n` +
+    `4. Complete a line to win!\n` +
+    `5. Play daily for streak bonuses!\n\n` +
     `*Need Support?*\n` +
     `Contact @YourSupportUsername`,
     { parse_mode: 'Markdown' }
@@ -596,7 +675,7 @@ bot.on('inline_query', async (ctx) => {
         title: '📖 Help & Commands',
         description: 'View all available commands',
         input_message_content: {
-          message_text: `📖 *Bingo Royale Commands*\n\n/start - Register & get 5 ETB\n/play - Join a game\n/balance - Check balance\n/deposit - Add funds\n/withdraw - Withdraw winnings\n/leaderboard - View rankings\n/rooms - View game rooms\n/account - View profile\n/stats - View statistics\n/history - View history\n/help - Show help`,
+          message_text: `📖 *Bingo Royale Commands*\n\n/start - Register & get 3 ETB bonus\n/play - Join a game\n/balance - Check balance\n/deposit - Add funds\n/withdraw - Withdraw winnings\n/leaderboard - View rankings\n/rooms - View game rooms\n/account - View profile\n/stats - View statistics\n/history - View history\n/help - Show help`,
           parse_mode: 'Markdown'
         },
         reply_markup: {
@@ -615,7 +694,7 @@ bot.on('inline_query', async (ctx) => {
         title: '🎮 Play Bingo Royale',
         description: 'Start playing now! Get 5 ETB bonus on signup',
         input_message_content: {
-          message_text: '🎰 *Bingo Royale*\n\nJoin exciting bingo games and win real prizes!\n\n🎁 New players get 5 ETB bonus!\n💰 Multiple game rooms\n⚡ Real-time gameplay\n🏆 Leaderboard rankings',
+          message_text: '🎰 *Bingo Royale*\n\nJoin exciting bingo games and win real prizes!\n\n🎁 New players get 3 ETB bonus!\n💰 Multiple game rooms\n⚡ Real-time gameplay\n🏆 Leaderboard rankings\n🔥 Daily streak bonuses',
           parse_mode: 'Markdown'
         },
         reply_markup: {

@@ -2,9 +2,20 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function HomePage() {
+  const router = useRouter()
+  const { isAuthenticated, loading: authLoading } = useAuth()
   const [sparkles, setSparkles] = useState<Array<{id: number, style: React.CSSProperties}>>([])
+
+  // Redirect to lobby if already logged in
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      router.replace('/lobby')
+    }
+  }, [authLoading, isAuthenticated, router])
 
   useEffect(() => {
     const sparkleArray = Array.from({ length: 40 }, (_, i) => ({
@@ -20,6 +31,23 @@ export default function HomePage() {
     }))
     setSparkles(sparkleArray)
   }, [])
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 via-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't show home page if logged in (will redirect)
+  if (isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 via-purple-50 to-pink-50 relative overflow-hidden">

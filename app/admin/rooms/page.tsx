@@ -8,6 +8,17 @@ import { supabase } from '@/lib/supabase'
 export default function AdminRoomsPage() {
   const [rooms, setRooms] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingRoom, setEditingRoom] = useState<any>(null)
+  const [formData, setFormData] = useState({
+    id: '',
+    name: '',
+    stake: '',
+    max_players: '',
+    description: '',
+    color: 'from-blue-500 to-blue-700',
+    prize_pool: ''
+  })
 
   useEffect(() => {
     fetchRooms()
@@ -47,6 +58,93 @@ export default function AdminRoomsPage() {
     }
   }
 
+  const handleCreateRoom = () => {
+    setEditingRoom(null)
+    setFormData({
+      id: '',
+      name: '',
+      stake: '',
+      max_players: '',
+      description: '',
+      color: 'from-blue-500 to-blue-700',
+      prize_pool: ''
+    })
+    setShowCreateModal(true)
+  }
+
+  const handleEditRoom = (room: any) => {
+    setEditingRoom(room)
+    setFormData({
+      id: room.id,
+      name: room.name,
+      stake: room.stake.toString(),
+      max_players: room.max_players.toString(),
+      description: room.description || '',
+      color: room.color || 'from-blue-500 to-blue-700',
+      prize_pool: room.prize_pool.toString()
+    })
+    setShowCreateModal(true)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      const roomData = {
+        id: formData.id || formData.name.toLowerCase().replace(/\s+/g, '-'),
+        name: formData.name,
+        stake: parseFloat(formData.stake),
+        max_players: parseInt(formData.max_players),
+        description: formData.description,
+        color: formData.color,
+        prize_pool: parseFloat(formData.prize_pool),
+        status: 'active',
+        current_players: 0
+      }
+
+      if (editingRoom) {
+        const { error } = await supabase
+          .from('rooms')
+          .update(roomData)
+          .eq('id', editingRoom.id)
+        
+        if (error) throw error
+        alert('Room updated successfully!')
+      } else {
+        const { error } = await supabase
+          .from('rooms')
+          .insert(roomData)
+        
+        if (error) throw error
+        alert('Room created successfully!')
+      }
+
+      setShowCreateModal(false)
+      fetchRooms()
+    } catch (error) {
+      console.error('Error saving room:', error)
+      alert('Failed to save room')
+    }
+  }
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!confirm('Are you sure you want to delete this room?')) return
+
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('id', roomId)
+
+      if (error) throw error
+      alert('Room deleted successfully!')
+      fetchRooms()
+    } catch (error) {
+      console.error('Error deleting room:', error)
+      alert('Failed to delete room')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       {/* Header */}
@@ -62,6 +160,16 @@ export default function AdminRoomsPage() {
       </header>
 
       <div className="container mx-auto px-6 py-8">
+        {/* Create Room Button */}
+        <div className="mb-6">
+          <button
+            onClick={handleCreateRoom}
+            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+          >
+            + Create New Room
+          </button>
+        </div>
+
         {/* Rooms Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loading ? (
@@ -103,16 +211,30 @@ export default function AdminRoomsPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => toggleRoomStatus(room.id, room.status)}
-                  className={`w-full py-3 rounded-lg font-semibold transition-colors ${
-                    room.status === 'active'
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  }`}
-                >
-                  {room.status === 'active' ? 'Deactivate Room' : 'Activate Room'}
-                </button>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => handleEditRoom(room)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => toggleRoomStatus(room.id, room.status)}
+                    className={`py-2 rounded-lg font-semibold transition-colors text-sm ${
+                      room.status === 'active'
+                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                        : 'bg-green-600 hover:bg-green-700 text-white'
+                    }`}
+                  >
+                    {room.status === 'active' ? 'Disable' : 'Enable'}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteRoom(room.id)}
+                    className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -138,6 +260,117 @@ export default function AdminRoomsPage() {
           </div>
         </div>
       </div>
+
+      {/* Create/Edit Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold text-white mb-4">
+              {editingRoom ? 'Edit Room' : 'Create New Room'}
+            </h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-gray-300 mb-2">Room ID</label>
+                <input
+                  type="text"
+                  value={formData.id}
+                  onChange={(e) => setFormData({...formData, id: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="speed-bingo"
+                  disabled={!!editingRoom}
+                  required={!editingRoom}
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Room Name</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="Speed Bingo"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Entry Fee (ETB)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.stake}
+                  onChange={(e) => setFormData({...formData, stake: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="5.00"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Max Players</label>
+                <input
+                  type="number"
+                  value={formData.max_players}
+                  onChange={(e) => setFormData({...formData, max_players: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="200"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Prize Pool (ETB)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.prize_pool}
+                  onChange={(e) => setFormData({...formData, prize_pool: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="500.00"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  placeholder="Fast-paced action! Numbers called every 2 seconds."
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Color Gradient</label>
+                <select
+                  value={formData.color}
+                  onChange={(e) => setFormData({...formData, color: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                >
+                  <option value="from-blue-500 to-blue-700">Blue</option>
+                  <option value="from-green-500 to-green-700">Green</option>
+                  <option value="from-purple-500 to-purple-700">Purple</option>
+                  <option value="from-red-500 to-red-700">Red</option>
+                  <option value="from-yellow-500 to-yellow-700">Yellow</option>
+                  <option value="from-pink-500 to-pink-700">Pink</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                >
+                  {editingRoom ? 'Update Room' : 'Create Room'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
