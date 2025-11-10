@@ -203,8 +203,16 @@ export default function GamePage() {
         // Store cleanup info
         cleanupRef.current = { gameId: activeGame.id, userId: user.id }
 
-        // If game just moved to countdown, trigger game start
-        if (activeGame.status === 'countdown') {
+        // Check current game status and trigger start if in countdown
+        // Re-fetch to get the latest status after joining
+        const { data: currentGame } = await supabase
+          .from('games')
+          .select('status')
+          .eq('id', activeGame.id)
+          .single()
+
+        if (currentGame?.status === 'countdown') {
+          console.log('🎬 Game is in countdown, triggering start...')
           try {
             const response = await fetch('/api/game/start', {
               method: 'POST',
@@ -213,9 +221,11 @@ export default function GamePage() {
             })
             
             if (!response.ok) {
-              console.error('Failed to start game:', await response.text())
+              const errorText = await response.text()
+              console.error('Failed to start game:', errorText)
             } else {
-              console.log('✅ Game start triggered successfully')
+              const result = await response.json()
+              console.log('✅ Game start triggered:', result.message)
             }
           } catch (error) {
             console.error('❌ Error starting game:', error)
@@ -276,6 +286,31 @@ export default function GamePage() {
       return () => clearTimeout(timeout)
     }
   }, [loading, gameState, gameId, router])
+
+  // Monitor countdown - if stuck for too long, try to restart it
+  useEffect(() => {
+    if (!gameState || !gameId) return
+    if (gameState.status !== 'countdown') return
+
+    // If countdown is stuck at same value for more than 15 seconds, try to restart
+    const countdownValue = gameState.countdown_time
+    const timeout = setTimeout(async () => {
+      console.warn('⚠️ Countdown appears stuck, attempting to restart game loop...')
+      try {
+        const response = await fetch('/api/game/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+        const result = await response.json()
+        console.log('Restart attempt result:', result)
+      } catch (error) {
+        console.error('Failed to restart game:', error)
+      }
+    }, 15000)
+
+    return () => clearTimeout(timeout)
+  }, [gameState?.status, gameState?.countdown_time, gameId])
 
   // Handle game state updates from Socket.IO
   useEffect(() => {
@@ -403,9 +438,6 @@ export default function GamePage() {
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <Link href="/lobby" className="text-blue-600 hover:text-blue-800 font-medium transition-colors">
-            ← Back to Lobby
-          </Link>
           <h1 className="text-2xl font-bold text-gray-800">{getRoomName()}</h1>
           <button 
             onClick={() => setShowLeaveDialog(true)}

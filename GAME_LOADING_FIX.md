@@ -40,11 +40,14 @@ If 406 errors persist, run this SQL in Supabase SQL Editor:
 1. Added `useRef` imports and refs for state management
 2. Added `initializingRef` to prevent duplicate initializations
 3. Added `cleanupRef` to store cleanup data without triggering re-renders
-4. Made `joinGame` awaited (line 199)
-5. Stored cleanup data after successful join (line 202)
-6. Fixed cleanup effect to only run on unmount (lines 254-262)
+4. Made `joinGame` awaited (line 200)
+5. Stored cleanup data after successful join (line 204)
+6. Fixed cleanup effect to only run on unmount
 7. Increased safety timeout to 10 seconds with debug logging
 8. Improved loading state checks
+9. **Removed "Back to Lobby" link** - only "Leave Game" button remains
+10. **Re-fetch game status** after joining to ensure start API is called
+11. **Added countdown monitor** - restarts game loop if countdown stuck for 15+ seconds
 
 ### `lib/hooks/useSocket.ts`
 1. Added debug logging for game state fetching
