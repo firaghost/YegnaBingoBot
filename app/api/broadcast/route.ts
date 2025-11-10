@@ -78,19 +78,29 @@ export async function POST(request: NextRequest) {
 
         console.log(`Sending to user: ${user.username} (${user.telegram_id})`)
 
+        // Get the app URL - use NEXT_PUBLIC_APP_URL or VERCEL_URL
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+
+        const messagePayload: any = {
+          chat_id: user.telegram_id,
+          text: broadcastMessage,
+          parse_mode: 'Markdown'
+        }
+
+        // Only add web_app button if we have a valid HTTPS URL
+        if (appUrl && appUrl.startsWith('https://')) {
+          messagePayload.reply_markup = {
+            inline_keyboard: [
+              [{ text: '🎮 Play Now', web_app: { url: appUrl } }]
+            ]
+          }
+        }
+
         const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: user.telegram_id,
-            text: broadcastMessage,
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🎮 Play Now', web_app: { url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000' } }]
-              ]
-            }
-          })
+          body: JSON.stringify(messagePayload)
         })
 
         const responseData = await response.json()
