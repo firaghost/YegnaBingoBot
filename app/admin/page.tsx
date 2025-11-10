@@ -96,7 +96,7 @@ export default function AdminDashboard() {
         .limit(3)
 
       const gamesWithPlayers = await Promise.all(
-        (games || []).map(async (game) => {
+        (games || []).map(async (game: any) => {
           const { count } = await supabase
             .from('game_players')
             .select('*', { count: 'exact', head: true })
@@ -121,7 +121,7 @@ export default function AdminDashboard() {
         .order('created_at', { ascending: false })
         .limit(3)
 
-      setRecentWithdrawals(withdrawals?.map(w => ({
+      setRecentWithdrawals(withdrawals?.map((w: any) => ({
         id: w.id.slice(0, 8),
         user: w.users?.username || 'Unknown',
         amount: w.amount,
