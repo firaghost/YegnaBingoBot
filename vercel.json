@@ -1,7 +1,8 @@
 {
   "version": 2,
-  "github": {
-    "silent": true
-  },
-  "ignoreCommand": "exit 1"
+  "buildCommand": "next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "outputDirectory": ".next"
 }

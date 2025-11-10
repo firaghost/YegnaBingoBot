@@ -1,26 +1,49 @@
 {
-  "name": "bingo-vault",
+  "name": "yegna-bingo-royale",
   "version": "1.0.0",
-  "description": "Telegram-based Bingo game system with Supabase backend",
+  "description": "Telegram-based bingo game system with Supabase backend",
+  "private": true,
   "type": "module",
   "scripts": {
-    "bot": "node bot/index.js",
-    "dev": "cd dashboard && npm run dev",
-    "build": "echo 'No build needed for bot'",
-    "start": "cd dashboard && npm start",
-    "setup": "node scripts/setup.js",
-    "test-connection": "node scripts/test-connection.js",
-    "install-all": "npm install && cd dashboard && npm install"
+    "dev": "next dev",
+    "dev:socket": "tsx server/socket-server.ts",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:socket\" \"npm run bot\"",
+    "build": "next build",
+    "start": "next start",
+    "start:socket": "NODE_ENV=production tsx server/socket-server.ts",
+    "lint": "next lint",
+    "bot": "tsx bot/index.ts"
   },
-  "keywords": ["telegram", "bingo", "bot", "supabase"],
+  "keywords": [
+    "telegram",
+    "bingo",
+    "bot",
+    "supabase",
+    "next.js"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "telegraf": "^4.15.0",
     "@supabase/supabase-js": "^2.39.0",
-    "dotenv": "^16.3.1"
+    "autoprefixer": "^10.4.21",
+    "clsx": "^2.1.0",
+    "dotenv": "^16.3.1",
+    "lucide-react": "^0.344.0",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "socket.io": "^4.7.0",
+    "socket.io-client": "^4.7.0",
+    "tailwind-merge": "^2.2.1",
+    "telegraf": "^4.15.0",
+    "tsx": "^4.7.0"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0"
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.0"
   }
 }

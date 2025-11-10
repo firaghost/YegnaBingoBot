@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* Extracted Animations from Original Site */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(.8,0,1,1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0,0,.2,1);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: .5;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sparkle-fall {
+  0% {
+    transform: translateY(-100vh) scale(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes sparkle-fade {
+  0%, 10% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  90%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes enter {
+  0% {
+    opacity: var(--tw-enter-opacity, 1);
+    transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) 
+               scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) 
+               rotate(var(--tw-enter-rotate, 0));
+  }
+}
+
+@keyframes exit {
+  to {
+    opacity: var(--tw-exit-opacity, 1);
+    transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) 
+               scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) 
+               rotate(var(--tw-exit-rotate, 0));
+  }
+}
+
+.animate-sparkle-fall {
+  animation: sparkle-fall 3s ease-out infinite;
+}
+
+.animate-sparkle-fade {
+  animation: sparkle-fade 3s ease-out infinite;
+}
