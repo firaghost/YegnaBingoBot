@@ -115,7 +115,7 @@ bot.action('register', async (ctx) => {
     const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
 
     // Create new user with registration bonus
-    await supabase
+    const { data: newUser, error: insertError } = await supabase
       .from('users')
       .insert({
         telegram_id: userId.toString(),
@@ -128,6 +128,50 @@ bot.action('register', async (ctx) => {
         referral_code: userId.toString(),
         daily_streak: 0
       })
+      .select()
+      .single()
+    if (insertError) {
+      console.error('Insert error:', insertError)
+      
+      // Check if it's a duplicate key error (user already exists)
+      if (insertError.code === '23505') {
+        // User already exists, fetch their data
+        const { data: user } = await supabase
+          .from('users')
+          .select('*')
+          .eq('telegram_id', userId.toString())
+          .single()
+
+        if (!user) {
+          await ctx.answerCbQuery('You need to /start first!')
+          return
+        }
+
+        const totalBalance = user.balance + (user.bonus_balance || 0)
+
+        await ctx.answerCbQuery()
+        await ctx.editMessageText(
+          `💰 *Your Balance*\n\n` +
+          `💵 Main Balance: ${user.balance.toFixed(2)} ETB\n` +
+          `🎁 Bonus Balance: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
+          `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
+          `🎮 Games Played: ${user.games_played}\n` +
+          `🏆 Games Won: ${user.games_won}\n` +
+          `💸 Total Winnings: ${user.total_winnings.toFixed(2)} ETB`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
+              [Markup.button.webApp('💵 Withdraw', `${MINI_APP_URL}/withdraw`)],
+              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+            ])
+          }
+        )
+        return
+      }
+      
+      throw insertError
+    }
 
     await ctx.answerCbQuery('✅ Registration successful!')
     await ctx.editMessageText(
@@ -149,9 +193,9 @@ bot.action('register', async (ctx) => {
         ])
       }
     )
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in registration:', error)
-    await ctx.answerCbQuery('❌ Registration failed. Please try again.')
+    await ctx.answerCbQuery(`❌ Registration failed: ${error.message || 'Please try again'}`)
   }
 })
 
@@ -192,6 +236,47 @@ bot.action('balance', async (ctx) => {
   } catch (error) {
     console.error('Error in balance command:', error)
     await ctx.answerCbQuery('Failed to fetch balance.')
+  }
+})
+
+// Balance command
+bot.command('balance', async (ctx) => {
+  const userId = ctx.from.id
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('Please use /start to register first!')
+      return
+    }
+
+    const totalBalance = user.balance + (user.bonus_balance || 0)
+
+    await ctx.reply(
+      `💰 *Your Balance*\n\n` +
+      `💵 Main Balance: ${user.balance.toFixed(2)} ETB\n` +
+      `🎁 Bonus Balance: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
+      `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
+      `🎮 Games Played: ${user.games_played}\n` +
+      `🏆 Games Won: ${user.games_won}\n` +
+      `💸 Total Winnings: ${user.total_winnings.toFixed(2)} ETB`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
+          [Markup.button.webApp('💵 Withdraw', `${MINI_APP_URL}/withdraw`)],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in balance command:', error)
+    await ctx.reply('Failed to fetch balance. Please try again.')
   }
 })
 
@@ -577,8 +662,41 @@ bot.command('rooms', async (ctx) => {
 // Inline query handler
 bot.on('inline_query', async (ctx) => {
   const query = ctx.inlineQuery.query.toLowerCase()
+  const userId = ctx.inlineQuery.from.id
   
   try {
+    // Check if user is registered
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .maybeSingle()
+
+    // If not registered, show registration prompt
+    if (!user) {
+      await ctx.answerInlineQuery([
+        {
+          type: 'article',
+          id: 'not_registered',
+          title: '⚠️ Not Registered',
+          description: 'Click here to register and start playing!',
+          input_message_content: {
+            message_text: '🎰 *Welcome to Bingo Royale!*\n\nYou need to register first to play.\n\nClick the button below to register and get your welcome bonus!',
+            parse_mode: 'Markdown'
+          },
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Register Now', url: `https://t.me/${ctx.botInfo.username}?start=register` }]
+            ]
+          }
+        }
+      ], {
+        cache_time: 0,
+        is_personal: true
+      })
+      return
+    }
+
     const results = []
 
     // Game rooms inline results
@@ -776,7 +894,22 @@ bot.catch((err, ctx) => {
 })
 
 // Launch bot
-export function startBot() {
+export async function startBot() {
+  // Set bot commands for the menu
+  await bot.telegram.setMyCommands([
+    { command: 'start', description: '🎮 Start the bot and register' },
+    { command: 'play', description: '🎯 Play bingo game' },
+    { command: 'balance', description: '💰 Check your balance' },
+    { command: 'deposit', description: '💸 Deposit funds' },
+    { command: 'withdraw', description: '💵 Withdraw winnings' },
+    { command: 'account', description: '👤 View your account' },
+    { command: 'stats', description: '📊 View your statistics' },
+    { command: 'history', description: '📜 View game history' },
+    { command: 'rooms', description: '🏠 View available rooms' },
+    { command: 'leaderboard', description: '🏆 View top players' },
+    { command: 'help', description: '❓ Get help and info' }
+  ])
+
   bot.launch()
   console.log('✅ Telegram bot started successfully')
   console.log('📱 Inline mode enabled')
