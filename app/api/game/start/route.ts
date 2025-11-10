@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 import crypto from 'crypto'
+
+// Use admin client to bypass RLS in production
+const supabase = supabaseAdmin
 
 // Track running game loops to prevent duplicates
 const runningGames = new Set<string>()
@@ -51,133 +54,25 @@ function getNextNumber(calledNumbers: number[], sequence: number[]): { letter: s
   return null
 }
 
-// Start countdown and game with provably fair number calling
+/**
+ * DEPRECATED: Old game loop - replaced with tick-based system
+ * This function is kept for backward compatibility but should not be used
+ * The new system uses /api/game/tick which is called repeatedly by clients
+ * This avoids Vercel's 10-second serverless timeout limitation
+ */
 async function runGameLoop(gameId: string) {
-  // Check if already running
-  if (runningGames.has(gameId)) {
-    console.log(`⚠️ Game loop already running for ${gameId}`)
-    return
-  }
-
-  runningGames.add(gameId)
-  console.log(`🎮 Starting game loop for ${gameId}`)
+  console.log(`⚠️ Old game loop called for ${gameId} - this is deprecated`)
+  console.log(`💡 Use the new tick-based system at /api/game/tick instead`)
   
-  try {
-    // Generate cryptographically secure number sequence BEFORE game starts
-    const numberSequence = generateNumberSequence()
-    const sequenceHash = crypto.createHash('sha256').update(numberSequence.join(',')).digest('hex')
-    
-    console.log(`🔒 Number sequence hash: ${sequenceHash.substring(0, 16)}... (provably fair)`)
-  
-  // Countdown from 10 to 0
-  for (let i = 10; i >= 0; i--) {
-    await supabase
-      .from('games')
-      .update({ countdown_time: i })
-      .eq('id', gameId)
-    
-    await new Promise(resolve => setTimeout(resolve, 1000))
-  }
-  
-  // Start the game
-  const startTime = new Date().toISOString()
+  // Just ensure the game is in countdown status
+  // The client will handle the rest via tick API
   await supabase
     .from('games')
     .update({ 
-      status: 'active',
-      started_at: startTime
+      countdown_time: 10,
+      status: 'countdown'
     })
     .eq('id', gameId)
-  
-  console.log(`✅ Game ${gameId} started at ${startTime}`)
-  
-  // Call numbers every 3 seconds using pre-shuffled sequence
-  let callCount = 0
-  const maxCalls = 75 // Maximum possible calls
-  
-  while (callCount < maxCalls) {
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    
-    // Get current game state
-    const { data: game, error: gameError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', gameId)
-      .single()
-    
-    if (gameError || !game) {
-      console.error(`❌ Error fetching game ${gameId}:`, gameError)
-      break
-    }
-    
-    if (game.status !== 'active') {
-      console.log(`🛑 Game ${gameId} ended with status: ${game.status}`)
-      break
-    }
-    
-    // Get next number from pre-shuffled sequence
-    const calledNumbers = game.called_numbers || []
-    const nextNumber = getNextNumber(calledNumbers, numberSequence)
-    
-    if (!nextNumber) {
-      console.log(`📢 All numbers called for game ${gameId}`)
-      // End game if no winner after all numbers
-      await supabase
-        .from('games')
-        .update({ status: 'finished' })
-        .eq('id', gameId)
-      break
-    }
-    
-    const updatedNumbers = [...calledNumbers, nextNumber.number]
-    
-    // Atomic update
-    const { error: updateError } = await supabase
-      .from('games')
-      .update({
-        called_numbers: updatedNumbers,
-        latest_number: nextNumber
-      })
-      .eq('id', gameId)
-      .eq('status', 'active') // Only update if still active
-    
-    if (updateError) {
-      console.error(`❌ Error updating game ${gameId}:`, updateError)
-      break
-    }
-    
-    callCount++
-    console.log(`📢 [${callCount}/75] Called ${nextNumber.letter}${nextNumber.number} for game ${gameId}`)
-    
-    // Check immediately if someone won (don't wait 3 seconds)
-    const { data: checkGame } = await supabase
-      .from('games')
-      .select('status, winner_id')
-      .eq('id', gameId)
-      .single()
-    
-    if (checkGame && (checkGame.status === 'finished' || checkGame.winner_id)) {
-      console.log(`🏆 Game ${gameId} has a winner! Stopping number calls.`)
-      break
-    }
-    
-    // Safety check: if game has been running too long, end it
-    const gameRunTime = Date.now() - new Date(startTime).getTime()
-    if (gameRunTime > 10 * 60 * 1000) { // 10 minutes max
-      console.log(`⏰ Game ${gameId} exceeded max runtime, ending...`)
-      await supabase
-        .from('games')
-        .update({ status: 'finished' })
-        .eq('id', gameId)
-      break
-    }
-  }
-  
-  console.log(`🏁 Game loop ended for ${gameId}`)
-  } finally {
-    // Remove from running games set
-    runningGames.delete(gameId)
-  }
 }
 
 export async function POST(request: NextRequest) {

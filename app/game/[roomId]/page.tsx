@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
+import { useGameTicker } from '@/lib/hooks/useGameTicker'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 
@@ -23,6 +24,9 @@ export default function GamePage() {
   const { connected, gameState, joinGame, leaveGame, markNumber, claimBingo } = useSocket()
 
   const [gameId, setGameId] = useState<string | null>(null)
+  
+  // Use game ticker to progress the game (replaces server-side loop)
+  useGameTicker(gameId, gameState?.status || null)
   const [roomData, setRoomData] = useState<any>(null)
   const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
   const [bingoCard, setBingoCard] = useState<number[][]>([])
