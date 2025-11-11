@@ -277,22 +277,28 @@ export default function GamePage() {
     if (!gameState) return
 
     // Check if game finished
-    if (gameState.status === 'finished') {
+    if (gameState.status === 'finished' && gameState.winner_id) {
+      console.log('🏁 Game finished! Winner:', gameState.winner_id)
+      
       if (gameState.winner_id === user?.id) {
         // User won
-        setWinAmount(gameState.prize_pool)
+        const prize = gameState.net_prize || gameState.prize_pool
+        setWinAmount(prize)
         
         // Check if it's an auto-win (opponent left)
-        // Auto-win if there's only 1 player in the finished game
         if (gameState.players.length === 1) {
           setAutoWin(true)
         }
         
+        console.log('🎉 You won!', prize)
         setShowWinDialog(true)
       } else {
         // User lost
-        setWinAmount(gameState.prize_pool)
+        const prize = gameState.net_prize || gameState.prize_pool
+        setWinAmount(prize)
         setShowLoseDialog(true)
+        
+        console.log('😢 You lost. Winner:', gameState.winner_id)
         
         // Fetch winner name
         if (gameState.winner_id) {
@@ -302,12 +308,15 @@ export default function GamePage() {
             .eq('id', gameState.winner_id)
             .single()
             .then(({ data }) => {
-              if (data) setWinnerName(data.username)
+              if (data) {
+                console.log('Winner name:', data.username)
+                setWinnerName(data.username)
+              }
             })
         }
       }
     }
-  }, [gameState, user])
+  }, [gameState?.status, gameState?.winner_id, user])
 
   // Handle cell click
   const handleCellClick = (row: number, col: number) => {
@@ -315,11 +324,12 @@ export default function GamePage() {
     if (!gameId || !user) return
     
     const num = bingoCard[row][col]
-    if (num === 0) return
-    if (!gameState.called_numbers.includes(num)) return
+    if (num === 0) return // Free space
+    if (!gameState.called_numbers.includes(num)) return // Not called yet
+    if (markedCells[row][col]) return // Already marked - don't allow unmarking
 
     const newMarked = markedCells.map(r => [...r])
-    newMarked[row][col] = !newMarked[row][col]
+    newMarked[row][col] = true // Only allow marking, not unmarking
     setMarkedCells(newMarked)
 
     // Emit mark event to server

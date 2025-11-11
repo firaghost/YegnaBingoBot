@@ -65,37 +65,48 @@ export async function POST(request: NextRequest) {
     if (game.status === 'countdown') {
       const currentTime = game.countdown_time || 10
       
-      if (currentTime > 0) {
-        // Decrement countdown
+      if (currentTime > 1) {
+        // Decrement countdown (but not below 1)
+        const newTime = currentTime - 1
         await supabase
           .from('games')
-          .update({ countdown_time: currentTime - 1 })
+          .update({ countdown_time: newTime })
           .eq('id', gameId)
           .eq('status', 'countdown')
+        
+        console.log(`⏰ Countdown: ${newTime}s for game ${gameId}`)
         
         return NextResponse.json({
           success: true,
           action: 'countdown',
-          countdown_time: currentTime - 1,
-          message: `Countdown: ${currentTime - 1}`
+          countdown_time: newTime,
+          message: `Countdown: ${newTime}`
         })
       } else {
-        // Start the game
+        // currentTime is 1 or 0, start the game
+        console.log(`🎬 Starting game ${gameId}...`)
+        
         const numberSequence = generateNumberSequence()
         const sequenceHash = crypto.createHash('sha256')
           .update(numberSequence.join(','))
           .digest('hex')
         
-        await supabase
+        const { error: updateError } = await supabase
           .from('games')
           .update({
             status: 'active',
+            countdown_time: 0,
             started_at: new Date().toISOString(),
             number_sequence: numberSequence,
             number_sequence_hash: sequenceHash
           })
           .eq('id', gameId)
           .eq('status', 'countdown')
+        
+        if (updateError) {
+          console.error('Error starting game:', updateError)
+          throw updateError
+        }
         
         console.log(`✅ Game ${gameId} started with hash: ${sequenceHash.substring(0, 16)}...`)
         

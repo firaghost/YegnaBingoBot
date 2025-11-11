@@ -17,6 +17,9 @@ export interface GameState {
   prize_pool: number
   winner_id: string | null
   min_players: number
+  commission_rate?: number
+  commission_amount?: number
+  net_prize?: number
 }
 
 export function useSocket() {
