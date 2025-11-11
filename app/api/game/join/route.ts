@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { hasActiveTimer, setGameTimer, activeCountdownTimers } from '@/lib/game-timers'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
@@ -85,12 +84,6 @@ export async function POST(request: NextRequest) {
         newStatus = 'waiting'  // Stay waiting
       }
       
-      // Check if game was stuck in waiting with 2+ players (no timer was created)
-      // This can happen if the server restarted or timer was lost
-      if (activeGame.players.length >= 2 && activeGame.status === 'waiting' && !hasActiveTimer(activeGame.id)) {
-        console.log(`⚠️ Game ${activeGame.id} was stuck in waiting with ${activeGame.players.length} players, will create timer`)
-      }
-      
       // Update game with new player
       const { data: updatedGame, error: joinError } = await supabase
         .from('games')
@@ -110,59 +103,27 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have minimum players (2+), wait 15 seconds for more players before starting countdown
-      // Only create timer if one doesn't already exist for this game
-      if (updatedPlayers.length >= 2 && !hasActiveTimer(activeGame.id)) {
-        console.log(`⏰ Game ${activeGame.id} has ${updatedPlayers.length} players, waiting 15s for more players...`)
+      // If we have exactly 2 players, immediately start countdown (no waiting)
+      if (updatedPlayers.length >= 2 && newStatus === 'waiting') {
+        console.log(`🎮 Game ${activeGame.id} has ${updatedPlayers.length} players, starting countdown immediately...`)
         
-        const timer = setTimeout(async () => {
-          // Remove timer from tracking
-          activeCountdownTimers.delete(activeGame.id)
-          
-          // Check current player count and validate players still exist
-          const { data: currentGame } = await supabase
-            .from('games')
-            .select('players, status')
-            .eq('id', activeGame.id)
-            .single()
-          
-          if (!currentGame) {
-            console.log(`⚠️ Game ${activeGame.id} not found, may have been deleted`)
-            return
-          }
-          
-          // Validate that players still exist and haven't left
-          const validPlayers = currentGame.players.length >= 2
-          
-          // Only start countdown if still waiting and has at least 2 valid players
-          if (currentGame.status === 'waiting' && validPlayers) {
-            await supabase
-              .from('games')
-              .update({ status: 'countdown' })
-              .eq('id', activeGame.id)
-            
-            console.log(`🎮 Game ${activeGame.id} starting countdown with ${currentGame.players.length} players`)
-            
-            // Notify Socket.IO server to start the game loop
-            try {
-              const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
-              await fetch(`${socketUrl}/trigger-game-start`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId: activeGame.id })
-              }).catch(err => console.error('Failed to trigger game start:', err))
-            } catch (error) {
-              console.error('Error notifying socket server:', error)
-            }
-          } else {
-            console.log(`⚠️ Game ${activeGame.id} cannot start: status=${currentGame.status}, players=${currentGame.players.length}`)
-          }
-        }, 15000)  // 15 second wait
+        // Update status to countdown immediately
+        await supabase
+          .from('games')
+          .update({ status: 'countdown' })
+          .eq('id', activeGame.id)
         
-        // Track the timer
-        setGameTimer(activeGame.id, timer)
-      } else if (updatedPlayers.length >= 2 && hasActiveTimer(activeGame.id)) {
-        console.log(`⏰ Game ${activeGame.id} already has a countdown timer running (${updatedPlayers.length} players)`)
+        // Notify Socket.IO server to start the game loop
+        try {
+          const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+          await fetch(`${socketUrl}/trigger-game-start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameId: activeGame.id })
+          }).catch(err => console.error('Failed to trigger game start:', err))
+        } catch (error) {
+          console.error('Error notifying socket server:', error)
+        }
       }
 
       return NextResponse.json({
@@ -173,43 +134,25 @@ export async function POST(request: NextRequest) {
     }
 
     // Player already in game
-    // Check if game is stuck in waiting with 2+ players and no timer
-    if (activeGame.players.length >= 2 && activeGame.status === 'waiting' && !hasActiveTimer(activeGame.id)) {
-      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, creating timer...`)
+    // Check if game is stuck in waiting with 2+ players
+    if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
+      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting countdown...`)
       
-      const timer = setTimeout(async () => {
-        activeCountdownTimers.delete(activeGame.id)
-        
-        const { data: currentGame } = await supabase
-          .from('games')
-          .select('players, status')
-          .eq('id', activeGame.id)
-          .single()
-        
-        if (!currentGame) return
-        
-        if (currentGame.status === 'waiting' && currentGame.players.length >= 2) {
-          await supabase
-            .from('games')
-            .update({ status: 'countdown' })
-            .eq('id', activeGame.id)
-          
-          console.log(`🎮 Game ${activeGame.id} starting countdown with ${currentGame.players.length} players`)
-          
-          try {
-            const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
-            await fetch(`${socketUrl}/trigger-game-start`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: activeGame.id })
-            }).catch(err => console.error('Failed to trigger game start:', err))
-          } catch (error) {
-            console.error('Error notifying socket server:', error)
-          }
-        }
-      }, 15000)
+      await supabase
+        .from('games')
+        .update({ status: 'countdown' })
+        .eq('id', activeGame.id)
       
-      setGameTimer(activeGame.id, timer)
+      try {
+        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+        await fetch(`${socketUrl}/trigger-game-start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: activeGame.id })
+        }).catch(err => console.error('Failed to trigger game start:', err))
+      } catch (error) {
+        console.error('Error notifying socket server:', error)
+      }
     }
     
     return NextResponse.json({

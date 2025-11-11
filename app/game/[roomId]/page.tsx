@@ -409,7 +409,18 @@ export default function GamePage() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button onClick={() => router.push('/lobby')} className="text-slate-900 text-2xl">×</button>
+          <button 
+            onClick={() => {
+              if (gameStatus === 'active' || gameStatus === 'countdown') {
+                setShowLeaveDialog(true)
+              } else {
+                router.push('/lobby')
+              }
+            }} 
+            className="text-slate-900 text-2xl hover:text-slate-600 transition-colors"
+          >
+            ×
+          </button>
           <h1 className="text-xl font-bold text-slate-900">{getRoomName()}</h1>
           <div className="w-6"></div>
         </div>
