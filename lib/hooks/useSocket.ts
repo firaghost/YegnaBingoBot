@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { io, Socket } from 'socket.io-client'
 import { supabase } from '@/lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
@@ -27,24 +28,81 @@ export function useSocket() {
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [channel, setChannel] = useState<RealtimeChannel | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const socketRef = useRef<Socket | null>(null)
 
+  // Connect to Socket.IO server on Railway
   useEffect(() => {
-    setConnected(true)
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
+    console.log('🔌 Connecting to Socket.IO:', socketUrl)
+    
+    const socket = io(socketUrl, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    })
+
+    socket.on('connect', () => {
+      console.log('✅ Socket.IO connected:', socket.id)
+      setConnected(true)
+    })
+
+    socket.on('disconnect', () => {
+      console.log('❌ Socket.IO disconnected')
+      setConnected(false)
+    })
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket.IO connection error:', error.message)
+      setConnected(false)
+    })
+
+    socketRef.current = socket
 
     return () => {
+      console.log('🔌 Cleaning up Socket.IO connection')
+      socket.disconnect()
       if (channel) {
         channel.unsubscribe()
       }
     }
-  }, [channel])
+  }, [])
 
   const joinGame = useCallback(async (gameId: string, userId: string) => {
     console.log(`🎮 Joining game: ${gameId} User: ${userId}`)
-    console.log('Current channel state:', channelRef.current ? 'exists' : 'null')
+    
+    // Join Socket.IO room
+    if (socketRef.current) {
+      console.log('📡 Emitting join-game to Socket.IO...')
+      socketRef.current.emit('join-game', { gameId, userId })
+      
+      // Listen for game state updates from Socket.IO
+      socketRef.current.on('game-state', (state: any) => {
+        console.log('📥 Received game-state from Socket.IO:', state.status)
+        setGameState({
+          id: state.id,
+          room_id: state.room_id,
+          status: state.status,
+          countdown_time: state.countdown_time || 10,
+          players: state.players || [],
+          bots: state.bots || [],
+          called_numbers: state.called_numbers || [],
+          latest_number: state.latest_number || null,
+          stake: state.stake,
+          prize_pool: state.prize_pool,
+          winner_id: state.winner_id,
+          min_players: state.min_players || 2
+        })
+      })
+
+      socketRef.current.on('game-won', (data: any) => {
+        console.log('🏆 Game won event:', data)
+      })
+    }
 
     // Clean up existing channel if any
     if (channelRef.current) {
-      console.log('⚠️ Cleaning up existing channel...')
+      console.log('⚠️ Cleaning up existing Supabase channel...')
       await channelRef.current.unsubscribe()
       channelRef.current = null
     }
@@ -131,6 +189,14 @@ export function useSocket() {
 
   const leaveGame = async (gameId: string, userId: string) => {
     console.log('👋 Leaving game:', gameId)
+    
+    // Leave Socket.IO room
+    if (socketRef.current) {
+      socketRef.current.emit('leave-game', { gameId, userId })
+      socketRef.current.off('game-state')
+      socketRef.current.off('game-won')
+    }
+    
     if (channel) {
       await channel.unsubscribe()
       setChannel(null)

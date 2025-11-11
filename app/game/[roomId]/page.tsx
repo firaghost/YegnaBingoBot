@@ -23,10 +23,6 @@ export default function GamePage() {
   const { connected, gameState, joinGame, leaveGame, markNumber, claimBingo } = useSocket()
 
   const [gameId, setGameId] = useState<string | null>(null)
-  
-  // Game progression is now handled by Socket.IO server
-  // Clients just listen to 'game-state' events via useSocket hook
-  
   const [roomData, setRoomData] = useState<any>(null)
   const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
   const [bingoCard, setBingoCard] = useState<number[][]>([])
@@ -152,35 +148,8 @@ export default function GamePage() {
         // Store cleanup info
         cleanupRef.current = { gameId: activeGame.id, userId: user.id }
 
-        // Check current game status and trigger start if in countdown
-        // Re-fetch to get the latest status after joining
-        const { data: currentGame } = await supabase
-          .from('games')
-          .select('status')
-          .eq('id', activeGame.id)
-          .single()
-
-        if (currentGame?.status === 'countdown') {
-          console.log('🎬 Game is in countdown, triggering start...')
-          try {
-            const response = await fetch('/api/game/start', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ gameId: activeGame.id })
-            })
-            
-            if (!response.ok) {
-              const errorText = await response.text()
-              console.error('Failed to start game:', errorText)
-            } else {
-              const result = await response.json()
-              console.log('✅ Game start triggered:', result.message)
-            }
-          } catch (error) {
-            console.error('❌ Error starting game:', error)
-            // Don't fail the game join if start trigger fails
-          }
-        }
+        // Game ticker (useGameTicker hook) will automatically handle countdown and number calling
+        console.log('✅ Game joined, ticker will handle progression')
 
         // Update daily streak (only when actually playing a game)
         try {

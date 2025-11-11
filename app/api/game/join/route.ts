@@ -97,6 +97,11 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
+      // Client-side ticker (useGameTicker) will automatically handle countdown progression
+      if (newStatus === 'countdown') {
+        console.log(`🎮 Game ${activeGame.id} entering countdown - client ticker will handle progression`)
+      }
+
       return NextResponse.json({
         success: true,
         game: updatedGame,
