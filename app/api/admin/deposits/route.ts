@@ -77,6 +77,13 @@ export async function POST(request: NextRequest) {
       throw new Error('Transaction not found')
     }
 
+    // Get user details for Telegram notification
+    const { data: user } = await supabase
+      .from('users')
+      .select('telegram_id, username')
+      .eq('id', transaction.user_id)
+      .single()
+
     if (action === 'approve') {
       // Update transaction status to completed
       const { error: updateError } = await supabase
@@ -94,6 +101,26 @@ export async function POST(request: NextRequest) {
 
       if (balanceError) throw balanceError
 
+      // Send Telegram notification
+      if (user?.telegram_id) {
+        try {
+          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: user.telegram_id,
+                text: `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved and added to your account.\n\nYou can now use this balance to play games!`,
+                parse_mode: 'Markdown'
+              })
+            })
+          }
+        } catch (error) {
+          console.error('Failed to send Telegram notification:', error)
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Deposit approved and balance added'
@@ -106,6 +133,26 @@ export async function POST(request: NextRequest) {
         .eq('id', transactionId)
 
       if (updateError) throw updateError
+
+      // Send Telegram notification
+      if (user?.telegram_id) {
+        try {
+          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: user.telegram_id,
+                text: `❌ *Deposit Rejected*\n\nYour deposit request of *${transaction.amount} ETB* has been rejected.\n\nPlease contact support if you have any questions.`,
+                parse_mode: 'Markdown'
+              })
+            })
+          }
+        } catch (error) {
+          console.error('Failed to send Telegram notification:', error)
+        }
+      }
 
       return NextResponse.json({
         success: true,

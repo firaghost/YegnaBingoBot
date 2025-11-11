@@ -3,13 +3,19 @@ import { useEffect, useRef } from 'react'
 /**
  * Hook to manage game progression via tick API
  * This replaces the server-side game loop to avoid Vercel timeout issues
+ * Only ONE player (the first player in the list) should run the ticker
  */
-export function useGameTicker(gameId: string | null, gameStatus: string | null) {
+export function useGameTicker(
+  gameId: string | null, 
+  gameStatus: string | null,
+  userId: string | null,
+  players: string[]
+) {
   const tickerRef = useRef<NodeJS.Timeout | null>(null)
   const isTickingRef = useRef(false)
 
   useEffect(() => {
-    if (!gameId) return
+    if (!gameId || !userId) return
     if (!gameStatus) return
     
     // Only tick for countdown and active games
@@ -22,9 +28,19 @@ export function useGameTicker(gameId: string | null, gameStatus: string | null) 
       return
     }
 
+    // CRITICAL: Only the first player in the list should run the ticker
+    // This prevents duplicate number calls
+    const isGameMaster = players.length > 0 && players[0] === userId
+    if (!isGameMaster) {
+      console.log('🎮 Not game master, skipping ticker')
+      return
+    }
+
     // Prevent multiple tickers
     if (isTickingRef.current) return
     isTickingRef.current = true
+    
+    console.log('👑 Game master - starting ticker')
 
     const tick = async () => {
       try {
@@ -70,5 +86,5 @@ export function useGameTicker(gameId: string | null, gameStatus: string | null) 
       }
       isTickingRef.current = false
     }
-  }, [gameId, gameStatus])
+  }, [gameId, gameStatus, userId, players])
 }

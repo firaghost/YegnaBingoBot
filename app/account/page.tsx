@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
-import { LogOut, RefreshCw, Plus, Minus, Gift, Globe, Volume2, FileText, Mail, HelpCircle, ChevronDown } from 'lucide-react'
+import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck } from 'react-icons/lu'
 
 interface Transaction {
   id: string
@@ -31,12 +31,53 @@ export default function AccountPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
   const [language, setLanguage] = useState('English')
+  const [showLanguageModal, setShowLanguageModal] = useState(false)
+  const [showTermsModal, setShowTermsModal] = useState(false)
+  const [showSupportModal, setShowSupportModal] = useState(false)
+  const [showFaqModal, setShowFaqModal] = useState(false)
+  const [supportInfo, setSupportInfo] = useState({
+    email: 'support@bingox.com',
+    telegram: '@bingox_support',
+    phone: '+251 911 234 567'
+  })
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.push('/login')
     }
   }, [authLoading, isAuthenticated, router])
+
+  // Fetch support info from admin settings
+  useEffect(() => {
+    const fetchSupportInfo = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('admin_settings')
+          .select('setting_key, setting_value')
+          .in('setting_key', ['support_email', 'support_telegram', 'support_phone'])
+
+        if (error) throw error
+        
+        if (data) {
+          const newSupportInfo = { ...supportInfo }
+          data.forEach(setting => {
+            if (setting.setting_key === 'support_email') {
+              newSupportInfo.email = setting.setting_value
+            } else if (setting.setting_key === 'support_telegram') {
+              newSupportInfo.telegram = setting.setting_value
+            } else if (setting.setting_key === 'support_phone') {
+              newSupportInfo.phone = setting.setting_value
+            }
+          })
+          setSupportInfo(newSupportInfo)
+        }
+      } catch (error) {
+        console.error('Error fetching support info:', error)
+      }
+    }
+
+    fetchSupportInfo()
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -75,191 +116,270 @@ export default function AccountPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
 
   const bonusBalance = user.bonus_balance || 0
+  const totalBalance = user.balance + bonusBalance
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 pb-24">
-      <div className="max-w-md mx-auto px-4 py-6">
-        
-        {/* Account Overview */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white text-center mb-2">Account Overview</h1>
-          <p className="text-purple-200 text-center text-sm">View your balance and invite friends.</p>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Language Modal */}
+      {showLanguageModal && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowLanguageModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Select Language</h3>
+              <button onClick={() => setShowLanguageModal(false)} className="text-slate-400 hover:text-slate-600">
+                <LuX className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {['English', 'Amharic', 'Oromo'].map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => {
+                    setLanguage(lang)
+                    setShowLanguageModal(false)
+                  }}
+                  className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${
+                    language === lang 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <span className="font-medium text-slate-900">{lang}</span>
+                  {language === lang && <LuCheck className="w-5 h-5 text-blue-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Balance Card */}
-        <div className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 mb-4 border border-purple-700">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-yellow-400 text-xl">💰</span>
-            <h2 className="text-white font-semibold">Account Balance</h2>
-          </div>
-          <div className="text-yellow-400 text-4xl font-bold mb-2">
-            {formatCurrency(user.balance)}
-          </div>
-          <div className="text-purple-300 text-sm">
-            + {formatCurrency(bonusBalance)} bonus balance
+      {/* Terms Modal */}
+      {showTermsModal && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowTermsModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Terms & Conditions</h3>
+              <button onClick={() => setShowTermsModal(false)} className="text-slate-400 hover:text-slate-600">
+                <LuX className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="prose prose-sm text-slate-600">
+              <p className="mb-4">Welcome to BingoX. By using our service, you agree to these terms and conditions.</p>
+              <h4 className="font-semibold text-slate-900 mb-2">1. Account Usage</h4>
+              <p className="mb-4">You must be 18 years or older to use this service. You are responsible for maintaining the security of your account.</p>
+              <h4 className="font-semibold text-slate-900 mb-2">2. Game Rules</h4>
+              <p className="mb-4">All games must be played fairly. Any form of cheating or manipulation will result in account suspension.</p>
+              <h4 className="font-semibold text-slate-900 mb-2">3. Payments</h4>
+              <p className="mb-4">All deposits and withdrawals are subject to verification. Processing times may vary.</p>
+              <h4 className="font-semibold text-slate-900 mb-2">4. Responsible Gaming</h4>
+              <p>Please play responsibly. If you feel you have a gambling problem, please seek help.</p>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Invite Button */}
-        <button className="w-full bg-gradient-to-r from-purple-600 to-purple-500 text-white py-4 rounded-xl font-semibold mb-6 flex items-center justify-center gap-2 hover:from-purple-500 hover:to-purple-400 transition-all shadow-lg">
-          <Gift className="w-5 h-5" />
-          <span>Invite and Earn Bonuses</span>
-        </button>
+      {/* Support Modal */}
+      {showSupportModal && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowSupportModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Contact Support</h3>
+              <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-slate-600">
+                <LuX className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                <a href={`mailto:${supportInfo.email}`} className="text-blue-500 hover:text-blue-600">{supportInfo.email}</a>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Telegram</label>
+                <a href={`https://t.me/${supportInfo.telegram.replace('@', '')}`} className="text-blue-500 hover:text-blue-600">{supportInfo.telegram}</a>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
+                <a href={`tel:${supportInfo.phone.replace(/\s/g, '')}`} className="text-blue-500 hover:text-blue-600">{supportInfo.phone}</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Logged in via Telegram & Logout */}
-        <div className="flex items-center justify-between mb-6 px-2">
-          <div className="flex items-center gap-2 text-purple-300 text-sm">
-            <LogOut className="w-4 h-4" />
-            <span>Logged in via Telegram</span>
+      {/* FAQ Modal */}
+      {showFaqModal && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowFaqModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Frequently Asked Questions</h3>
+              <button onClick={() => setShowFaqModal(false)} className="text-slate-400 hover:text-slate-600">
+                <LuX className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-2">How do I deposit money?</h4>
+                <p className="text-sm text-slate-600">Go to the Deposit page, enter the amount, and follow the payment instructions. Your balance will be updated after verification.</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-2">How long do withdrawals take?</h4>
+                <p className="text-sm text-slate-600">Withdrawals are typically processed within 24-48 hours after approval.</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-2">What is bonus balance?</h4>
+                <p className="text-sm text-slate-600">Bonus balance is promotional credit that can be used to play games. It cannot be withdrawn directly.</p>
+              </div>
+              <div>
+                <h4 className="font-semibold text-slate-900 mb-2">How do I claim the daily streak bonus?</h4>
+                <p className="text-sm text-slate-600">Play games daily for 5 consecutive days, then go to the Bonus page to claim your reward.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Simple Header */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LuUser className="w-6 h-6 text-blue-500" />
+            <h1 className="text-xl font-bold text-slate-900">Account</h1>
           </div>
           <button 
             onClick={handleLogout}
-            className="border border-purple-500 text-purple-200 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-800 transition-colors flex items-center gap-2"
+            className="text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1"
           >
-            <LogOut className="w-4 h-4" />
-            <span>Logout</span>
+            <LuLogOut className="w-5 h-5" />
+            <span className="text-sm font-medium">Logout</span>
           </button>
         </div>
+      </div>
 
-        {/* Account Balance Details */}
-        <div className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 mb-4 border border-purple-700">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-yellow-400 text-xl">💳</span>
-            <h2 className="text-white font-semibold">Account Balance</h2>
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        
+        {/* User Info */}
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <LuUser className="w-6 h-6 text-blue-500" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">{user.username || 'User'}</h2>
+              <p className="text-sm text-slate-500">Telegram ID: {user.telegram_id}</p>
+            </div>
           </div>
-          <p className="text-purple-300 text-sm mb-4">Your current balance and bonus funds</p>
-          
-          {/* Main Balance */}
-          <div className="bg-white rounded-xl p-4 mb-3">
-            <p className="text-gray-600 text-sm mb-1">Main Balance</p>
-            <p className="text-blue-600 text-3xl font-bold">{formatCurrency(user.balance)}</p>
-          </div>
+        </div>
 
-          {/* Bonus Balance */}
-          <div className="bg-green-50 rounded-xl p-4 mb-4">
-            <p className="text-gray-600 text-sm mb-1">Bonus Balance</p>
-            <p className="text-green-600 text-3xl font-bold">{formatCurrency(bonusBalance)}</p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="space-y-3">
-            <button 
-              onClick={() => router.push('/deposit')}
-              className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              <span>Deposit</span>
-            </button>
-            <button 
-              onClick={() => router.push('/withdraw')}
-              className="w-full bg-red-600 text-white py-3 rounded-xl font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <Minus className="w-5 h-5" />
-              <span>Withdraw</span>
-            </button>
+        {/* Balance Overview */}
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-slate-900">Total Balance</h3>
             <button 
               onClick={handleRefresh}
               disabled={refreshing}
-              className="w-full bg-purple-700 text-white py-3 rounded-xl font-semibold hover:bg-purple-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              className="text-slate-600 hover:text-slate-900 transition-colors"
             >
-              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <LuRefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
+          </div>
+          
+          <div className="text-3xl font-bold text-slate-900 mb-4">
+            {formatCurrency(totalBalance)}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-50 rounded-lg p-3">
+              <div className="text-xs text-slate-500 mb-1">Main Balance</div>
+              <div className="text-lg font-semibold text-slate-900">{formatCurrency(user.balance)}</div>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-3">
+              <div className="text-xs text-emerald-600 mb-1">Bonus Balance</div>
+              <div className="text-lg font-semibold text-emerald-600">{formatCurrency(bonusBalance)}</div>
+            </div>
           </div>
         </div>
 
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <button 
+            onClick={() => router.push('/deposit')}
+            className="bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+          >
+            <LuPlus className="w-5 h-5" />
+            <span>Deposit</span>
+          </button>
+          <button 
+            onClick={() => router.push('/withdraw')}
+            className="bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+          >
+            <LuMinus className="w-5 h-5" />
+            <span>Withdraw</span>
+          </button>
+        </div>
+
         {/* Recent Transactions */}
-        <div className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 mb-4 border border-purple-700">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-yellow-400 text-xl">⏱️</span>
-            <h2 className="text-white font-semibold">Recent Transactions</h2>
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <LuHistory className="w-5 h-5 text-slate-600" />
+              <h3 className="text-base font-semibold text-slate-900">Recent Activity</h3>
+            </div>
           </div>
-          <p className="text-purple-300 text-sm mb-4">Your latest account activity</p>
 
           {loading ? (
             <div className="flex justify-center py-8">
-              <div className="w-8 h-8 border-3 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : transactions.length === 0 ? (
-            <div className="text-center py-8 text-purple-300">
-              <p>No transactions yet</p>
+            <div className="text-center py-8 text-slate-500">
+              <p className="text-sm">No transactions yet</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {transactions.slice(0, 5).map((tx) => {
-                // Format transaction type for display
                 const getTransactionLabel = () => {
                   switch (tx.type) {
-                    case 'stake':
-                      return 'Game Entry Fee'
-                    case 'win':
-                      return 'Game Win'
-                    case 'deposit':
-                      return 'Deposit'
-                    case 'withdrawal':
-                      return 'Withdrawal'
-                    case 'bonus':
-                      return 'Bonus Received'
-                    default:
-                      return tx.type
+                    case 'stake': return 'Game Entry'
+                    case 'win': return 'Game Win'
+                    case 'deposit': return 'Deposit'
+                    case 'withdrawal': return 'Withdrawal'
+                    case 'bonus': return 'Bonus'
+                    default: return tx.type
                   }
                 }
 
-                const getTransactionIcon = () => {
-                  switch (tx.type) {
-                    case 'stake':
-                      return '🎮'
-                    case 'win':
-                      return '🏆'
-                    case 'deposit':
-                      return '💰'
-                    case 'withdrawal':
-                      return '💸'
-                    case 'bonus':
-                      return '🎁'
-                    default:
-                      return '💳'
-                  }
-                }
+                const isPositive = tx.type === 'win' || tx.type === 'deposit' || tx.type === 'bonus'
 
                 return (
-                  <div key={tx.id} className="bg-purple-900 bg-opacity-50 rounded-xl p-4 border border-purple-700">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 flex items-start gap-2">
-                        <span className="text-xl">{getTransactionIcon()}</span>
-                        <div>
-                          <p className="text-white font-medium text-sm">
-                            {tx.description || getTransactionLabel()}
-                          </p>
-                          <p className="text-purple-400 text-xs mt-1">
-                            {new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${
-                          tx.type === 'win' || tx.type === 'deposit' || tx.type === 'bonus' 
-                            ? 'text-green-400' 
-                            : 'text-red-400'
-                        }`}>
-                          {(tx.type === 'win' || tx.type === 'deposit' || tx.type === 'bonus') ? '+' : '-'}
-                          {formatCurrency(Math.abs(tx.amount))}
-                        </p>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          tx.status === 'completed' ? 'bg-green-900 text-green-300' :
-                          tx.status === 'pending' ? 'bg-yellow-900 text-yellow-300' :
-                          'bg-red-900 text-red-300'
-                        }`}>
-                          {tx.status}
-                        </span>
-                      </div>
+                  <div key={tx.id} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">
+                        {tx.description || getTransactionLabel()}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {new Date(tx.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-sm font-semibold ${
+                        isPositive ? 'text-emerald-600' : 'text-slate-900'
+                      }`}>
+                        {isPositive ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                      </p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        tx.status === 'completed' ? 'bg-emerald-50 text-emerald-700' :
+                        tx.status === 'pending' ? 'bg-orange-50 text-orange-700' :
+                        'bg-red-50 text-red-700'
+                      }`}>
+                        {tx.status}
+                      </span>
                     </div>
                   </div>
                 )
@@ -268,82 +388,64 @@ export default function AccountPage() {
           )}
         </div>
 
-        {/* Preferences */}
-        <div className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 mb-4 border border-purple-700">
-          <h2 className="text-white font-semibold mb-2">Preferences</h2>
-          <p className="text-purple-300 text-sm mb-4">Customize your app experience.</p>
-
-          {/* Language */}
-          <div className="mb-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Globe className="w-5 h-5 text-yellow-400" />
-              <span className="text-white font-medium">Language</span>
-            </div>
-            <select 
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="w-full bg-purple-900 text-white border border-purple-600 rounded-lg px-4 py-3 focus:outline-none focus:border-purple-400"
-            >
-              <option>English</option>
-              <option>Amharic</option>
-              <option>Oromo</option>
-            </select>
-          </div>
-
-          {/* Sound Settings */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Volume2 className="w-5 h-5 text-yellow-400" />
-              <span className="text-white font-medium">Sound Settings</span>
-            </div>
-            <div className="flex items-center justify-between bg-purple-900 rounded-lg px-4 py-3">
-              <span className="text-white">Sound On</span>
-              <button
-                onClick={() => setSoundOn(!soundOn)}
-                className={`relative w-14 h-7 rounded-full transition-colors ${
-                  soundOn ? 'bg-yellow-500' : 'bg-gray-600'
-                }`}
-              >
-                <div
-                  className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform ${
-                    soundOn ? 'translate-x-7' : ''
-                  }`}
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Important Information */}
-        <div className="bg-purple-800 bg-opacity-50 rounded-2xl p-6 border border-purple-700">
-          <h2 className="text-white font-semibold mb-4">Important Information</h2>
+        {/* Settings & Support */}
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <h3 className="text-base font-semibold text-slate-900 mb-4">Settings & Support</h3>
           
-          <div className="space-y-3">
-            <button className="w-full flex items-center justify-between bg-purple-900 bg-opacity-50 rounded-lg px-4 py-3 hover:bg-purple-900 transition-colors">
+          <div className="space-y-2">
+            {/* Language */}
+            <button 
+              onClick={() => setShowLanguageModal(true)}
+              className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
+            >
               <div className="flex items-center gap-3">
-                <FileText className="w-5 h-5 text-yellow-400" />
-                <span className="text-white">Terms and Conditions</span>
+                <LuGlobe className="w-5 h-5 text-slate-600" />
+                <span className="text-sm font-medium text-slate-900">Language</span>
               </div>
-              <ChevronDown className="w-5 h-5 text-purple-400" />
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">{language}</span>
+                <LuChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
             </button>
 
-            <button className="w-full flex items-center justify-between bg-purple-900 bg-opacity-50 rounded-lg px-4 py-3 hover:bg-purple-900 transition-colors">
+            {/* Terms and Conditions */}
+            <button 
+              onClick={() => setShowTermsModal(true)}
+              className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
+            >
               <div className="flex items-center gap-3">
-                <Mail className="w-5 h-5 text-yellow-400" />
-                <span className="text-white">Contact Support</span>
+                <LuFileText className="w-5 h-5 text-slate-600" />
+                <span className="text-sm font-medium text-slate-900">Terms & Conditions</span>
               </div>
-              <ChevronDown className="w-5 h-5 text-purple-400" />
+              <LuChevronRight className="w-4 h-4 text-slate-400" />
             </button>
 
-            <button className="w-full flex items-center justify-between bg-purple-900 bg-opacity-50 rounded-lg px-4 py-3 hover:bg-purple-900 transition-colors">
+            {/* Contact Support */}
+            <button 
+              onClick={() => setShowSupportModal(true)}
+              className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
+            >
               <div className="flex items-center gap-3">
-                <HelpCircle className="w-5 h-5 text-yellow-400" />
-                <span className="text-white">Frequently Asked Questions (FAQ)</span>
+                <LuMail className="w-5 h-5 text-slate-600" />
+                <span className="text-sm font-medium text-slate-900">Contact Support</span>
               </div>
-              <ChevronDown className="w-5 h-5 text-purple-400" />
+              <LuChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+
+            {/* FAQ */}
+            <button 
+              onClick={() => setShowFaqModal(true)}
+              className="w-full flex items-center justify-between py-3 hover:bg-slate-50 transition-colors rounded-lg px-2"
+            >
+              <div className="flex items-center gap-3">
+                <LuCircleHelp className="w-5 h-5 text-slate-600" />
+                <span className="text-sm font-medium text-slate-900">FAQ</span>
+              </div>
+              <LuChevronRight className="w-4 h-4 text-slate-400" />
             </button>
           </div>
         </div>
+
       </div>
 
       <BottomNav />

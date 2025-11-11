@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import BottomNav from '@/app/components/BottomNav'
-import { Gift, Play, Check, Calendar } from 'lucide-react'
+import { LuGift, LuPlay, LuCheck, LuCalendar, LuZap, LuCoins } from 'react-icons/lu'
 
 export default function BonusPage() {
   const router = useRouter()
@@ -45,8 +45,8 @@ export default function BonusPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
@@ -89,114 +89,131 @@ export default function BonusPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 via-purple-800 to-purple-900 pb-24">
-      <div className="max-w-md mx-auto px-4 py-6">
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Simple Header */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LuGift className="w-6 h-6 text-blue-500" />
+            <h1 className="text-xl font-bold text-slate-900">Bonuses</h1>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-6">
         
         {/* Total Bonus Card */}
-        <div className="border-2 border-yellow-500 rounded-3xl p-8 mb-4 bg-purple-800 bg-opacity-30">
-          <div className="text-center">
-            <Gift className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-            <h2 className="text-white text-xl font-semibold mb-4">Your Total Bonus</h2>
-            <div className="text-green-400 text-5xl font-bold mb-4">
-              {formatCurrency(bonusBalance)}
+        <div className="bg-white rounded-xl p-6 mb-4 border border-slate-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <LuCoins className="w-8 h-8 text-blue-500" />
+              <div>
+                <h2 className="text-sm text-slate-500 mb-1">Your Bonus Balance</h2>
+                <div className="text-2xl font-bold text-slate-900">
+                  {formatCurrency(bonusBalance)}
+                </div>
+              </div>
             </div>
-            <p className="text-purple-200 text-sm mb-4">Use this bonus to play more games!</p>
-            <button 
-              onClick={() => router.push('/lobby')}
-              className="bg-yellow-500 text-purple-900 px-8 py-3 rounded-lg font-bold hover:bg-yellow-400 transition-colors inline-flex items-center gap-2"
-            >
-              <Play className="w-5 h-5" />
-              <span>Play</span>
-            </button>
           </div>
+          <p className="text-sm text-slate-600 mb-4">Use this bonus to play more games!</p>
+          <button 
+            onClick={() => router.push('/lobby')}
+            className="w-full bg-blue-500 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-600 transition-colors inline-flex items-center justify-center gap-2"
+          >
+            <LuPlay className="w-4 h-4" />
+            <span>Play Now</span>
+          </button>
         </div>
 
         {/* Registration Bonus Info */}
-        <div className="border-2 border-green-500 rounded-3xl p-6 mb-4 bg-purple-800 bg-opacity-30">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-purple-700 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-4xl">🏅</span>
-            </div>
-            <h2 className="text-yellow-400 text-xl font-bold mb-3">Registration Bonus</h2>
-            <div className="text-yellow-400 text-4xl font-bold mb-3">{formatCurrency(registrationBonus)}</div>
-            <p className="text-purple-200 text-sm mb-4">Your welcome gift for joining Bingo Royale!</p>
-            <div className="flex items-center justify-center gap-2 text-green-400">
-              <Check className="w-5 h-5" />
-              <span className="font-semibold">Already Received</span>
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <div className="flex items-start gap-4">
+            <LuZap className="w-8 h-8 text-emerald-500 flex-shrink-0" />
+            <div className="flex-1">
+              <h2 className="text-base font-semibold text-slate-900 mb-1">Registration Bonus</h2>
+              <div className="text-2xl font-bold text-emerald-600 mb-2">{formatCurrency(registrationBonus)}</div>
+              <p className="text-sm text-slate-600 mb-3">Your welcome gift for joining BingoX!</p>
+              <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 py-2 px-3 rounded-lg">
+                <LuCheck className="w-4 h-4" />
+                <span className="font-medium text-sm">Already Received</span>
+              </div>
             </div>
           </div>
         </div>
 
         {/* First Deposit Bonus */}
-        <div className="border-2 border-purple-500 rounded-3xl p-6 mb-4 bg-purple-800 bg-opacity-30">
-          <div className="text-center">
-            <Gift className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-            <h2 className="text-purple-200 text-xl font-semibold mb-3">First Deposit Bonus</h2>
-            <p className="text-purple-300 text-sm mb-4">
-              Deposit for the first time and we will match your deposit up to <span className="text-purple-200 font-bold">100 ETB!</span>
-            </p>
-            <button 
-              onClick={() => router.push('/deposit')}
-              className="w-full bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-500 transition-colors"
-            >
-              Deposit Now
-            </button>
+        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
+          <div className="flex items-start gap-4">
+            <LuGift className="w-8 h-8 text-purple-500 flex-shrink-0" />
+            <div className="flex-1">
+              <h2 className="text-base font-semibold text-slate-900 mb-2">First Deposit Bonus</h2>
+              <p className="text-sm text-slate-600 mb-4">
+                Deposit for the first time and we will match your deposit up to <span className="font-semibold text-slate-900">100 ETB!</span>
+              </p>
+              <button 
+                onClick={() => router.push('/deposit')}
+                className="w-full bg-purple-500 text-white py-2.5 rounded-lg font-medium hover:bg-purple-600 transition-colors"
+              >
+                Deposit Now
+              </button>
+            </div>
           </div>
         </div>
-
         {/* Daily Streak Bonus */}
-        <div className="border-2 border-yellow-500 rounded-3xl p-6 bg-purple-800 bg-opacity-30">
-          <div className="text-center mb-6">
-            <Calendar className="w-12 h-12 text-purple-400 mx-auto mb-4" />
-            <h2 className="text-white text-xl font-semibold mb-3">Daily Streak Bonus</h2>
-            <p className="text-purple-300 text-sm mb-4">Play Bingo daily and claim bonus rewards!</p>
+        <div className="bg-white rounded-xl p-5 border border-slate-200">
+          <div className="flex items-start gap-4 mb-5">
+            <LuCalendar className="w-8 h-8 text-orange-500 flex-shrink-0" />
+            <div className="flex-1">
+              <h2 className="text-base font-semibold text-slate-900 mb-1">Daily Streak Bonus</h2>
+              <p className="text-sm text-slate-600">Play BingoX daily and claim bonus rewards!</p>
+            </div>
           </div>
 
           {/* Streak Days */}
-          <div className="flex justify-center gap-4 mb-4">
+          <div className="flex justify-center gap-2 mb-5">
             {Array.from({ length: streakDaysRequired }, (_, i) => i + 1).map((day) => (
               <div key={day} className="text-center">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 ${
+                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-1 ${
                   dailyStreak >= day 
-                    ? 'bg-green-500' 
-                    : 'bg-purple-700'
+                    ? 'bg-emerald-500' 
+                    : 'bg-slate-100'
                 }`}>
                   {dailyStreak >= day ? (
-                    <Check className="w-6 h-6 text-white" />
+                    <LuCheck className="w-6 h-6 text-white" />
                   ) : (
-                    <span className="text-purple-400 text-sm font-semibold">{day}</span>
+                    <span className="text-slate-400 text-sm font-semibold">{day}</span>
                   )}
                 </div>
-                <p className="text-purple-400 text-xs">Day {day}</p>
+                <p className="text-slate-500 text-[10px]">Day {day}</p>
               </div>
             ))}
           </div>
 
           <div className="text-center mb-4">
-            <p className="text-yellow-400 font-bold text-lg">
-              Current Streak: <span className="text-2xl">{dailyStreak}/{streakDaysRequired} days</span>
+            <p className="text-sm text-slate-600">
+              Current Streak: <span className="font-bold text-slate-900 text-lg">{dailyStreak}/{streakDaysRequired}</span>
             </p>
           </div>
 
           {claimMessage && (
-            <div className={`mb-4 px-4 py-3 rounded-lg text-center font-semibold ${
+            <div className={`mb-4 px-4 py-2.5 rounded-lg text-center font-medium text-sm ${
               claimMessage.includes('Congratulations') 
-                ? 'bg-green-600 text-white' 
-                : 'bg-yellow-600 text-purple-900'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                : 'bg-orange-50 text-orange-700 border border-orange-200'
             }`}>
               {claimMessage}
             </div>
           )}
 
           {dailyStreak < streakDaysRequired ? (
-            <div className="bg-yellow-600 text-purple-900 py-3 rounded-xl font-bold text-center">
+            <div className="bg-orange-50 text-orange-700 py-2.5 rounded-lg font-medium text-center text-sm border border-orange-200">
               {streakDaysRequired - dailyStreak} more days to bonus
             </div>
           ) : (
             <button 
               onClick={handleClaimStreak}
               disabled={claiming}
-              className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-emerald-500 text-white py-2.5 rounded-lg font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {claiming ? 'Claiming...' : 'Claim Streak Bonus'}
             </button>

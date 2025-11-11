@@ -163,20 +163,20 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
-      {/* Header */}
+      {/* Header - Mobile Responsive */}
       <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
+        <div className="container mx-auto px-4 sm:px-6 py-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
             <div>
-              <h1 className="text-2xl font-bold text-white">🎰 Bingo Royale Admin</h1>
-              <p className="text-gray-400 text-sm">Dashboard & Management</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-white">🎰 Bingo Royale Admin</h1>
+              <p className="text-gray-400 text-xs sm:text-sm">Dashboard & Management</p>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-gray-300">Welcome, {admin?.username}</span>
+            <div className="flex items-center gap-2 sm:gap-4 text-sm">
+              <span className="text-gray-300 hidden sm:inline">Welcome, {admin?.username}</span>
               <Link href="/" className="text-gray-300 hover:text-white transition-colors">
                 View Site
               </Link>
-              <button onClick={logout} className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors">
+              <button onClick={logout} className="bg-red-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-red-700 transition-colors text-xs sm:text-base">
                 Logout
               </button>
             </div>
@@ -184,10 +184,10 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+      <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Stats Grid - Mobile Responsive */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Total Users</span>
               <span className="text-3xl">👥</span>
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
             <div className="text-sm text-green-400 mt-2">↑ {stats.activeUsers.toLocaleString()} active</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Total Games</span>
               <span className="text-3xl">🎮</span>
@@ -205,7 +205,7 @@ export default function AdminDashboard() {
             <div className="text-sm text-green-400 mt-2">↑ {stats.activeGames} active now</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Total Revenue</span>
               <span className="text-3xl">💰</span>
@@ -214,7 +214,7 @@ export default function AdminDashboard() {
             <div className="text-sm text-green-400 mt-2">↑ {formatCurrency(stats.todayRevenue)} today</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Pending Deposits</span>
               <span className="text-3xl">💰</span>
@@ -223,7 +223,7 @@ export default function AdminDashboard() {
             <div className="text-sm text-gray-400 mt-2">Awaiting approval</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-300">Pending Withdrawals</span>
               <span className="text-3xl">⏳</span>
@@ -233,36 +233,36 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Link href="/admin/users" className="bg-blue-600 hover:bg-blue-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
-            <div className="text-4xl mb-3">👥</div>
-            <h3 className="text-xl font-bold mb-2">User Management</h3>
-            <p className="text-blue-100">Manage users, ban/suspend accounts</p>
+        {/* Quick Actions - Mobile Responsive */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <Link href="/admin/users" className="bg-blue-600 hover:bg-blue-700 rounded-xl p-4 sm:p-6 text-white transition-all transform hover:scale-105">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">👥</div>
+            <h3 className="text-lg sm:text-xl font-bold mb-1 sm:mb-2">User Management</h3>
+            <p className="text-blue-100 text-sm">Manage users, ban/suspend accounts</p>
           </Link>
 
-          <Link href="/admin/deposits" className="bg-green-600 hover:bg-green-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
-            <div className="text-4xl mb-3">💵</div>
-            <h3 className="text-xl font-bold mb-2">Deposits</h3>
-            <p className="text-green-100">Approve/reject deposit requests</p>
+          <Link href="/admin/deposits" className="bg-green-600 hover:bg-green-700 rounded-xl p-4 sm:p-6 text-white transition-all transform hover:scale-105">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">💵</div>
+            <h3 className="text-lg sm:text-xl font-bold mb-1 sm:mb-2">Deposits</h3>
+            <p className="text-green-100 text-sm">Approve/reject deposit requests</p>
           </Link>
 
-          <Link href="/admin/withdrawals" className="bg-yellow-600 hover:bg-yellow-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
-            <div className="text-4xl mb-3">💸</div>
-            <h3 className="text-xl font-bold mb-2">Withdrawals</h3>
-            <p className="text-yellow-100">Approve/reject withdrawal requests</p>
+          <Link href="/admin/withdrawals" className="bg-yellow-600 hover:bg-yellow-700 rounded-xl p-4 sm:p-6 text-white transition-all transform hover:scale-105">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">💸</div>
+            <h3 className="text-lg sm:text-xl font-bold mb-1 sm:mb-2">Withdrawals</h3>
+            <p className="text-yellow-100 text-sm">Approve/reject withdrawal requests</p>
           </Link>
 
-          <Link href="/admin/games" className="bg-purple-600 hover:bg-purple-700 rounded-xl p-6 text-white transition-all transform hover:scale-105">
-            <div className="text-4xl mb-3">📊</div>
-            <h3 className="text-xl font-bold mb-2">Live Tracking</h3>
-            <p className="text-purple-100">Monitor active games in real-time</p>
+          <Link href="/admin/games" className="bg-purple-600 hover:bg-purple-700 rounded-xl p-4 sm:p-6 text-white transition-all transform hover:scale-105">
+            <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">📊</div>
+            <h3 className="text-lg sm:text-xl font-bold mb-1 sm:mb-2">Live Tracking</h3>
+            <p className="text-purple-100 text-sm">Monitor active games in real-time</p>
           </Link>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Active Games */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-white">Active Games</h2>
               <Link href="/admin/games" className="text-blue-400 hover:text-blue-300 text-sm">
@@ -291,7 +291,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Pending Withdrawals */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 sm:p-6 border border-white/20">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold text-white">Pending Withdrawals</h2>
               <Link href="/admin/withdrawals" className="text-blue-400 hover:text-blue-300 text-sm">

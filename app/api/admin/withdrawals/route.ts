@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Get withdrawal details for notification
+    const { data: withdrawal } = await supabase
+      .from('withdrawals')
+      .select('*, users(telegram_id, username)')
+      .eq('id', withdrawalId)
+      .single()
+
     if (action === 'approve') {
       // Use the approve function
       const { error } = await supabase.rpc('approve_withdrawal', {
@@ -74,6 +81,26 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) throw error
+
+      // Send Telegram notification
+      if (withdrawal?.users?.telegram_id) {
+        try {
+          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: withdrawal.users.telegram_id,
+                text: `✅ *Withdrawal Approved*\n\nYour withdrawal request of *${withdrawal.amount} ETB* has been approved.\n\nThe funds will be transferred to your bank account within 24-48 hours.\n\n*Bank:* ${withdrawal.bank_name}\n*Account:* ${withdrawal.account_number}`,
+                parse_mode: 'Markdown'
+              })
+            })
+          }
+        } catch (error) {
+          console.error('Failed to send Telegram notification:', error)
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -88,6 +115,26 @@ export async function POST(request: NextRequest) {
       })
 
       if (error) throw error
+
+      // Send Telegram notification
+      if (withdrawal?.users?.telegram_id) {
+        try {
+          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          if (botToken) {
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: withdrawal.users.telegram_id,
+                text: `❌ *Withdrawal Rejected*\n\nYour withdrawal request of *${withdrawal.amount} ETB* has been rejected.\n\nYour balance has been refunded to your account.\n\n${adminNote ? `*Reason:* ${adminNote}` : 'Please contact support for more information.'}`,
+                parse_mode: 'Markdown'
+              })
+            })
+          }
+        } catch (error) {
+          console.error('Failed to send Telegram notification:', error)
+        }
+      }
 
       return NextResponse.json({
         success: true,

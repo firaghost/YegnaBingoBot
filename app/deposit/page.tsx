@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { LuArrowLeft, LuCoins, LuUpload, LuCheck, LuX } from 'react-icons/lu'
 
 export default function DepositPage() {
   const { user } = useAuth()
@@ -16,7 +17,7 @@ export default function DepositPage() {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
 
-  const quickAmounts = [100, 500, 1000, 5000, 10000]
+  const quickAmounts = [50, 100, 500]
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -37,10 +38,7 @@ export default function DepositPage() {
       return
     }
 
-    if (parseFloat(amount) < 100) {
-      setError('Minimum deposit is 100 ETB')
-      return
-    }
+    // No minimum deposit restriction
 
     // Transaction reference is REQUIRED
     if (!transactionRef || transactionRef.trim() === '') {
@@ -110,238 +108,140 @@ export default function DepositPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
-      <div className="container mx-auto px-6 py-12">
-        <Link href="/account" className="inline-block mb-8 text-blue-600 hover:text-blue-800 font-medium transition-colors">
-          ← Back to Account
-        </Link>
-
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 text-gray-800">
-            💰 Deposit Funds
-          </h1>
-
-          {success ? (
-            <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
-              <div className="text-8xl mb-6">✅</div>
-              <h2 className="text-3xl font-bold mb-4 text-gray-800">Request Submitted!</h2>
-              <p className="text-gray-600 mb-6">
-                Your deposit request for {formatCurrency(parseFloat(amount))} has been submitted to admin for approval.
-              </p>
-              <p className="text-sm text-gray-500">You'll be notified once it's approved. Redirecting...</p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              {error && (
-                <div className="mb-6 p-4 bg-red-50 border-2 border-red-300 rounded-lg">
-                  <p className="text-red-600 font-semibold">❌ {error}</p>
-                </div>
-              )}
-              {/* Quick Amount Buttons */}
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Quick Select Amount
-                </label>
-                <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-                  {quickAmounts.map((amt) => (
-                    <button
-                      key={amt}
-                      onClick={() => setAmount(amt.toString())}
-                      className={`py-3 px-4 rounded-lg font-semibold transition-all ${
-                        amount === amt.toString()
-                          ? 'bg-blue-600 text-white shadow-lg'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                    >
-                      {amt} ETB
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Custom Amount Input */}
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Or Enter Custom Amount
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="Enter amount"
-                    className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
-                    min="0"
-                    step="10"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
-                    ETB
-                  </span>
-                </div>
-              </div>
-
-              {/* Transaction Reference */}
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Transaction Reference / FTP Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={transactionRef}
-                  onChange={(e) => setTransactionRef(e.target.value)}
-                  placeholder="Enter your bank FTP number or transaction reference"
-                  className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
-                  required
-                />
-                <p className="text-sm text-gray-500 mt-2">
-                  ⚠️ Required: Enter the FTP number or transaction reference from your bank transfer
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Include your transaction reference to speed up approval
-                </p>
-              </div>
-
-              {/* Proof Upload */}
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Upload Payment Proof (Screenshot/Receipt)
-                </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
-                  {proofPreview ? (
-                    <div className="space-y-4">
-                      <img
-                        src={proofPreview}
-                        alt="Proof preview"
-                        className="max-h-64 mx-auto rounded-lg shadow-md"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProofFile(null)
-                          setProofPreview(null)
-                        }}
-                        className="text-red-600 hover:text-red-700 font-semibold"
-                      >
-                        Remove Image
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-6xl mb-4">📸</div>
-                      <label className="cursor-pointer">
-                        <span className="text-blue-600 hover:text-blue-700 font-semibold">
-                          Click to upload
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileChange}
-                          className="hidden"
-                        />
-                      </label>
-                      <p className="text-sm text-gray-500 mt-2">
-                        PNG, JPG, or PDF up to 5MB
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Upload a screenshot of your bank transfer or Telebirr receipt
-                </p>
-              </div>
-
-              {/* Payment Methods */}
-              <div className="mb-8">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Payment Method
-                </label>
-                <div className="space-y-3">
-                  <button className="w-full p-4 border-2 border-blue-500 bg-blue-50 rounded-lg text-left hover:bg-blue-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center text-white text-2xl">
-                        💳
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-800">Bank Transfer</div>
-                        <div className="text-sm text-gray-600">Transfer to our bank account</div>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button className="w-full p-4 border-2 border-gray-300 rounded-lg text-left hover:bg-gray-50 transition-colors opacity-50 cursor-not-allowed">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center text-white text-2xl">
-                        📱
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-800">Mobile Money</div>
-                        <div className="text-sm text-gray-600">Coming soon</div>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button className="w-full p-4 border-2 border-gray-300 rounded-lg text-left hover:bg-gray-50 transition-colors opacity-50 cursor-not-allowed">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-orange-600 rounded-lg flex items-center justify-center text-white text-2xl">
-                        ₿
-                      </div>
-                      <div>
-                        <div className="font-semibold text-gray-800">Cryptocurrency</div>
-                        <div className="text-sm text-gray-600">Coming soon</div>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Bank Details */}
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
-                <h3 className="font-bold text-gray-800 mb-3">Bank Transfer Details</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Bank Name:</span>
-                    <span className="font-semibold">Commercial Bank of Ethiopia</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Account Name:</span>
-                    <span className="font-semibold">Bingo Royale</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Account Number:</span>
-                    <span className="font-semibold">1000123456789</span>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-600 mt-4">
-                  After transfer, contact support with your transaction reference
-                </p>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                onClick={handleDeposit}
-                disabled={!amount || parseFloat(amount) <= 0 || loading}
-                className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Confirm Deposit</span>
-                    <span>→</span>
-                  </>
-                )}
-              </button>
-
-              <p className="text-center text-sm text-gray-500 mt-4">
-                Minimum deposit: 100 ETB
-              </p>
-            </div>
-          )}
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <Link href="/account" className="text-slate-600 hover:text-slate-900">
+            <LuArrowLeft className="w-6 h-6" />
+          </Link>
+          <div className="flex items-center gap-2">
+            <LuCoins className="w-6 h-6 text-emerald-500" />
+            <h1 className="text-xl font-bold text-slate-900">Deposit</h1>
+          </div>
         </div>
       </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-6">
+
+        {success ? (
+          <div className="bg-white rounded-xl p-8 border border-slate-200 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LuCheck className="w-10 h-10 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-bold mb-2 text-slate-900">Request Submitted!</h2>
+            <p className="text-slate-600 mb-4 text-sm">
+              Your deposit request for {formatCurrency(parseFloat(amount))} has been submitted.
+            </p>
+            <p className="text-xs text-slate-500">Redirecting to account...</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <LuX className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+            {/* Quick Amount Buttons */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-3">
+                Quick Select Amount
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {quickAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setAmount(amt.toString())}
+                    className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
+                      amount === amt.toString()
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {amt} ETB
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Amount Input */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-3">
+                Or Enter Custom Amount
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                  min="0"
+                  step="10"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">
+                  ETB
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">No minimum deposit required</p>
+            </div>
+
+            {/* Transaction Reference */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-3">
+                Transaction Reference <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={transactionRef}
+                onChange={(e) => setTransactionRef(e.target.value)}
+                placeholder="Enter FTP number or transaction reference"
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                required
+              />
+              <p className="text-xs text-slate-500 mt-2">
+                Required: Enter the FTP number from your bank transfer
+              </p>
+            </div>
+            {/* Bank Details */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
+              <h3 className="font-semibold text-slate-900 mb-3 text-sm">Bank Transfer Details</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Bank:</span>
+                  <span className="font-medium text-slate-900">Commercial Bank of Ethiopia</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Account Name:</span>
+                  <span className="font-medium text-slate-900">BingoX</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Account Number:</span>
+                  <span className="font-medium text-slate-900">1000123456789</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              onClick={handleDeposit}
+              disabled={!amount || parseFloat(amount) <= 0 || loading}
+              className="w-full bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Submit Deposit Request</span>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
+    
   )
 }

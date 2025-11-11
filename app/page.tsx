@@ -62,56 +62,56 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* Main Content */}
-      <div className="relative z-10 container mx-auto px-6 py-12">
-        {/* Hero Section */}
-        <div className="text-center mb-16">
-          <h2 className="text-2xl md:text-3xl font-bold text-blue-600 mb-4">
+      {/* Main Content - Mobile Responsive */}
+      <div className="relative z-10 container mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {/* Hero Section - Mobile Responsive */}
+        <div className="text-center mb-12 sm:mb-16">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600 mb-3 sm:mb-4">
             Your Lucky Card!
           </h2>
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 sm:mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight px-2">
             Enter the Palace of Prizes!
           </h1>
-          <p className="text-lg md:text-xl text-gray-700 mb-10 max-w-3xl mx-auto leading-relaxed">
+          <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-4">
             Experience the thrill of royal bingo! Join players worldwide, claim magnificent bonuses, and compete in daily tournaments for glorious rewards.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-16">
+          {/* CTA Buttons - Mobile Responsive */}
+          <div className="flex flex-col sm:flex-row justify-center gap-3 sm:gap-4 mb-12 sm:mb-16 px-4">
             <Link
               href="/lobby"
-              className="bg-blue-600 text-white px-10 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
+              className="bg-blue-600 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-lg text-base sm:text-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
             >
               <span>🎮</span>
               <span>Join the Fun!</span>
             </Link>
             <Link
               href="/login"
-              className="border-2 border-blue-600 text-blue-600 px-10 py-4 rounded-lg text-lg font-semibold hover:bg-blue-50 transition-all shadow-md flex items-center justify-center gap-2"
+              className="border-2 border-blue-600 text-blue-600 px-6 sm:px-10 py-3 sm:py-4 rounded-lg text-base sm:text-lg font-semibold hover:bg-blue-50 transition-all shadow-md flex items-center justify-center gap-2"
             >
               <span>✈️</span>
               <span>Login with Telegram</span>
             </Link>
           </div>
 
-          {/* Stats Banner */}
-          <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto mb-16">
+          {/* Stats Banner - Mobile Responsive */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-6 max-w-3xl mx-auto mb-12 sm:mb-16 px-4">
             <div className="text-center">
-              <div className="text-4xl font-bold text-blue-600 mb-2">10K+</div>
-              <div className="text-sm text-gray-600">Active Players</div>
+              <div className="text-2xl sm:text-4xl font-bold text-blue-600 mb-1 sm:mb-2">10K+</div>
+              <div className="text-xs sm:text-sm text-gray-600">Active Players</div>
             </div>
             <div className="text-center">
-              <div className="text-4xl font-bold text-purple-600 mb-2">50M+</div>
-              <div className="text-sm text-gray-600">ETB Won Today</div>
+              <div className="text-2xl sm:text-4xl font-bold text-purple-600 mb-1 sm:mb-2">50M+</div>
+              <div className="text-xs sm:text-sm text-gray-600">ETB Won Today</div>
             </div>
             <div className="text-center">
-              <div className="text-4xl font-bold text-pink-600 mb-2">24/7</div>
-              <div className="text-sm text-gray-600">Games Running</div>
+              <div className="text-2xl sm:text-4xl font-bold text-pink-600 mb-1 sm:mb-2">24/7</div>
+              <div className="text-xs sm:text-sm text-gray-600">Games Running</div>
             </div>
           </div>
 
-          {/* Phone Mockup */}
-          <div className="max-w-xs mx-auto">
+          {/* Phone Mockup - Mobile Responsive */}
+          <div className="max-w-xs mx-auto hidden sm:block">
             <div className="relative mx-auto border-gray-800 bg-gray-800 border-[14px] rounded-[2.5rem] h-[600px] w-[300px] shadow-2xl transform transition-transform duration-300 hover:scale-105">
               <div className="w-[148px] h-[18px] bg-gray-800 top-0 rounded-b-[1rem] left-1/2 -translate-x-1/2 absolute"></div>
               <div className="h-[46px] w-[3px] bg-gray-800 absolute -left-[17px] top-[124px] rounded-l-lg"></div>
@@ -130,13 +130,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Features Section */}
-        <section className="py-16 bg-white/70 backdrop-blur rounded-3xl shadow-xl mb-12">
-          <div className="max-w-6xl mx-auto px-6">
-            <h3 className="text-4xl font-bold text-center mb-12 text-blue-600">
+        {/* Features Section - Mobile Responsive */}
+        <section className="py-8 sm:py-16 bg-white/70 backdrop-blur rounded-3xl shadow-xl mb-8 sm:mb-12">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <h3 className="text-2xl sm:text-4xl font-bold text-center mb-8 sm:mb-12 text-blue-600">
               Why Bingo Royale?
             </h3>
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
               {/* Feature 1 */}
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1">
                 <div className="text-6xl mb-4">🌍</div>

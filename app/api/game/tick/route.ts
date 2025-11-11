@@ -5,6 +5,30 @@ import crypto from 'crypto'
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
 
+// Game type definition
+interface Game {
+  id: string
+  room_id: string
+  status: 'waiting' | 'countdown' | 'active' | 'finished'
+  countdown_time: number
+  players: string[]
+  bots: string[]
+  called_numbers: number[]
+  latest_number: { letter: string; number: number } | null
+  stake: number
+  prize_pool: number
+  winner_id: string | null
+  min_players: number
+  number_sequence?: number[]
+  number_sequence_hash?: string
+  started_at?: string
+  ended_at?: string
+  created_at: string
+  commission_rate?: number
+  commission_amount?: number
+  net_prize?: number
+}
+
 // Get bingo letter for number
 function getBingoLetter(number: number): string {
   if (number <= 15) return 'B'
@@ -50,16 +74,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game ID required' }, { status: 400 })
     }
 
-    // Get current game state
+    // CRITICAL: Use FOR UPDATE lock to prevent race conditions
+    // This ensures only ONE tick can process at a time
     const { data: game, error: gameError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', gameId)
-      .single()
+      .rpc('get_game_for_update', { game_id: gameId })
+      .single<Game>()
 
     if (gameError || !game) {
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+      // Game not found or locked by another tick
+      return NextResponse.json({ 
+        success: true,
+        action: 'skip',
+        message: 'Game locked or not found'
+      })
     }
+    
+    // Type assertion for safety
+    const typedGame = game as Game
 
     // Handle countdown phase
     if (game.status === 'countdown') {

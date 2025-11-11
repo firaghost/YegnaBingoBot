@@ -22,6 +22,9 @@ export default function AdminSettings() {
     telegramNotifications: true,
     autoApproveDeposits: true,
     autoApproveWithdrawals: false,
+    supportEmail: 'support@bingox.com',
+    supportTelegram: '@bingox_support',
+    supportPhone: '+251 911 234 567',
   })
 
   const [isSaving, setIsSaving] = useState(false)
@@ -277,6 +280,49 @@ export default function AdminSettings() {
                   onChange={(e) => setSettings({...settings, dailyStreakBonus: parseInt(e.target.value)})}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Support Contact Settings */}
+          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+            <h2 className="text-xl font-bold text-white mb-6">📧 Support Contact Information</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Support Email</label>
+                <input
+                  type="email"
+                  value={settings.supportEmail}
+                  onChange={(e) => setSettings({...settings, supportEmail: e.target.value})}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  placeholder="support@bingox.com"
+                />
+                <p className="text-xs text-gray-400 mt-1">Email address shown to users for support</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Support Telegram</label>
+                <input
+                  type="text"
+                  value={settings.supportTelegram}
+                  onChange={(e) => setSettings({...settings, supportTelegram: e.target.value})}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  placeholder="@bingox_support"
+                />
+                <p className="text-xs text-gray-400 mt-1">Telegram username for support (include @)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Support Phone</label>
+                <input
+                  type="text"
+                  value={settings.supportPhone}
+                  onChange={(e) => setSettings({...settings, supportPhone: e.target.value})}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  placeholder="+251 911 234 567"
+                />
+                <p className="text-xs text-gray-400 mt-1">Phone number for support contact</p>
               </div>
             </div>
           </div>

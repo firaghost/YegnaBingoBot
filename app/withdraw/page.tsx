@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
+import { LuArrowLeft, LuBanknote, LuCheck, LuX, LuInfo, LuChevronDown } from 'react-icons/lu'
 
 export default function WithdrawPage() {
   const router = useRouter()
@@ -16,6 +17,20 @@ export default function WithdrawPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
+  const [showBankDropdown, setShowBankDropdown] = useState(false)
+  
+  const quickAmounts = [50, 100, 500, 1000]
+  
+  const banks = [
+    'Commercial Bank of Ethiopia',
+    'Bank of Abyssinia',
+    'Awash Bank',
+    'Dashen Bank',
+    'United Bank',
+    'Wegagen Bank',
+    'Nib Bank',
+    'Cooperative Bank of Oromia'
+  ]
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -37,8 +52,8 @@ export default function WithdrawPage() {
       return
     }
 
-    if (withdrawAmount < 100) {
-      setError('Minimum withdrawal is 100 ETB')
+    if (withdrawAmount < 50) {
+      setError('Minimum withdrawal is 50 ETB')
       return
     }
     
@@ -74,179 +89,221 @@ export default function WithdrawPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
-      <div className="container mx-auto px-6 py-12">
-        <Link href="/account" className="inline-block mb-8 text-blue-600 hover:text-blue-800 font-medium transition-colors">
-          ← Back to Account
-        </Link>
-
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 text-gray-800">
-            💸 Withdraw Funds
-          </h1>
-
-          {success ? (
-            <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
-              <div className="text-8xl mb-6">✅</div>
-              <h2 className="text-3xl font-bold mb-4 text-gray-800">Withdrawal Request Submitted!</h2>
-              <p className="text-gray-600 mb-6">
-                Your withdrawal request for {formatCurrency(parseFloat(amount))} has been submitted.
-              </p>
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
-                <p className="text-sm text-gray-700 leading-relaxed">
-                  Your request will be reviewed by our team within 24-48 hours. 
-                  You will be notified once the funds are transferred to your account.
-                </p>
-              </div>
-              <Link href="/account">
-                <button className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-                  Back to Account
-                </button>
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-white rounded-2xl shadow-xl p-8">
-              {/* Available Balance */}
-              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 mb-8">
-                <p className="text-sm text-gray-600 mb-1">Available Balance</p>
-                <p className="text-3xl font-bold text-green-600">{formatCurrency(userBalance)}</p>
-              </div>
-
-              {/* Withdrawal Amount */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Withdrawal Amount
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="Enter amount"
-                    className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
-                    min="100"
-                    max={userBalance}
-                    step="10"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
-                    ETB
-                  </span>
-                </div>
-                {parseFloat(amount) > userBalance && (
-                  <p className="text-red-500 text-sm mt-2">Insufficient balance</p>
-                )}
-                <p className="text-gray-500 text-sm mt-2">
-                  Min: 100 ETB • Max: {formatCurrency(userBalance)}
-                </p>
-              </div>
-
-              {/* Bank Details */}
-              <div className="space-y-6 mb-8">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Bank Name
-                  </label>
-                  <select
-                    value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">Select your bank</option>
-                    <option value="Commercial Bank of Ethiopia">Commercial Bank of Ethiopia</option>
-                    <option value="Bank of Abyssinia">Bank of Abyssinia</option>
-                    <option value="Awash Bank">Awash Bank</option>
-                    <option value="Dashen Bank">Dashen Bank</option>
-                    <option value="United Bank">United Bank</option>
-                    <option value="Wegagen Bank">Wegagen Bank</option>
-                    <option value="Nib Bank">Nib Bank</option>
-                    <option value="Cooperative Bank of Oromia">Cooperative Bank of Oromia</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Account Number
-                  </label>
-                  <input
-                    type="text"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    placeholder="Enter your account number"
-                    className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
-                    Account Holder Name
-                  </label>
-                  <input
-                    type="text"
-                    value={accountHolder}
-                    onChange={(e) => setAccountHolder(e.target.value)}
-                    placeholder="Enter account holder name"
-                    className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Error Message */}
-              {error && (
-                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
-                  <p className="text-red-700 font-medium">❌ {error}</p>
-                </div>
-              )}
-
-              {/* Important Notice */}
-              <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-6 mb-8">
-                <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <span>⚠️</span>
-                  <span>Important Notice</span>
-                </h3>
-                <ul className="space-y-2 text-sm text-gray-700">
-                  <li>• Withdrawals are processed within 24-48 hours</li>
-                  <li>• Ensure your bank details are correct</li>
-                  <li>• Minimum withdrawal amount is 100 ETB</li>
-                  <li>• You will be notified once the transfer is complete</li>
-                </ul>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                onClick={handleWithdraw}
-                disabled={
-                  !amount || 
-                  !bankName || 
-                  !accountNumber || 
-                  !accountHolder || 
-                  parseFloat(amount) > userBalance ||
-                  parseFloat(amount) < 100 ||
-                  loading
-                }
-                className="w-full bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Processing...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Submit Withdrawal Request</span>
-                    <span>→</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <Link href="/account" className="text-slate-600 hover:text-slate-900">
+            <LuArrowLeft className="w-6 h-6" />
+          </Link>
+          <div className="flex items-center gap-2">
+            <LuBanknote className="w-6 h-6 text-slate-700" />
+            <h1 className="text-xl font-bold text-slate-900">Withdraw</h1>
+          </div>
         </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-4 py-6">
+
+        {success ? (
+          <div className="bg-white rounded-xl p-8 border border-slate-200 text-center">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LuCheck className="w-10 h-10 text-emerald-600" />
+            </div>
+            <h2 className="text-xl font-bold mb-2 text-slate-900">Request Submitted!</h2>
+            <p className="text-slate-600 mb-4 text-sm">
+              Your withdrawal request for {formatCurrency(parseFloat(amount))} has been submitted.
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-xs text-slate-700">
+                Processing time: 24-48 hours. You'll be notified once complete.
+              </p>
+            </div>
+            <Link href="/account">
+              <button className="bg-blue-500 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-600 transition-colors">
+                Back to Account
+              </button>
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+                <LuX className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            {/* Available Balance */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <p className="text-sm text-slate-600 mb-1">Available Balance</p>
+              <p className="text-2xl font-bold text-emerald-600">{formatCurrency(userBalance)}</p>
+            </div>
+
+            {/* Quick Amount Buttons */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-3">
+                Quick Select Amount
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {quickAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setAmount(amt.toString())}
+                    disabled={amt > userBalance}
+                    className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
+                      amount === amt.toString()
+                        ? 'bg-slate-700 text-white'
+                        : amt > userBalance
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Withdrawal Amount */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-3">
+                Or Enter Custom Amount
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
+                  min="50"
+                  max={userBalance}
+                  step="10"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">
+                  ETB
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Min: 50 ETB • Max: {formatCurrency(userBalance)}
+              </p>
+            </div>
+
+            {/* Bank Details */}
+            <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-4">
+              <h3 className="text-sm font-medium text-slate-900 mb-3">Bank Details</h3>
+              
+              <div className="relative">
+                <label className="block text-xs font-medium text-slate-700 mb-2">
+                  Bank Name
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowBankDropdown(!showBankDropdown)}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100 flex items-center justify-between text-left"
+                >
+                  <span className={bankName ? 'text-slate-900' : 'text-slate-400'}>
+                    {bankName || 'Select your bank'}
+                  </span>
+                  <LuChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${showBankDropdown ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {showBankDropdown && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {banks.map((bank) => (
+                      <button
+                        key={bank}
+                        type="button"
+                        onClick={() => {
+                          setBankName(bank)
+                          setShowBankDropdown(false)
+                        }}
+                        className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors ${
+                          bankName === bank ? 'bg-blue-50 text-blue-600 font-medium' : 'text-slate-900'
+                        }`}
+                      >
+                        {bank}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-2">
+                  Account Number
+                </label>
+                <input
+                  type="text"
+                  value={accountNumber}
+                  onChange={(e) => setAccountNumber(e.target.value)}
+                  placeholder="Enter account number"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-2">
+                  Account Holder Name
+                </label>
+                <input
+                  type="text"
+                  value={accountHolder}
+                  onChange={(e) => setAccountHolder(e.target.value)}
+                  placeholder="Enter account holder name"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
+                />
+              </div>
+            </div>
+
+            {/* Important Notice */}
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <LuInfo className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-slate-900 text-sm mb-2">Important</h3>
+                  <ul className="space-y-1 text-xs text-slate-700">
+                    <li>• Processing time: 24-48 hours</li>
+                    <li>• Minimum withdrawal: 50 ETB</li>
+                    <li>• Verify bank details carefully</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              onClick={handleWithdraw}
+              disabled={
+                !amount || 
+                !bankName || 
+                !accountNumber || 
+                !accountHolder || 
+                parseFloat(amount) > userBalance ||
+                parseFloat(amount) < 50 ||
+                loading
+              }
+              className="w-full bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Submit Withdrawal Request</span>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
