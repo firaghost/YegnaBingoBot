@@ -9,6 +9,11 @@ export default function AdminWithdrawalsPage() {
   const [withdrawals, setWithdrawals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('pending')
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [selectedWithdrawal, setSelectedWithdrawal] = useState<{id: string, userId: string, amount: number} | null>(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   useEffect(() => {
     fetchWithdrawals()
@@ -31,16 +36,27 @@ export default function AdminWithdrawalsPage() {
     }
   }
 
-  const handleApprove = async (withdrawalId: string) => {
-    if (!confirm('Approve this withdrawal?')) return
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 5000)
+  }
 
+  const handleApprove = (withdrawalId: string) => {
+    setSelectedWithdrawal({ id: withdrawalId, userId: '', amount: 0 })
+    setShowConfirmDialog(true)
+  }
+
+  const confirmApprove = async () => {
+    if (!selectedWithdrawal) return
+    
+    setShowConfirmDialog(false)
     try {
       const response = await fetch('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve',
-          withdrawalId
+          withdrawalId: selectedWithdrawal.id
         })
       })
 
@@ -50,26 +66,37 @@ export default function AdminWithdrawalsPage() {
         throw new Error(result.error || 'Failed to approve')
       }
       
-      alert('Withdrawal approved!')
+      showNotification('success', 'Withdrawal approved!')
       fetchWithdrawals()
     } catch (error: any) {
       console.error('Error approving withdrawal:', error)
-      alert(error.message || 'Failed to approve withdrawal')
+      showNotification('error', error.message || 'Failed to approve withdrawal')
+    } finally {
+      setSelectedWithdrawal(null)
     }
   }
 
-  const handleReject = async (withdrawalId: string, userId: string, amount: number) => {
-    const reason = prompt('Enter rejection reason:')
-    if (!reason) return
+  const handleReject = (withdrawalId: string, userId: string, amount: number) => {
+    setSelectedWithdrawal({ id: withdrawalId, userId, amount })
+    setRejectionReason('')
+    setShowRejectModal(true)
+  }
 
+  const confirmReject = async () => {
+    if (!selectedWithdrawal || !rejectionReason.trim()) {
+      showNotification('error', 'Please enter a rejection reason')
+      return
+    }
+
+    setShowRejectModal(false)
     try {
       const response = await fetch('/api/admin/withdrawals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'reject',
-          withdrawalId,
-          adminNote: reason
+          withdrawalId: selectedWithdrawal.id,
+          adminNote: rejectionReason.trim()
         })
       })
 
@@ -79,11 +106,14 @@ export default function AdminWithdrawalsPage() {
         throw new Error(result.error || 'Failed to reject')
       }
 
-      alert('Withdrawal rejected and balance refunded')
+      showNotification('success', 'Withdrawal rejected and balance refunded')
       fetchWithdrawals()
     } catch (error: any) {
       console.error('Error rejecting withdrawal:', error)
-      alert(error.message || 'Failed to reject withdrawal')
+      showNotification('error', error.message || 'Failed to reject withdrawal')
+    } finally {
+      setSelectedWithdrawal(null)
+      setRejectionReason('')
     }
   }
 
@@ -94,7 +124,7 @@ export default function AdminWithdrawalsPage() {
         <div className="container mx-auto px-4 sm:px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2 sm:gap-3">
-              <Link href="/admin" className="text-xl sm:text-2xl text-white hover:opacity-70">←</Link>
+              <Link href="/mgmt-portal-x7k9p2" className="text-xl sm:text-2xl text-white hover:opacity-70">←</Link>
               <h1 className="text-lg sm:text-2xl font-bold text-white">Withdrawal Management</h1>
             </div>
           </div>
@@ -102,6 +132,83 @@ export default function AdminWithdrawalsPage() {
       </header>
 
       <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Notification Toast */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border animate-slide-in ${
+            notification.type === 'success'
+              ? 'bg-green-500/90 border-green-400 text-white'
+              : 'bg-red-500/90 border-red-400 text-white'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{notification.type === 'success' ? '✓' : '✗'}</span>
+              <span className="font-semibold">{notification.message}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Dialog */}
+        {showConfirmDialog && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-md w-full shadow-2xl">
+              <h3 className="text-xl font-bold text-white mb-4">Confirm Approval</h3>
+              <p className="text-gray-300 mb-6">Are you sure you want to approve this withdrawal?</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmDialog(false)
+                    setSelectedWithdrawal(null)
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmApprove}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rejection Modal */}
+        {showRejectModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-md w-full shadow-2xl">
+              <h3 className="text-xl font-bold text-white mb-4">Reject Withdrawal</h3>
+              <p className="text-gray-300 mb-4">Please provide a reason for rejection:</p>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Enter rejection reason..."
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 mb-6 min-h-[100px] resize-none"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedWithdrawal(null)
+                    setRejectionReason('')
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmReject}
+                  disabled={!rejectionReason.trim()}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Filter Tabs - Mobile Responsive */}
         <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6 mb-6">
           <div className="flex flex-wrap gap-2 sm:gap-4">

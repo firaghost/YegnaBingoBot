@@ -8,7 +8,13 @@ import { formatCurrency } from '@/lib/utils'
 export default function AdminDeposits() {
   const [deposits, setDeposits] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'rejected'>('pending')
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('pending')
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'approve' | null>(null)
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   useEffect(() => {
     fetchDeposits()
@@ -32,16 +38,28 @@ export default function AdminDeposits() {
     }
   }
 
-  const handleApprove = async (depositId: string) => {
-    if (!confirm('Approve this deposit?')) return
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 5000)
+  }
 
+  const handleApprove = async (depositId: string) => {
+    setSelectedDepositId(depositId)
+    setConfirmAction('approve')
+    setShowConfirmDialog(true)
+  }
+
+  const confirmApprove = async () => {
+    if (!selectedDepositId) return
+    
+    setShowConfirmDialog(false)
     try {
       const response = await fetch('/api/admin/deposits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'approve',
-          transactionId: depositId
+          transactionId: selectedDepositId
         })
       })
 
@@ -51,25 +69,38 @@ export default function AdminDeposits() {
         throw new Error(result.error || 'Failed to approve')
       }
 
-      alert('Deposit approved successfully!')
+      showNotification('success', 'Deposit approved successfully!')
       fetchDeposits()
     } catch (error: any) {
       console.error('Error approving deposit:', error)
-      alert(error.message || 'Failed to approve deposit')
+      showNotification('error', error.message || 'Failed to approve deposit')
+    } finally {
+      setSelectedDepositId(null)
+      setConfirmAction(null)
     }
   }
 
-  const handleReject = async (depositId: string) => {
-    const reason = prompt('Enter rejection reason:')
-    if (!reason) return
+  const handleReject = (depositId: string) => {
+    setSelectedDepositId(depositId)
+    setRejectionReason('')
+    setShowRejectModal(true)
+  }
 
+  const confirmReject = async () => {
+    if (!selectedDepositId || !rejectionReason.trim()) {
+      showNotification('error', 'Please enter a rejection reason')
+      return
+    }
+
+    setShowRejectModal(false)
     try {
       const response = await fetch('/api/admin/deposits', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'reject',
-          transactionId: depositId
+          transactionId: selectedDepositId,
+          reason: rejectionReason.trim()
         })
       })
 
@@ -79,11 +110,14 @@ export default function AdminDeposits() {
         throw new Error(result.error || 'Failed to reject')
       }
 
-      alert('Deposit rejected')
+      showNotification('success', 'Deposit rejected')
       fetchDeposits()
     } catch (error: any) {
       console.error('Error rejecting deposit:', error)
-      alert(error.message || 'Failed to reject deposit')
+      showNotification('error', error.message || 'Failed to reject deposit')
+    } finally {
+      setSelectedDepositId(null)
+      setRejectionReason('')
     }
   }
 
@@ -91,7 +125,7 @@ export default function AdminDeposits() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
         <div className="container mx-auto px-6 py-4">
-          <Link href="/admin" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
+          <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
             ← Back to Dashboard
           </Link>
           <h1 className="text-2xl font-bold text-white">💵 Deposit Management</h1>
@@ -100,9 +134,87 @@ export default function AdminDeposits() {
       </div>
 
       <div className="container mx-auto px-6 py-8">
+        {/* Notification Toast */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border animate-slide-in ${
+            notification.type === 'success'
+              ? 'bg-green-500/90 border-green-400 text-white'
+              : 'bg-red-500/90 border-red-400 text-white'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{notification.type === 'success' ? '✓' : '✗'}</span>
+              <span className="font-semibold">{notification.message}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Dialog */}
+        {showConfirmDialog && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-md w-full shadow-2xl">
+              <h3 className="text-xl font-bold text-white mb-4">Confirm Approval</h3>
+              <p className="text-gray-300 mb-6">Are you sure you want to approve this deposit?</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmDialog(false)
+                    setSelectedDepositId(null)
+                    setConfirmAction(null)
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmApprove}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rejection Modal */}
+        {showRejectModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 max-w-md w-full shadow-2xl">
+              <h3 className="text-xl font-bold text-white mb-4">Reject Deposit</h3>
+              <p className="text-gray-300 mb-4">Please provide a reason for rejection:</p>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Enter rejection reason..."
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 mb-6 min-h-[100px] resize-none"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedDepositId(null)
+                    setRejectionReason('')
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmReject}
+                  disabled={!rejectionReason.trim()}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Filter Tabs - Mobile Responsive */}
         <div className="flex flex-wrap gap-2 sm:gap-4 mb-6">
-          {(['all', 'pending', 'completed', 'rejected'] as const).map((status) => (
+          {(['all', 'pending', 'completed', 'failed'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilter(status)}
@@ -193,7 +305,7 @@ export default function AdminDeposits() {
                               : 'bg-red-500/20 text-red-400'
                           }`}
                         >
-                          {deposit.status}
+                          {deposit.status === 'failed' ? 'rejected' : deposit.status}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -239,7 +351,7 @@ export default function AdminDeposits() {
                           : 'bg-red-500/20 text-red-400'
                       }`}
                     >
-                      {deposit.status}
+                      {deposit.status === 'failed' ? 'rejected' : deposit.status}
                     </span>
                   </div>
 
@@ -250,11 +362,11 @@ export default function AdminDeposits() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Method:</span>
-                      <span className="text-gray-300 text-sm">{deposit.metadata?.payment_method || 'Bank Transfer'}</span>
+                      <span className="text-gray-300 text-sm">{deposit.payment_method || 'Bank Transfer'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Reference:</span>
-                      <span className="text-gray-300 text-sm">{deposit.metadata?.transaction_reference || 'N/A'}</span>
+                      <span className="text-gray-300 text-sm">{deposit.transaction_reference || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Date:</span>
@@ -262,11 +374,11 @@ export default function AdminDeposits() {
                         {new Date(deposit.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    {deposit.metadata?.proof_url && (
+                    {deposit.proof_url && (
                       <div className="flex justify-between">
                         <span className="text-gray-400 text-sm">Proof:</span>
                         <a
-                          href={deposit.metadata.proof_url}
+                          href={deposit.proof_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 hover:text-blue-300 text-sm underline"

@@ -152,7 +152,7 @@ export default function AdminRoomsPage() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <Link href="/admin" className="text-2xl text-white hover:opacity-70">←</Link>
+              <Link href="/mgmt-portal-x7k9p2" className="text-2xl text-white hover:opacity-70">←</Link>
               <h1 className="text-2xl font-bold text-white">Room Management</h1>
             </div>
           </div>

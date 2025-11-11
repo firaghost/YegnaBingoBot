@@ -103,17 +103,20 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have exactly 2 players, immediately start countdown (no waiting)
+      // If we have 2+ players, start 15-second waiting period for more players
       if (updatedPlayers.length >= 2 && newStatus === 'waiting') {
-        console.log(`🎮 Game ${activeGame.id} has ${updatedPlayers.length} players, starting countdown immediately...`)
+        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 15-second waiting period...`)
         
-        // Update status to countdown immediately
+        // Update status to countdown with 15-second waiting timer
         await supabase
           .from('games')
-          .update({ status: 'countdown' })
+          .update({ 
+            status: 'countdown',
+            countdown_time: 15  // 15 seconds to wait for more players
+          })
           .eq('id', activeGame.id)
         
-        // Notify Socket.IO server to start the game loop
+        // Notify Socket.IO server to start the waiting period
         try {
           const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
           await fetch(`${socketUrl}/trigger-game-start`, {
@@ -136,11 +139,14 @@ export async function POST(request: NextRequest) {
     // Player already in game
     // Check if game is stuck in waiting with 2+ players
     if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
-      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting countdown...`)
+      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)
       
       await supabase
         .from('games')
-        .update({ status: 'countdown' })
+        .update({ 
+          status: 'countdown',
+          countdown_time: 15  // 15 seconds waiting period
+        })
         .eq('id', activeGame.id)
       
       try {

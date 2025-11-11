@@ -38,8 +38,10 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true)
   const [autoWin, setAutoWin] = useState(false)
   const [bingoError, setBingoError] = useState<string | null>(null)
+  const [claimingBingo, setClaimingBingo] = useState(false)
   const initializingRef = useRef(false)
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
+  const queueRedirectRef = useRef(false)
 
   // Check authentication - only redirect after auth is loaded
   useEffect(() => {
@@ -251,12 +253,41 @@ export default function GamePage() {
     }
   }, [gameState?.status, user, gameId, roomData, stakeDeducted])
 
+  // Track previous latest number for haptic feedback
+  const prevLatestNumberRef = useRef<number | null>(null)
+
   // Handle game state updates from Socket.IO
   useEffect(() => {
     if (!gameState) return
 
-    // Check if game finished
-    if (gameState.status === 'finished' && gameState.winner_id) {
+    // Haptic feedback when new number is called
+    if (gameState.status === 'active' && gameState.latest_number) {
+      const currentNumber = gameState.latest_number.number
+      if (prevLatestNumberRef.current !== currentNumber) {
+        prevLatestNumberRef.current = currentNumber
+        
+        // Vibrate on mobile when number is called
+        if (navigator.vibrate) {
+          navigator.vibrate(100) // Vibrate for 100ms
+        }
+      }
+    }
+
+    // Handle queued players when game finishes
+    if (playerState === 'queue' && gameState.status === 'finished' && !queueRedirectRef.current) {
+      console.log('🎮 Game finished, redirecting queued player to new game...')
+      queueRedirectRef.current = true // Prevent multiple redirects
+      
+      // Reload the page to join a new game
+      setTimeout(() => {
+        window.location.href = `/game/${roomId}`
+      }, 2000) // Wait 2 seconds before redirecting
+      
+      return // Don't process win/lose logic for queued players
+    }
+
+    // Check if game finished (for active players only)
+    if (gameState.status === 'finished' && gameState.winner_id && playerState === 'playing') {
       console.log('🏁 Game finished! Winner:', gameState.winner_id)
       
       if (gameState.winner_id === user?.id) {
@@ -300,11 +331,11 @@ export default function GamePage() {
         }, 8000)
       }
     }
-  }, [gameState?.status, gameState?.winner_id, user])
+  }, [gameState?.status, gameState?.winner_id, user, playerState, roomId, router])
 
   // REMOVED: Auto-mark feature - Players must manually mark numbers
 
-  // Handle cell click - Manual marking only
+  // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
     if (!gameState || gameState.status !== 'active') return
     if (!gameId || !user) return
@@ -312,16 +343,12 @@ export default function GamePage() {
     const num = bingoCard[row][col]
     if (num === 0) return // Free space (always marked)
     if (!gameState.called_numbers.includes(num)) return // Not called yet
+    if (markedCells[row][col]) return // Already marked - don't allow unmarking
     
-    // Toggle marking
+    // Mark the cell (no unmarking allowed)
     const newMarked = markedCells.map(r => [...r])
-    newMarked[row][col] = !newMarked[row][col]
+    newMarked[row][col] = true
     setMarkedCells(newMarked)
-
-    // Haptic feedback on mobile
-    if (navigator.vibrate) {
-      navigator.vibrate(50) // Short vibration (50ms)
-    }
 
     // Emit mark event to server
     markNumber(gameId, user.id, num)
@@ -329,9 +356,50 @@ export default function GamePage() {
 
   // Handle BINGO button click
   const handleBingoClick = async () => {
+    // Prevent multiple simultaneous claims
+    if (claimingBingo) return
+    
     if (!gameState || gameState.status !== 'active') {
       setBingoError('Game is not active')
       setTimeout(() => setBingoError(null), 3000)
+      
+      // Refresh game state to check if game ended
+      if (gameId && user) {
+        const { data: freshGame } = await supabase
+          .from('games')
+          .select('*')
+          .eq('id', gameId)
+          .single()
+        
+        if (freshGame && freshGame.status === 'finished' && freshGame.winner_id) {
+          // Game already finished - manually trigger win/lose dialog
+          const prize = freshGame.net_prize || freshGame.prize_pool
+          setWinAmount(prize)
+          
+          if (freshGame.winner_id === user.id) {
+            console.log('🎉 You won!')
+            setShowWinDialog(true)
+          } else {
+            console.log('😢 You lost')
+            setShowLoseDialog(true)
+            
+            // Fetch winner name
+            supabase
+              .from('users')
+              .select('username')
+              .eq('id', freshGame.winner_id)
+              .single()
+              .then(({ data }) => {
+                if (data) setWinnerName(data.username)
+              })
+            
+            // Auto-redirect after 8 seconds
+            setTimeout(() => {
+              router.push('/lobby')
+            }, 8000)
+          }
+        }
+      }
       return
     }
     
@@ -346,7 +414,65 @@ export default function GamePage() {
 
     // Valid bingo - claim it!
     console.log('🎉 Claiming BINGO!')
-    claimBingo(gameId, user.id, bingoCard)
+    setClaimingBingo(true)
+    const result = await claimBingo(gameId, user.id, bingoCard)
+    setClaimingBingo(false)
+    
+    // Handle claim result
+    if (!result.success) {
+      console.log('❌ Claim failed:', result.error)
+      
+      // Show error to user
+      setBingoError(result.error || 'Failed to claim BINGO')
+      
+      // Refresh game state to check current status
+      const { data: freshGame } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single()
+      
+      if (freshGame && freshGame.status === 'finished' && freshGame.winner_id) {
+        console.log('🔄 Game already finished. Winner:', freshGame.winner_id)
+        
+        // Clear error and show game result
+        setBingoError(null)
+        
+        const prize = freshGame.net_prize || freshGame.prize_pool
+        setWinAmount(prize)
+        
+        if (freshGame.winner_id === user.id) {
+          // Somehow we won even though claim failed (race condition)
+          console.log('✅ You are the winner!')
+          setShowWinDialog(true)
+        } else {
+          // Someone else won
+          console.log('😢 Another player won')
+          setShowLoseDialog(true)
+          
+          // Fetch winner name
+          supabase
+            .from('users')
+            .select('username')
+            .eq('id', freshGame.winner_id)
+            .single()
+            .then(({ data }) => {
+              if (data) setWinnerName(data.username)
+            })
+          
+          // Auto-redirect after 8 seconds
+          setTimeout(() => {
+            router.push('/lobby')
+          }, 8000)
+        }
+      } else {
+        // Game still active or other error - show error for 3 seconds
+        setTimeout(() => setBingoError(null), 3000)
+      }
+    } else {
+      console.log('✅ BINGO claimed successfully!')
+      // The useEffect will handle showing the win dialog when game state updates
+    }
   }
 
   // No auto-redirect - removed to let user choose
@@ -505,10 +631,12 @@ export default function GamePage() {
             {/* Game Info Section */}
             <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Trophy className="w-6 h-6 text-green-600" />
+                <div className={`p-2 rounded-lg ${countdownTime > 10 ? 'bg-purple-100' : 'bg-green-100'}`}>
+                  <Trophy className={`w-6 h-6 ${countdownTime > 10 ? 'text-purple-600' : 'text-green-600'}`} />
                 </div>
-                <h2 className="text-lg font-bold text-slate-900">Game Starting</h2>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {countdownTime > 10 ? 'Waiting for Players' : 'Game Starting'}
+                </h2>
               </div>
               
               <div className="space-y-4">
@@ -533,14 +661,20 @@ export default function GamePage() {
             </div>
 
             {/* Countdown Progress Box */}
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-blue-200 shadow-lg">
+            <div className={`rounded-xl p-8 border-2 shadow-lg ${
+              countdownTime > 10 
+                ? 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200' 
+                : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200'
+            }`}>
               <div className="flex items-center justify-center gap-3 mb-6">
-                <Clock className="w-8 h-8 text-blue-600" />
-                <h2 className="text-2xl font-bold text-slate-900">Starting In</h2>
+                <Clock className={`w-8 h-8 ${countdownTime > 10 ? 'text-purple-600' : 'text-blue-600'}`} />
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {countdownTime > 10 ? 'Waiting' : 'Starting In'}
+                </h2>
               </div>
               
               <div className="text-center mb-6">
-                <div className="text-7xl font-black text-blue-600 mb-2">
+                <div className={`text-7xl font-black mb-2 ${countdownTime > 10 ? 'text-purple-600' : 'text-blue-600'}`}>
                   {countdownTime}
                 </div>
                 <p className="text-slate-600 font-medium">
@@ -551,13 +685,23 @@ export default function GamePage() {
               {/* Progress Bar */}
               <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden mb-3">
                 <div 
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 h-4 rounded-full transition-all duration-1000 ease-linear"
-                  style={{ width: `${((10 - countdownTime) / 10) * 100}%` }}
+                  className={`h-4 rounded-full transition-all duration-1000 ease-linear ${
+                    countdownTime > 10 
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600' 
+                      : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                  }`}
+                  style={{ 
+                    width: countdownTime > 10 
+                      ? `${((15 - countdownTime) / 15) * 100}%`
+                      : `${((10 - countdownTime) / 10) * 100}%` 
+                  }}
                 ></div>
               </div>
               
               <p className="text-center text-sm text-slate-600">
-                Get ready! The game is about to begin...
+                {countdownTime > 10 
+                  ? 'Waiting for more players to join...' 
+                  : 'Get ready! The game is about to begin...'}
               </p>
             </div>
 
@@ -588,30 +732,44 @@ export default function GamePage() {
             {/* Queue Status */}
             <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-8 border-2 border-purple-200 shadow-lg">
               <div className="flex items-center justify-center gap-3 mb-6">
-                <Clock className="w-10 h-10 text-purple-600" />
-                <h2 className="text-2xl font-bold text-slate-900">In Queue</h2>
+                {gameState?.status === 'finished' ? (
+                  <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
+                ) : (
+                  <Clock className="w-10 h-10 text-purple-600" />
+                )}
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {gameState?.status === 'finished' ? 'Joining New Game...' : 'In Queue'}
+                </h2>
               </div>
               
               <p className="text-center text-lg text-slate-700 mb-6">
-                You'll join the next game when this one ends
+                {gameState?.status === 'finished' 
+                  ? 'Game finished! Redirecting you to a new game...' 
+                  : "You'll join the next game when this one ends"}
               </p>
               
               <div className="bg-white rounded-lg p-6 mb-6">
                 <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
                   <Trophy className="w-4 h-4" />
-                  <span>Current Game Progress</span>
+                  <span>{gameState?.status === 'finished' ? 'Game Finished' : 'Current Game Progress'}</span>
                 </div>
                 
                 {/* Game Progress Bar */}
                 <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden mb-2">
                   <div 
-                    className="bg-gradient-to-r from-purple-500 to-indigo-600 h-3 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min((calledNumbers.length / 75) * 100, 100)}%` }}
+                    className={`h-3 rounded-full transition-all duration-500 ${
+                      gameState?.status === 'finished' 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-600' 
+                        : 'bg-gradient-to-r from-purple-500 to-indigo-600'
+                    }`}
+                    style={{ width: gameState?.status === 'finished' ? '100%' : `${Math.min((calledNumbers.length / 75) * 100, 100)}%` }}
                   ></div>
                 </div>
                 
                 <p className="text-xs text-slate-500 text-center">
-                  {calledNumbers.length} / 75 numbers called
+                  {gameState?.status === 'finished' 
+                    ? 'Winner claimed BINGO!' 
+                    : `${calledNumbers.length} / 75 numbers called`}
                 </p>
               </div>
               
@@ -635,7 +793,12 @@ export default function GamePage() {
             <div className="space-y-3">
               <button 
                 onClick={() => router.push('/lobby')}
-                className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                disabled={gameState?.status === 'finished'}
+                className={`w-full py-3.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                  gameState?.status === 'finished'
+                    ? 'bg-slate-400 text-slate-600 cursor-not-allowed'
+                    : 'bg-slate-700 text-white hover:bg-slate-800'
+                }`}
               >
                 <ArrowLeft className="w-5 h-5" />
                 <span>Back to Lobby</span>
@@ -643,7 +806,12 @@ export default function GamePage() {
               
               <button 
                 onClick={() => setShowLeaveDialog(true)}
-                className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+                disabled={gameState?.status === 'finished'}
+                className={`w-full py-3.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                  gameState?.status === 'finished'
+                    ? 'bg-slate-400 text-slate-600 cursor-not-allowed'
+                    : 'bg-red-500 text-white hover:bg-red-600'
+                }`}
               >
                 <LogOut className="w-5 h-5" />
                 <span>Leave Queue</span>
@@ -761,14 +929,13 @@ export default function GamePage() {
                           ${ci === 4 ? 'border-r-0' : ''}
                           ${ri === 4 ? 'border-b-0' : ''}
                           ${isMarked
-                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full m-1 shadow-lg'
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full m-1 shadow-lg cursor-default'
                             : isCalled
-                            ? 'bg-white text-slate-700 rounded-full m-1 ring-2 ring-blue-300 hover:bg-blue-50'
+                            ? 'bg-white text-slate-700 rounded-full m-1 ring-2 ring-blue-300 hover:bg-blue-50 cursor-pointer hover:scale-105 active:scale-95'
                             : isFree
-                            ? 'bg-slate-100 text-slate-600 rounded-full m-1'
-                            : 'bg-white text-slate-400'
+                            ? 'bg-slate-100 text-slate-600 rounded-full m-1 cursor-default'
+                            : 'bg-white text-slate-400 cursor-not-allowed'
                           }
-                          ${(isCalled || isFree) ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-not-allowed'}
                         `}
                       >
                         {isFree ? '★' : num}
@@ -789,15 +956,24 @@ export default function GamePage() {
             {/* BINGO Button - Beautiful */}
             <button
               onClick={handleBingoClick}
-              disabled={!checkBingoWin(markedCells)}
+              disabled={!checkBingoWin(markedCells) || claimingBingo}
               className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
-                checkBingoWin(markedCells)
+                checkBingoWin(markedCells) && !claimingBingo
                   ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
                   : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
               }`}
             >
-              <CheckCircle className="w-5 h-5" />
-              <span>BINGO!</span>
+              {claimingBingo ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Claiming...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" />
+                  <span>BINGO!</span>
+                </>
+              )}
             </button>
           </div>
         )}
@@ -907,7 +1083,9 @@ export default function GamePage() {
             <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold text-center mb-4 text-slate-900">Leave Game?</h2>
               <p className="text-center text-slate-600 mb-8">
-                Are you sure you want to leave the current game? You will lose your stake of {formatCurrency(stake)}.
+                {gameState?.status === 'waiting' 
+                  ? 'Are you sure you want to leave?' 
+                  : `Are you sure you want to leave the current game? You will lose your stake of ${formatCurrency(stake)}.`}
               </p>
               
               <div className="space-y-3">

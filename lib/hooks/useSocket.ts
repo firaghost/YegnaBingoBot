@@ -209,7 +209,7 @@ export function useSocket() {
     console.log('🎯 Marked number:', number)
   }
 
-  const claimBingo = async (gameId: string, userId: string, card: number[][]) => {
+  const claimBingo = async (gameId: string, userId: string, card: number[][]): Promise<{ success: boolean; error?: string; status?: string }> => {
     console.log('🎰 Claiming bingo for game:', gameId)
     
     try {
@@ -223,12 +223,22 @@ export function useSocket() {
 
       if (!response.ok) {
         console.error('❌ Bingo claim error:', data.error)
-        return
+        // Return error information to caller
+        return { 
+          success: false, 
+          error: data.error || 'Failed to claim bingo',
+          status: data.status || 'unknown'
+        }
       }
 
       console.log('✅ Bingo claimed:', data)
+      return { success: true }
     } catch (error) {
       console.error('❌ Bingo claim error:', error)
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Network error'
+      }
     }
   }
 

@@ -57,11 +57,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { action, transactionId } = await request.json()
+    const { action, transactionId, reason } = await request.json()
 
     if (!action || !transactionId) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    if (action === 'reject' && !reason) {
+      return NextResponse.json(
+        { error: 'Rejection reason is required' },
         { status: 400 }
       )
     }
@@ -126,10 +133,18 @@ export async function POST(request: NextRequest) {
         message: 'Deposit approved and balance added'
       })
     } else if (action === 'reject') {
-      // Update transaction status to rejected
+      // Update transaction status to failed with rejection reason in metadata
       const { error: updateError } = await supabase
         .from('transactions')
-        .update({ status: 'rejected' })
+        .update({ 
+          status: 'failed',
+          metadata: {
+            ...transaction.metadata,
+            rejection_reason: reason,
+            rejected_at: new Date().toISOString(),
+            rejected_by: 'admin'
+          }
+        })
         .eq('id', transactionId)
 
       if (updateError) throw updateError
@@ -137,14 +152,14 @@ export async function POST(request: NextRequest) {
       // Send Telegram notification
       if (user?.telegram_id) {
         try {
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
           if (botToken) {
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 chat_id: user.telegram_id,
-                text: `❌ *Deposit Rejected*\n\nYour deposit request of *${transaction.amount} ETB* has been rejected.\n\nPlease contact support if you have any questions.`,
+                text: `❌ *Deposit Rejected*\n\nYour deposit request of *${transaction.amount} ETB* has been rejected.\n\n*Reason:* ${reason}\n\nPlease contact support if you have any questions.`,
                 parse_mode: 'Markdown'
               })
             })

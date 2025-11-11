@@ -89,7 +89,7 @@ export default function AdminSettings() {
         <div className="container mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <Link href="/admin" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
+              <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
                 ← Back to Dashboard
               </Link>
               <h1 className="text-2xl font-bold text-white">⚙️ System Settings</h1>

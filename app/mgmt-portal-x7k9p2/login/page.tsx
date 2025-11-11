@@ -16,7 +16,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/admin')
+      router.push('/mgmt-portal-x7k9p2')
     }
 
     // Initialize Telegram Web App
@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
           telegramUser.username || telegramUser.first_name
         )
 
-        router.push('/admin')
+        router.push('/mgmt-portal-x7k9p2')
       } else {
         setError('Please open this page through Telegram')
       }
@@ -79,7 +79,7 @@ export default function AdminLoginPage() {
 
       // Store admin ID in localStorage
       localStorage.setItem('admin_id', admin.id)
-      router.push('/admin')
+      router.push('/mgmt-portal-x7k9p2')
     } catch (err: any) {
       console.error('Login error:', err)
       setError('Login failed. Please try again.')

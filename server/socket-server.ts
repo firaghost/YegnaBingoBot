@@ -110,6 +110,7 @@ async function startGameLoop(gameId: string) {
   // Countdown phase
   if (game.status === 'countdown') {
     let countdown = game.countdown_time || 10
+    const isWaitingPhase = countdown > 10 // If > 10, it's the 15-second waiting period
 
     const countdownInterval = setInterval(async () => {
       countdown--
@@ -182,7 +183,12 @@ async function startGameLoop(gameId: string) {
           .update({ countdown_time: countdown })
           .eq('id', gameId)
 
-        console.log(`⏰ Game ${gameId} countdown: ${countdown}s`)
+        // Log different messages for waiting vs countdown phase
+        if (countdown > 10) {
+          console.log(`⏳ Game ${gameId} waiting for more players: ${countdown}s`)
+        } else {
+          console.log(`⏰ Game ${gameId} countdown: ${countdown}s`)
+        }
 
         // Broadcast countdown update
         io.to(`game-${gameId}`).emit('game-state', {

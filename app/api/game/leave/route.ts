@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
       console.log(`⏳ 1 player remains in waiting state, keeping game open`)
       return NextResponse.json({
         success: true,
-        message: 'Player left, waiting for more players'
+        message: 'Player left, waiting for more players',
+        refunded: false // No refund needed in waiting room
       })
     }
 

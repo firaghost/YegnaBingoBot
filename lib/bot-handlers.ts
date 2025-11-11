@@ -539,6 +539,139 @@ export function setupBotHandlers(bot: Telegraf) {
     }
   })
 
+  // Callback query handler for deposit/withdrawal approvals
+  bot.on('callback_query', async (ctx) => {
+    const callbackData = ctx.callbackQuery && 'data' in ctx.callbackQuery ? ctx.callbackQuery.data : null
+    
+    if (!callbackData) {
+      await ctx.answerCbQuery('Invalid action')
+      return
+    }
+
+    const message = ctx.callbackQuery.message
+    const messageText = message && 'text' in message ? message.text : ''
+
+    // Handle deposit approval
+    if (callbackData.startsWith('approve_deposit_')) {
+      const transactionId = callbackData.replace('approve_deposit_', '')
+      
+      try {
+        await ctx.answerCbQuery('Processing approval...')
+        
+        const response = await fetch(`${MINI_APP_URL}/api/admin/deposits`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'approve',
+            transactionId
+          })
+        })
+
+        const result = await response.json()
+
+        if (response.ok) {
+          await ctx.editMessageText(
+            messageText + '\n\n✅ *APPROVED*',
+            { parse_mode: 'Markdown' }
+          )
+          await ctx.reply('✅ Deposit approved successfully!')
+        } else {
+          throw new Error(result.error || 'Failed to approve')
+        }
+      } catch (error: any) {
+        console.error('Error approving deposit:', error)
+        await ctx.reply(`❌ Error: ${error.message}`)
+      }
+    }
+    
+    // Handle deposit rejection
+    else if (callbackData.startsWith('reject_deposit_')) {
+      const transactionId = callbackData.replace('reject_deposit_', '')
+      
+      try {
+        await ctx.answerCbQuery('Please use admin panel to reject with reason')
+        
+        // Direct admin to web panel for detailed rejection
+        await ctx.reply(
+          '❌ *Reject Deposit*\n\n' +
+          'To reject this deposit with a reason, please use the admin panel:\n\n' +
+          `${MINI_APP_URL}/mgmt-portal-x7k9p2/deposits\n\n` +
+          `Transaction ID: \`${transactionId}\`\n\n` +
+          'Tap the button below to open the admin panel.',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.webApp('Open Admin Panel', `${MINI_APP_URL}/mgmt-portal-x7k9p2/deposits`)]
+            ])
+          }
+        )
+      } catch (error: any) {
+        console.error('Error processing rejection:', error)
+        await ctx.reply(`❌ Error: ${error.message}`)
+      }
+    }
+    
+    // Handle withdrawal approval
+    else if (callbackData.startsWith('approve_withdraw_')) {
+      const withdrawalId = callbackData.replace('approve_withdraw_', '')
+      
+      try {
+        await ctx.answerCbQuery('Processing approval...')
+        
+        const response = await fetch(`${MINI_APP_URL}/api/admin/withdrawals`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'approve',
+            withdrawalId
+          })
+        })
+
+        const result = await response.json()
+
+        if (response.ok) {
+          await ctx.editMessageText(
+            messageText + '\n\n✅ *APPROVED*',
+            { parse_mode: 'Markdown' }
+          )
+          await ctx.reply('✅ Withdrawal approved successfully!')
+        } else {
+          throw new Error(result.error || 'Failed to approve')
+        }
+      } catch (error: any) {
+        console.error('Error approving withdrawal:', error)
+        await ctx.reply(`❌ Error: ${error.message}`)
+      }
+    }
+    
+    // Handle withdrawal rejection
+    else if (callbackData.startsWith('reject_withdraw_')) {
+      const withdrawalId = callbackData.replace('reject_withdraw_', '')
+      
+      try {
+        await ctx.answerCbQuery('Please use admin panel to reject with reason')
+        
+        // Direct admin to web panel for detailed rejection
+        await ctx.reply(
+          '❌ *Reject Withdrawal*\n\n' +
+          'To reject this withdrawal with a reason, please use the admin panel:\n\n' +
+          `${MINI_APP_URL}/mgmt-portal-x7k9p2/withdrawals\n\n` +
+          `Withdrawal ID: \`${withdrawalId}\`\n\n` +
+          'Tap the button below to open the admin panel.',
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.webApp('Open Admin Panel', `${MINI_APP_URL}/mgmt-portal-x7k9p2/withdrawals`)]
+            ])
+          }
+        )
+      } catch (error: any) {
+        console.error('Error processing rejection:', error)
+        await ctx.reply(`❌ Error: ${error.message}`)
+      }
+    }
+  })
+
   // Error handling
   bot.catch((err, ctx) => {
     console.error(`Error for ${ctx.updateType}:`, err)
