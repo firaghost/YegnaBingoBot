@@ -5,6 +5,9 @@ import { supabase } from '../lib/supabase.js'
 
 const SOCKET_PORT = parseInt(process.env.PORT || process.env.SOCKET_PORT || '3001', 10)
 
+// Track active game loops to prevent duplicates
+const activeGameLoops = new Map<string, NodeJS.Timeout>()
+
 // Create HTTP server for Socket.IO only
 const httpServer = createServer()
 
@@ -13,9 +16,9 @@ const io = new Server(httpServer, {
   cors: {
     origin: [
       process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      'https://yegna-bingo-bot.vercel.app',
-      'https://yegnabingo.vercel.app',
-      'https://miniapo.vercel.app'
+      'https://yegnagame.vercel.app',
+      'http://localhost:3000',
+      /\.vercel\.app$/  // Allow all Vercel preview deployments
     ],
     methods: ['GET', 'POST'],
     credentials: true
@@ -23,6 +26,203 @@ const io = new Server(httpServer, {
 })
 
 console.log('🚀 Socket.IO Server Starting...')
+
+// ============================================
+// SERVER-SIDE GAME LOOP
+// ============================================
+
+// Get bingo letter for number
+function getBingoLetter(number: number): string {
+  if (number <= 15) return 'B'
+  if (number <= 30) return 'I'
+  if (number <= 45) return 'N'
+  if (number <= 60) return 'G'
+  return 'O'
+}
+
+// Generate shuffled number sequence
+function generateNumberSequence(): number[] {
+  const numbers = Array.from({ length: 75 }, (_, i) => i + 1)
+  // Fisher-Yates shuffle
+  for (let i = numbers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [numbers[i], numbers[j]] = [numbers[j], numbers[i]]
+  }
+  return numbers
+}
+
+// Start game loop for a specific game
+async function startGameLoop(gameId: string) {
+  // Prevent duplicate loops
+  if (activeGameLoops.has(gameId)) {
+    console.log(`⚠️ Game loop already running for ${gameId}`)
+    return
+  }
+
+  console.log(`🎮 Starting server-side game loop for ${gameId}`)
+
+  // Fetch game data
+  const { data: game } = await supabase
+    .from('games')
+    .select('*')
+    .eq('id', gameId)
+    .single()
+
+  if (!game) {
+    console.error(`❌ Game ${gameId} not found`)
+    return
+  }
+
+  // Countdown phase
+  if (game.status === 'countdown') {
+    let countdown = game.countdown_time || 10
+
+    const countdownInterval = setInterval(async () => {
+      countdown--
+
+      if (countdown <= 0) {
+        clearInterval(countdownInterval)
+        activeGameLoops.delete(gameId)
+
+        // Start active game phase
+        const numberSequence = generateNumberSequence()
+        await supabase
+          .from('games')
+          .update({
+            status: 'active',
+            countdown_time: 0,
+            started_at: new Date().toISOString(),
+            number_sequence: numberSequence
+          })
+          .eq('id', gameId)
+
+        console.log(`🎬 Game ${gameId} started - beginning number calls`)
+        
+        // Broadcast game start
+        io.to(`game-${gameId}`).emit('game-state', {
+          ...game,
+          status: 'active',
+          countdown_time: 0
+        })
+
+        // Start active game loop
+        startActiveGameLoop(gameId, numberSequence)
+      } else {
+        // Update countdown in database
+        await supabase
+          .from('games')
+          .update({ countdown_time: countdown })
+          .eq('id', gameId)
+
+        console.log(`⏰ Game ${gameId} countdown: ${countdown}s`)
+
+        // Broadcast countdown update
+        io.to(`game-${gameId}`).emit('game-state', {
+          ...game,
+          countdown_time: countdown
+        })
+      }
+    }, 1000)
+
+    activeGameLoops.set(gameId, countdownInterval)
+  } else if (game.status === 'active') {
+    // Game already active, start number calling
+    const numberSequence = game.number_sequence || generateNumberSequence()
+    startActiveGameLoop(gameId, numberSequence)
+  }
+}
+
+// Active game loop - call numbers
+async function startActiveGameLoop(gameId: string, numberSequence: number[]) {
+  if (activeGameLoops.has(gameId)) {
+    console.log(`⚠️ Active game loop already running for ${gameId}`)
+    return
+  }
+
+  console.log(`📢 Starting number calls for game ${gameId}`)
+
+  const numberInterval = setInterval(async () => {
+    // Fetch current game state
+    const { data: game } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single()
+
+    if (!game || game.status !== 'active' || game.winner_id) {
+      // Game ended, stop loop
+      clearInterval(numberInterval)
+      activeGameLoops.delete(gameId)
+      console.log(`🛑 Game ${gameId} ended, stopping number calls`)
+      return
+    }
+
+    const calledNumbers = game.called_numbers || []
+    
+    // Find next uncalled number
+    let nextNumber: number | null = null
+    for (const num of numberSequence) {
+      if (!calledNumbers.includes(num)) {
+        nextNumber = num
+        break
+      }
+    }
+
+    if (!nextNumber) {
+      // All numbers called
+      clearInterval(numberInterval)
+      activeGameLoops.delete(gameId)
+      await supabase
+        .from('games')
+        .update({ status: 'finished', ended_at: new Date().toISOString() })
+        .eq('id', gameId)
+      
+      console.log(`🏁 Game ${gameId} finished - all numbers called`)
+      io.to(`game-${gameId}`).emit('game-state', { ...game, status: 'finished' })
+      return
+    }
+
+    // Call the number
+    const updatedNumbers = [...calledNumbers, nextNumber]
+    const latestNumber = {
+      letter: getBingoLetter(nextNumber),
+      number: nextNumber
+    }
+
+    await supabase
+      .from('games')
+      .update({
+        called_numbers: updatedNumbers,
+        latest_number: latestNumber
+      })
+      .eq('id', gameId)
+
+    console.log(`📢 Game ${gameId}: Called ${latestNumber.letter}${latestNumber.number} [${updatedNumbers.length}/75]`)
+
+    // Broadcast number call
+    io.to(`game-${gameId}`).emit('game-state', {
+      ...game,
+      called_numbers: updatedNumbers,
+      latest_number: latestNumber
+    })
+  }, 3000) // Call number every 3 seconds
+
+  activeGameLoops.set(gameId, numberInterval)
+}
+
+// Stop game loop
+function stopGameLoop(gameId: string) {
+  const interval = activeGameLoops.get(gameId)
+  if (interval) {
+    clearInterval(interval)
+    activeGameLoops.delete(gameId)
+    console.log(`🛑 Stopped game loop for ${gameId}`)
+  }
+}
+
+// ============================================
+// SOCKET.IO CONNECTION HANDLER
+// ============================================
 
 // Socket.IO connection handler
 io.on('connection', (socket) => {
@@ -50,7 +250,7 @@ io.on('connection', (socket) => {
         players: game.players || [],
         bots: game.bots || [],
         called_numbers: game.called_numbers || [],
-        latest_number: null,
+        latest_number: game.latest_number || null,
         stake: game.stake,
         prize_pool: game.prize_pool,
         winner_id: game.winner_id
@@ -58,6 +258,12 @@ io.on('connection', (socket) => {
 
       // Notify other players
       socket.to(`game-${gameId}`).emit('player-joined', { userId })
+
+      // Start game loop if game is in countdown or active status
+      if ((game.status === 'countdown' || game.status === 'active') && !activeGameLoops.has(gameId)) {
+        console.log(`🚀 Triggering game loop for ${gameId} (status: ${game.status})`)
+        startGameLoop(gameId)
+      }
     }
   })
 

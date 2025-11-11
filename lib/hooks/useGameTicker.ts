@@ -80,18 +80,29 @@ export function useGameTicker(
       return
     }
 
-    // Prevent multiple tickers
-    if (isTickingRef.current) return
+    // Prevent multiple tickers - CRITICAL: Check and stop existing ticker first
+    if (isTickingRef.current && tickerRef.current) {
+      console.log('⚠️ Ticker already running, skipping duplicate')
+      return
+    }
+    
+    // Clear any existing ticker before starting new one
+    if (tickerRef.current) {
+      clearInterval(tickerRef.current)
+      tickerRef.current = null
+    }
+    
     isTickingRef.current = true
     
     if (isFallbackMaster) {
       console.log('🔄 Fallback game master - taking over ticker')
     } else {
-      console.log('👑 Game master - starting ticker')
+      console.log('👑 Game master - starting ticker for game:', gameId)
     }
 
     const tick = async () => {
       try {
+        console.log(`🔄 Ticking game ${gameId} (status: ${gameStatus})...`)
         const response = await fetch('/api/game/tick', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -99,17 +110,19 @@ export function useGameTicker(
         })
 
         if (!response.ok) {
-          console.error('Tick API error:', response.statusText)
+          console.error('❌ Tick API error:', response.status, response.statusText)
           return
         }
 
         const result = await response.json()
+        console.log('✅ Tick result:', result)
         
         // Reset stuck timer on successful tick
         lastCountdownChangeRef.current = Date.now()
         
         if (result.action === 'end' || result.action === 'none') {
           // Game ended, stop ticking
+          console.log('🛑 Stopping ticker - game ended')
           if (tickerRef.current) {
             clearInterval(tickerRef.current)
             tickerRef.current = null
@@ -118,7 +131,7 @@ export function useGameTicker(
           }
         }
       } catch (error) {
-        console.error('Error ticking game:', error)
+        console.error('❌ Error ticking game:', error)
       }
     }
 
@@ -138,5 +151,5 @@ export function useGameTicker(
       }
       isTickingRef.current = false
     }
-  }, [gameId, gameStatus, userId, players, isFallbackMaster, countdownTime])
+  }, [gameId, gameStatus, userId, players, countdownTime])
 }

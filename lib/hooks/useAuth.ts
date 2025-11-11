@@ -25,30 +25,57 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session
+    // Check for existing session or auto-login from Telegram
     checkUser()
   }, [])
 
   const checkUser = async () => {
     try {
+      // First, check if user is already logged in via localStorage
       const userId = localStorage.getItem('user_id')
-      if (!userId) {
-        setLoading(false)
-        return
+      if (userId) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single()
+
+        if (!error && data) {
+          setUser(data)
+          setLoading(false)
+          return
+        }
+        // If error, clear invalid session
+        localStorage.removeItem('user_id')
       }
 
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single()
+      // If not logged in, check if user came from Telegram and auto-login
+      if (typeof window !== 'undefined' && window.Telegram?.WebApp?.initDataUnsafe?.user) {
+        const telegramUser = window.Telegram.WebApp.initDataUnsafe.user
+        const telegramId = String(telegramUser.id)
 
-      if (error) throw error
-      setUser(data)
+        // Check if this Telegram user is already registered
+        const { data: existingUser, error: fetchError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('telegram_id', telegramId)
+          .maybeSingle()
+
+        if (existingUser) {
+          // User is registered, auto-login
+          console.log('✅ Auto-login from Telegram:', existingUser.username)
+          localStorage.setItem('user_id', existingUser.id)
+          setUser(existingUser)
+          setLoading(false)
+          return
+        }
+      }
+
+      // No session and not from Telegram or not registered
+      setLoading(false)
     } catch (error) {
       console.error('Error checking user:', error)
       localStorage.removeItem('user_id')
-    } finally {
       setLoading(false)
     }
   }

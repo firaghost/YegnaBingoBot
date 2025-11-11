@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
-import { useGameTicker } from '@/lib/hooks/useGameTicker'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 
@@ -25,16 +24,9 @@ export default function GamePage() {
 
   const [gameId, setGameId] = useState<string | null>(null)
   
-  // Use game ticker to progress the game (replaces server-side loop)
-  // Only the first player (game master) runs the ticker to prevent duplicates
-  // Fallback mechanism: if game master disconnects, any player can take over after 5s
-  useGameTicker(
-    gameId, 
-    gameState?.status || null,
-    user?.id || null,
-    gameState?.players || [],
-    gameState?.countdown_time
-  )
+  // Game progression is now handled by Socket.IO server
+  // Clients just listen to 'game-state' events via useSocket hook
+  
   const [roomData, setRoomData] = useState<any>(null)
   const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
   const [bingoCard, setBingoCard] = useState<number[][]>([])
@@ -243,31 +235,6 @@ export default function GamePage() {
       return () => clearTimeout(timeout)
     }
   }, [loading, gameState, gameId, router])
-
-  // Monitor countdown - if stuck for too long, try to restart it
-  useEffect(() => {
-    if (!gameState || !gameId) return
-    if (gameState.status !== 'countdown') return
-
-    // If countdown is stuck at same value for more than 15 seconds, try to restart
-    const countdownValue = gameState.countdown_time
-    const timeout = setTimeout(async () => {
-      console.warn('⚠️ Countdown appears stuck, attempting to restart game loop...')
-      try {
-        const response = await fetch('/api/game/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId })
-        })
-        const result = await response.json()
-        console.log('Restart attempt result:', result)
-      } catch (error) {
-        console.error('Failed to restart game:', error)
-      }
-    }, 15000)
-
-    return () => clearTimeout(timeout)
-  }, [gameState?.status, gameState?.countdown_time, gameId])
 
   // Deduct stake when game transitions to countdown/active
   const [stakeDeducted, setStakeDeducted] = useState(false)

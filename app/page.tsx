@@ -10,9 +10,10 @@ export default function HomePage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
   const [sparkles, setSparkles] = useState<Array<{id: number, style: React.CSSProperties}>>([])
 
-  // Redirect to lobby if already logged in
+  // Redirect to lobby if already logged in (including auto-login from Telegram)
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
+      console.log('✅ User authenticated, redirecting to lobby')
       router.replace('/lobby')
     }
   }, [authLoading, isAuthenticated, router])

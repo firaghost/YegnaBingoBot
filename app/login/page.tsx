@@ -11,8 +11,14 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasRedirected, setHasRedirected] = useState(false)
+  const [isFromTelegram, setIsFromTelegram] = useState(false)
 
   useEffect(() => {
+    // Check if user came from Telegram
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+      setIsFromTelegram(true)
+    }
+
     // Redirect if already authenticated (only once)
     if (isAuthenticated && !authLoading && !hasRedirected) {
       setHasRedirected(true)
@@ -86,7 +92,11 @@ export default function LoginPage() {
           <div className="text-center mb-8">
             <div className="text-7xl mb-4">🎰</div>
             <h1 className="text-4xl font-bold text-gray-800 mb-2">Bingo Royale</h1>
-            <p className="text-gray-600">Welcome back! Let's play!</p>
+            <p className="text-gray-600">
+              {isFromTelegram 
+                ? "Complete your registration to start playing!" 
+                : "Welcome back! Let's play!"}
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -96,26 +106,36 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Telegram Login */}
-            <button
-              onClick={handleTelegramLogin}
-              disabled={loading}
-              className="w-full bg-blue-500 text-white py-4 rounded-xl font-semibold hover:bg-blue-600 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Connecting...</span>
-                </>
-              ) : (
-                <>
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
-                  </svg>
-                  <span>Login with Telegram</span>
-                </>
-              )}
-            </button>
+            {/* Show info message for Telegram users who need to register via bot */}
+            {isFromTelegram && !authLoading && !isAuthenticated && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-lg text-sm">
+                <p className="font-semibold mb-2">📱 First time here?</p>
+                <p>Please register through the Telegram bot first by using the <code className="bg-blue-100 px-1 rounded">/start</code> command, then come back here to play!</p>
+              </div>
+            )}
+
+            {/* Telegram Login - Only show for non-Telegram users or as fallback */}
+            {!isFromTelegram && (
+              <button
+                onClick={handleTelegramLogin}
+                disabled={loading}
+                className="w-full bg-blue-500 text-white py-4 rounded-xl font-semibold hover:bg-blue-600 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
+                    </svg>
+                    <span>Login with Telegram</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="mt-8 pt-6 border-t border-gray-200">
