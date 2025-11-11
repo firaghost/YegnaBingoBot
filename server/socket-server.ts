@@ -8,8 +8,35 @@ const SOCKET_PORT = parseInt(process.env.PORT || process.env.SOCKET_PORT || '300
 // Track active game loops to prevent duplicates
 const activeGameLoops = new Map<string, NodeJS.Timeout>()
 
-// Create HTTP server for Socket.IO only
-const httpServer = createServer()
+// Create HTTP server for Socket.IO and HTTP endpoints
+const httpServer = createServer(async (req, res) => {
+  // Handle POST /trigger-game-start
+  if (req.method === 'POST' && req.url === '/trigger-game-start') {
+    let body = ''
+    req.on('data', chunk => { body += chunk.toString() })
+    req.on('end', async () => {
+      try {
+        const { gameId } = JSON.parse(body)
+        console.log(`🎯 Received trigger to start game: ${gameId}`)
+        
+        // Start the game loop
+        if (!activeGameLoops.has(gameId)) {
+          await startGameLoop(gameId)
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ success: true }))
+      } catch (error) {
+        console.error('Error triggering game start:', error)
+        res.writeHead(500, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Internal server error' }))
+      }
+    })
+  } else {
+    res.writeHead(404)
+    res.end()
+  }
+})
 
 // Initialize Socket.IO with CORS
 const io = new Server(httpServer, {
