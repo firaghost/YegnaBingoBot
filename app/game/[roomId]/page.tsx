@@ -27,11 +27,13 @@ export default function GamePage() {
   
   // Use game ticker to progress the game (replaces server-side loop)
   // Only the first player (game master) runs the ticker to prevent duplicates
+  // Fallback mechanism: if game master disconnects, any player can take over after 5s
   useGameTicker(
     gameId, 
     gameState?.status || null,
     user?.id || null,
-    gameState?.players || []
+    gameState?.players || [],
+    gameState?.countdown_time
   )
   const [roomData, setRoomData] = useState<any>(null)
   const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
