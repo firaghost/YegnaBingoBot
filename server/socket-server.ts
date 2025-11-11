@@ -100,6 +100,13 @@ async function startGameLoop(gameId: string) {
     return
   }
 
+  // Validate minimum players before starting
+  const minPlayers = game.min_players || 2
+  if (game.players.length < minPlayers) {
+    console.error(`❌ Game ${gameId} has insufficient players: ${game.players.length}/${minPlayers}`)
+    return
+  }
+
   // Countdown phase
   if (game.status === 'countdown') {
     let countdown = game.countdown_time || 10
@@ -110,6 +117,22 @@ async function startGameLoop(gameId: string) {
       if (countdown <= 0) {
         clearInterval(countdownInterval)
         activeGameLoops.delete(gameId)
+
+        // Validate players still exist before starting
+        const { data: currentGame } = await supabase
+          .from('games')
+          .select('players, status')
+          .eq('id', gameId)
+          .single()
+
+        if (!currentGame || currentGame.players.length < minPlayers) {
+          console.error(`❌ Game ${gameId} cancelled: insufficient players at start`)
+          await supabase
+            .from('games')
+            .update({ status: 'finished', ended_at: new Date().toISOString() })
+            .eq('id', gameId)
+          return
+        }
 
         // Start active game phase
         const numberSequence = generateNumberSequence()
@@ -135,6 +158,24 @@ async function startGameLoop(gameId: string) {
         // Start active game loop
         startActiveGameLoop(gameId, numberSequence)
       } else {
+        // Validate players still in game during countdown
+        const { data: currentGame } = await supabase
+          .from('games')
+          .select('players')
+          .eq('id', gameId)
+          .single()
+
+        if (!currentGame || currentGame.players.length < minPlayers) {
+          console.log(`⚠️ Game ${gameId} cancelled during countdown: insufficient players`)
+          clearInterval(countdownInterval)
+          activeGameLoops.delete(gameId)
+          await supabase
+            .from('games')
+            .update({ status: 'finished', ended_at: new Date().toISOString() })
+            .eq('id', gameId)
+          return
+        }
+
         // Update countdown in database
         await supabase
           .from('games')
@@ -320,10 +361,27 @@ io.on('connection', (socket) => {
   })
 
   // Leave game room
-  socket.on('leave-game', ({ gameId, userId }: { gameId: string; userId: string }) => {
+  socket.on('leave-game', async ({ gameId, userId }: { gameId: string; userId: string }) => {
     socket.leave(`game-${gameId}`)
     console.log(`👋 User ${userId} (${socket.id}) left game ${gameId}`)
-    socket.to(`game-${gameId}`).emit('player-left', { userId })
+    
+    // Fetch game to check if we need to handle player removal
+    const { data: game } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single()
+    
+    if (game && ['waiting', 'countdown'].includes(game.status)) {
+      // Check if player is still in the game
+      if (game.players.includes(userId)) {
+        console.log(`⚠️ Player ${userId} disconnected during ${game.status}`)
+        // Notify other players
+        socket.to(`game-${gameId}`).emit('player-left', { userId })
+      }
+    } else {
+      socket.to(`game-${gameId}`).emit('player-left', { userId })
+    }
   })
 
   // Mark number on card

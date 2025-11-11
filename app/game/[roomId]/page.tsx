@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
+import { Users, Trophy, DollarSign, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
 
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
 
@@ -108,6 +109,14 @@ export default function GamePage() {
         if (joinResult.status === 'queued') {
           // Game is already running, put player in queue
           setPlayerState('queue')
+          
+          // Still need to join socket to get game updates
+          if (joinResult.gameId) {
+            setGameId(joinResult.gameId)
+            await joinGame(joinResult.gameId, user.id)
+            cleanupRef.current = { gameId: joinResult.gameId, userId: user.id }
+          }
+          
           setLoading(false)
           return
         }
@@ -284,56 +293,29 @@ export default function GamePage() {
               }
             })
         }
+        
+        // Auto-redirect after 8 seconds
+        setTimeout(() => {
+          router.push('/lobby')
+        }, 8000)
       }
     }
   }, [gameState?.status, gameState?.winner_id, user])
 
-  // Auto-mark called numbers
-  useEffect(() => {
-    if (!gameState || gameState.status !== 'active') return
-    if (bingoCard.length === 0) return
-    
-    // Check for newly called numbers and auto-mark them
-    let hasNewMarks = false
-    const newMarked = markedCells.map(r => [...r])
-    
-    bingoCard.forEach((row, ri) => {
-      row.forEach((num, ci) => {
-        if (num === 0) return // Free space
-        if (markedCells[ri][ci]) return // Already marked
-        
-        // If this number was called, mark it automatically
-        if (gameState.called_numbers.includes(num)) {
-          newMarked[ri][ci] = true
-          hasNewMarks = true
-          
-          // Haptic feedback on mobile
-          if (navigator.vibrate) {
-            navigator.vibrate(50) // Short vibration (50ms)
-          }
-          
-          console.log(`✓ Auto-marked: ${num}`)
-        }
-      })
-    })
-    
-    if (hasNewMarks) {
-      setMarkedCells(newMarked)
-    }
-  }, [gameState?.called_numbers, bingoCard, markedCells, gameState?.status])
+  // REMOVED: Auto-mark feature - Players must manually mark numbers
 
-  // Handle cell click (manual marking still allowed)
+  // Handle cell click - Manual marking only
   const handleCellClick = (row: number, col: number) => {
     if (!gameState || gameState.status !== 'active') return
     if (!gameId || !user) return
     
     const num = bingoCard[row][col]
-    if (num === 0) return // Free space
+    if (num === 0) return // Free space (always marked)
     if (!gameState.called_numbers.includes(num)) return // Not called yet
-    if (markedCells[row][col]) return // Already marked - don't allow unmarking
-
+    
+    // Toggle marking
     const newMarked = markedCells.map(r => [...r])
-    newMarked[row][col] = true // Only allow marking, not unmarking
+    newMarked[row][col] = !newMarked[row][col]
     setMarkedCells(newMarked)
 
     // Haptic feedback on mobile
@@ -343,8 +325,6 @@ export default function GamePage() {
 
     // Emit mark event to server
     markNumber(gameId, user.id, num)
-
-    // Don't auto-claim - user must click BINGO button
   }
 
   // Handle BINGO button click
@@ -441,81 +421,48 @@ export default function GamePage() {
         {gameStatus === 'waiting' && (
           <div className="space-y-4">
             {/* Current Game Section */}
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-2xl">🎮</span>
-                <h2 className="text-lg font-bold text-slate-900">Current Game</h2>
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Trophy className="w-6 h-6 text-blue-600" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Waiting Room</h2>
               </div>
               
-              <div className="space-y-4">
-                {/* Status */}
+              <div className="space-y-6">
+                {/* Players in Lobby */}
                 <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Status:</div>
-                  <div className="text-sm text-slate-900">Waiting for Players...</div>
-                </div>
-                
-                {/* Players */}
-                <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Players:</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">👥</span>
-                    <span className="text-lg font-bold text-slate-900">{players} Players</span>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                      <Users className="w-4 h-4" />
+                      <span>Players in Lobby</span>
+                    </div>
+                    <span className="text-2xl font-bold text-blue-600">
+                      {players}
+                    </span>
                   </div>
-                  <div className="w-full bg-slate-200 rounded-full h-1.5 mt-2">
-                    <div 
-                      className="bg-amber-500 h-1.5 rounded-full transition-all"
-                      style={{ width: `${(players / (gameState?.min_players || 2)) * 100}%` }}
-                    ></div>
+                  
+                  {/* Waiting for Players Status */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                      <span className="font-bold text-blue-700">Waiting for players...</span>
+                    </div>
+                    <p className="text-sm text-blue-600 text-center">
+                      Game starts when enough players join
+                    </p>
                   </div>
                 </div>
                 
                 {/* Prize Pool */}
                 <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Prize Pool:</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">💰</span>
-                    <span className="text-lg font-bold text-emerald-600">{formatCurrency(prizePool)}</span>
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
+                    <DollarSign className="w-4 h-4" />
+                    <span>Prize Pool</span>
                   </div>
-                </div>
-                
-                {/* Preparing Box */}
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 text-center">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <span className="text-xl">🏆</span>
-                    <span className="font-bold text-amber-700">Preparing Game...</span>
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
+                    <div className="text-2xl font-bold text-emerald-600">{formatCurrency(prizePool)}</div>
                   </div>
-                  <p className="text-sm text-amber-600 mb-3">
-                    Waiting for {(gameState?.min_players || 2) - players} more player{(gameState?.min_players || 2) - players !== 1 ? 's' : ''} to join
-                  </p>
-                  <div className="flex items-center justify-center gap-2 text-amber-600">
-                    <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-xs">Waiting...</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Waiting Queue Section */}
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-2xl">⏰</span>
-                <h2 className="text-lg font-bold text-slate-900">Waiting Queue</h2>
-              </div>
-              
-              <div className="text-center py-4">
-                <p className="text-3xl font-bold text-amber-500 mb-3">You're in the queue!</p>
-                <p className="text-sm text-slate-600 mb-4">
-                  You'll join the next game when this one ends
-                </p>
-                
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  <span className="text-xl">👥</span>
-                  <span className="text-lg font-semibold text-slate-900">{players} player{players !== 1 ? 's' : ''} waiting</span>
-                </div>
-                
-                <div className="text-sm text-slate-500 space-y-1">
-                  <div>Your stake: {formatCurrency(stake)}</div>
-                  <div>Room: {roomData?.name}</div>
                 </div>
               </div>
             </div>
@@ -523,22 +470,10 @@ export default function GamePage() {
             {/* Action Buttons */}
             <div className="space-y-3">
               <button 
-                onClick={handleFindNewGame}
-                disabled={findingNewGame}
-                className="w-full bg-emerald-500 text-white py-3.5 rounded-xl font-bold hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <span>▶</span>
-                <span>{findingNewGame ? 'Joining...' : 'Join Next Game'}</span>
-              </button>
-              
-              <button 
-                onClick={() => {
-                  // Just go back to lobby, keep user in queue
-                  router.push('/lobby')
-                }}
+                onClick={() => router.push('/lobby')}
                 className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
               >
-                <span>🔄</span>
+                <ArrowLeft className="w-5 h-5" />
                 <span>Back to Lobby</span>
               </button>
               
@@ -546,8 +481,8 @@ export default function GamePage() {
                 onClick={() => setShowLeaveDialog(true)}
                 className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
               >
-                <span>🚪</span>
-                <span>Exit Game</span>
+                <LogOut className="w-5 h-5" />
+                <span>Leave Game</span>
               </button>
             </div>
           </div>
@@ -556,60 +491,63 @@ export default function GamePage() {
         {/* Countdown State - Show on same page */}
         {gameStatus === 'countdown' && (
           <div className="space-y-4">
-            {/* Current Game Section */}
-            <div className="bg-white rounded-xl p-6 border border-slate-200">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="text-2xl">🎮</span>
-                <h2 className="text-lg font-bold text-slate-900">Current Game</h2>
+            {/* Game Info Section */}
+            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Trophy className="w-6 h-6 text-green-600" />
+                </div>
+                <h2 className="text-lg font-bold text-slate-900">Game Starting</h2>
               </div>
               
               <div className="space-y-4">
-                {/* Status */}
-                <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Status:</div>
-                  <div className="text-sm text-emerald-600 font-semibold">Starting Soon...</div>
-                </div>
-                
                 {/* Players */}
-                <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Players:</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">👥</span>
-                    <span className="text-lg font-bold text-slate-900">{players} Players</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <Users className="w-4 h-4" />
+                    <span>Players</span>
                   </div>
+                  <span className="text-lg font-bold text-slate-900">{players}</span>
                 </div>
                 
                 {/* Prize Pool */}
-                <div>
-                  <div className="text-sm font-medium text-slate-600 mb-1">Prize Pool:</div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">💰</span>
-                    <span className="text-lg font-bold text-emerald-600">{formatCurrency(prizePool)}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <DollarSign className="w-4 h-4" />
+                    <span>Prize Pool</span>
                   </div>
+                  <span className="text-lg font-bold text-emerald-600">{formatCurrency(prizePool)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Countdown Box */}
-            <div className="bg-white rounded-xl p-8 border border-slate-200 text-center">
-              <div className="flex items-center justify-center gap-2 mb-4">
-                <div className="text-3xl">⏰</div>
-                <h2 className="text-xl font-bold text-slate-900">Game Starting In</h2>
+            {/* Countdown Progress Box */}
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-blue-200 shadow-lg">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <Clock className="w-8 h-8 text-blue-600" />
+                <h2 className="text-2xl font-bold text-slate-900">Starting In</h2>
               </div>
-              <div className="text-8xl font-black text-blue-500 mb-4">
-                {countdownTime}<span className="text-5xl">s</span>
+              
+              <div className="text-center mb-6">
+                <div className="text-7xl font-black text-blue-600 mb-2">
+                  {countdownTime}
+                </div>
+                <p className="text-slate-600 font-medium">
+                  seconds
+                </p>
               </div>
-              <p className="text-slate-600 mb-4">
-                Get ready! The game is about to begin...
-              </p>
               
               {/* Progress Bar */}
-              <div className="w-full bg-slate-200 rounded-full h-2.5">
+              <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden mb-3">
                 <div 
-                  className="bg-blue-500 h-2.5 rounded-full transition-all duration-1000"
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 h-4 rounded-full transition-all duration-1000 ease-linear"
                   style={{ width: `${((10 - countdownTime) / 10) * 100}%` }}
                 ></div>
               </div>
+              
+              <p className="text-center text-sm text-slate-600">
+                Get ready! The game is about to begin...
+              </p>
             </div>
 
             {/* Action Buttons */}
@@ -618,7 +556,7 @@ export default function GamePage() {
                 onClick={() => router.push('/lobby')}
                 className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
               >
-                <span>🔄</span>
+                <ArrowLeft className="w-5 h-5" />
                 <span>Back to Lobby</span>
               </button>
               
@@ -626,43 +564,94 @@ export default function GamePage() {
                 onClick={() => setShowLeaveDialog(true)}
                 className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
               >
-                <span>🚪</span>
-                <span>Exit Game</span>
+                <LogOut className="w-5 h-5" />
+                <span>Leave Game</span>
               </button>
             </div>
           </div>
         )}
 
         {/* Queue State */}
-        {playerState === 'queue' && gameStatus === 'active' && (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-xl p-12 text-center border-2 border-blue-200">
-              <div className="text-6xl mb-6">⏳</div>
-              <h2 className="text-3xl font-bold text-blue-800 mb-4">You're in the queue!</h2>
-              <p className="text-lg text-gray-700 mb-6">
+        {playerState === 'queue' && (
+          <div className="space-y-4">
+            {/* Queue Status */}
+            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-8 border-2 border-purple-200 shadow-lg">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <Clock className="w-10 h-10 text-purple-600" />
+                <h2 className="text-2xl font-bold text-slate-900">In Queue</h2>
+              </div>
+              
+              <p className="text-center text-lg text-slate-700 mb-6">
                 You'll join the next game when this one ends
               </p>
+              
               <div className="bg-white rounded-lg p-6 mb-6">
-                <h3 className="font-bold text-gray-800 mb-3">What happens next?</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  🎮 New game will start when current game ends<br/>
-                  📝 Cards will be generated before the next round starts
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
+                  <Trophy className="w-4 h-4" />
+                  <span>Current Game Progress</span>
+                </div>
+                
+                {/* Game Progress Bar */}
+                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden mb-2">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-indigo-600 h-3 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min((calledNumbers.length / 75) * 100, 100)}%` }}
+                  ></div>
+                </div>
+                
+                <p className="text-xs text-slate-500 text-center">
+                  {calledNumbers.length} / 75 numbers called
                 </p>
               </div>
-              <div className="text-sm text-gray-500">
-                Your stake: {formatCurrency(stake)} • Room: {getRoomName()}
+              
+              <div className="bg-purple-100 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2 text-slate-700">
+                    <Users className="w-4 h-4" />
+                    <span>Players in game:</span>
+                  </div>
+                  <span className="font-bold text-slate-900">{players}</span>
+                </div>
               </div>
+              
+              <div className="text-sm text-slate-600 text-center space-y-1">
+                <div>Your stake: <span className="font-bold text-purple-600">{formatCurrency(stake)}</span></div>
+                <div>Room: <span className="font-semibold">{getRoomName()}</span></div>
+              </div>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              <button 
+                onClick={() => router.push('/lobby')}
+                className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                <span>Back to Lobby</span>
+              </button>
+              
+              <button 
+                onClick={() => setShowLeaveDialog(true)}
+                className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Leave Queue</span>
+              </button>
             </div>
           </div>
         )}
 
         {/* Spectator Mode */}
         {playerState === 'spectator' && (
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-12 text-center">
-              <div className="text-6xl mb-6">👀</div>
-              <h2 className="text-3xl font-bold text-gray-800 mb-4">Spectator Mode</h2>
-              <p className="text-lg text-gray-600">
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm text-center">
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
+                  <Clock className="w-10 h-10 text-slate-600" />
+                </div>
+              </div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-4">Spectator Mode</h2>
+              <p className="text-slate-600">
                 Waiting for game to start...
               </p>
             </div>
@@ -671,74 +660,50 @@ export default function GamePage() {
 
         {/* Active Game */}
         {gameStatus === 'active' && playerState === 'playing' && (
-          <div className="space-y-4 pb-6">
-            {/* Leave Button & Connected Status */}
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setShowLeaveDialog(true)}
-                className="flex items-center gap-2 px-5 py-2.5 border-2 border-slate-300 rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
-              >
-                <span>↩</span>
-                <span className="font-medium">Leave Game</span>
-              </button>
-              <div className="flex items-center gap-2 text-emerald-600">
-                <div className="w-2 h-2 bg-emerald-600 rounded-full"></div>
-                <span className="text-sm font-medium">Connected</span>
-              </div>
-            </div>
-
-            {/* Stake & Prize Info */}
-            <div className="text-center text-sm text-slate-600">
+          <div className="space-y-3 pb-4">
+            {/* Stake & Prize Info - Clean header */}
+            <div className="text-center text-sm text-slate-700 font-medium py-2">
               <span>Stake: <span className="font-bold text-amber-600">{formatCurrency(stake)}</span></span>
-              <span className="mx-2">|</span>
+              <span className="mx-3 text-slate-300">|</span>
               <span>Total Win Pool: <span className="font-bold text-emerald-600">{formatCurrency(prizePool)}</span></span>
             </div>
 
-            {/* Number Called Section */}
-            <div className="bg-white rounded-xl p-4 shadow-lg border border-slate-200">
+            {/* Number Called Section - Beautiful card */}
+            <div className="bg-white rounded-2xl p-4 shadow-md border border-slate-100">
               <h3 className="text-slate-700 font-bold text-sm mb-3">Latest Number Called</h3>
               
-              <div className="flex items-center gap-3">
-                {/* Latest Number */}
+              <div className="flex items-center gap-4">
+                {/* Latest Number - Prominent */}
                 <div className="flex-shrink-0">
                   {latestNumber ? (
                     <div className="text-center">
-                      <div className={`text-2xl font-black mb-1 ${
-                        latestNumber.letter === 'B' ? 'text-red-500' :
-                        latestNumber.letter === 'I' ? 'text-blue-500' :
-                        latestNumber.letter === 'N' ? 'text-emerald-500' :
-                        latestNumber.letter === 'G' ? 'text-amber-500' :
-                        'text-purple-500'
-                      }`}>
-                        {latestNumber.letter}
-                      </div>
-                      <div className="w-16 h-16 rounded-full bg-blue-500 flex items-center justify-center text-3xl font-black text-white shadow-xl">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-blue-100">
                         {latestNumber.number}
                       </div>
                     </div>
                   ) : (
-                    <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 text-xs">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-medium">
                       Wait...
                     </div>
                   )}
                 </div>
 
-                {/* Recent Numbers */}
+                {/* Recent Numbers - Styled badges */}
                 <div className="flex-1">
                   <div className="text-slate-600 text-xs font-semibold mb-2">Recent:</div>
                   <div className="flex flex-wrap gap-1.5">
-                    {[...calledNumbers].reverse().slice(1, 9).map((num) => {
+                    {[...calledNumbers].reverse().slice(1, 5).map((num) => {
                       const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
                       const colorClass = 
-                        letter === 'B' ? 'bg-red-100 text-red-600' :
-                        letter === 'I' ? 'bg-blue-100 text-blue-600' :
-                        letter === 'N' ? 'bg-emerald-100 text-emerald-600' :
-                        letter === 'G' ? 'bg-amber-100 text-amber-600' :
-                        'bg-purple-100 text-purple-600'
+                        letter === 'B' ? 'bg-red-100 text-red-700 ring-1 ring-red-200' :
+                        letter === 'I' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-200' :
+                        letter === 'N' ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' :
+                        letter === 'G' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' :
+                        'bg-purple-100 text-purple-700 ring-1 ring-purple-200'
                       return (
                         <div
                           key={num}
-                          className={`${colorClass} px-2 py-1 rounded text-xs font-bold`}
+                          className={`${colorClass} px-2 py-1 rounded-lg text-xs font-bold`}
                         >
                           {letter}{num}
                         </div>
@@ -749,10 +714,10 @@ export default function GamePage() {
               </div>
             </div>
 
-            {/* Bingo Card */}
-            <div className="bg-white rounded-2xl p-4 border-4 border-amber-400 shadow-lg">
+            {/* Bingo Card - Beautiful and Compact */}
+            <div className="bg-white rounded-2xl p-3 border-4 border-amber-400 shadow-xl max-w-md mx-auto">
               {/* B-I-N-G-O Headers */}
-              <div className="grid grid-cols-5 gap-0 mb-0 border-b-4 border-amber-400 pb-3">
+              <div className="grid grid-cols-5 gap-0 mb-0 border-b-4 border-amber-400 pb-2.5">
                 {[
                   { letter: 'B', color: 'text-red-500' },
                   { letter: 'I', color: 'text-blue-500' },
@@ -766,8 +731,8 @@ export default function GamePage() {
                 ))}
               </div>
 
-              {/* Bingo Grid */}
-              <div className="grid grid-cols-5 gap-0 pt-3">
+              {/* Bingo Grid - Optimized size */}
+              <div className="grid grid-cols-5 gap-0 pt-2.5">
                 {bingoCard.map((row, ri) =>
                   row.map((num, ci) => {
                     const isMarked = markedCells[ri][ci]
@@ -780,19 +745,19 @@ export default function GamePage() {
                         onClick={() => handleCellClick(ri, ci)}
                         disabled={!isCalled && !isFree}
                         className={`
-                          aspect-square flex items-center justify-center text-xl font-bold
+                          aspect-square flex items-center justify-center text-base font-bold
                           transition-all duration-200 border-r border-b border-slate-200
                           ${ci === 4 ? 'border-r-0' : ''}
                           ${ri === 4 ? 'border-b-0' : ''}
                           ${isMarked
-                            ? 'bg-blue-500 text-white rounded-full m-1 shadow-lg'
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full m-1 shadow-lg'
                             : isCalled
-                            ? 'bg-amber-100 text-amber-900 rounded-full m-1'
+                            ? 'bg-white text-slate-700 rounded-full m-1 ring-2 ring-blue-300 hover:bg-blue-50'
                             : isFree
                             ? 'bg-slate-100 text-slate-600 rounded-full m-1'
-                            : 'bg-slate-50 text-slate-400'
+                            : 'bg-white text-slate-400'
                           }
-                          ${(isCalled || isFree) ? 'cursor-pointer active:scale-95' : 'cursor-not-allowed opacity-50'}
+                          ${(isCalled || isFree) ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-not-allowed'}
                         `}
                       >
                         {isFree ? '★' : num}
@@ -805,22 +770,22 @@ export default function GamePage() {
 
             {/* BINGO Error Message */}
             {bingoError && (
-              <div className="bg-red-500/20 border-2 border-red-400 rounded-lg p-3 text-center animate-pulse">
-                <p className="text-red-300 font-semibold text-sm">{bingoError}</p>
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-2.5 text-center animate-pulse max-w-md mx-auto">
+                <p className="text-red-600 font-semibold text-sm">{bingoError}</p>
               </div>
             )}
 
-            {/* BINGO Button */}
+            {/* BINGO Button - Beautiful */}
             <button
               onClick={handleBingoClick}
               disabled={!checkBingoWin(markedCells)}
-              className={`w-full py-4 rounded-xl font-bold text-xl transition-colors flex items-center justify-center gap-2 ${
+              className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
                 checkBingoWin(markedCells)
-                  ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg'
-                  : 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
+                  : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
               }`}
             >
-              <span>✓</span>
+              <CheckCircle className="w-5 h-5" />
               <span>BINGO!</span>
             </button>
           </div>
@@ -830,10 +795,10 @@ export default function GamePage() {
         {showWinDialog && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
-              {/* Party Icon Placeholder */}
+              {/* Trophy Icon */}
               <div className="flex justify-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                  <div className="text-5xl font-black text-blue-600">★</div>
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-100 to-amber-100 flex items-center justify-center">
+                  <Trophy className="w-14 h-14 text-amber-600" />
                 </div>
               </div>
 
@@ -852,7 +817,8 @@ export default function GamePage() {
               </p>
 
               <Link href="/lobby">
-                <button className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg">
+                <button className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg flex items-center justify-center gap-2">
+                  <ArrowLeft className="w-5 h-5" />
                   Go to Lobby
                 </button>
               </Link>
@@ -867,18 +833,15 @@ export default function GamePage() {
               {/* Close Button */}
               <button
                 onClick={() => setShowLoseDialog(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-2xl"
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
               >
-                ×
+                <XCircle className="w-6 h-6" />
               </button>
 
               {/* Sad Face Icon */}
               <div className="flex justify-center mb-6">
                 <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
-                  <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <circle cx="12" cy="12" r="10" strokeWidth="2"/>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 15s1.5-2 4-2 4 2 4 2M9 9h.01M15 9h.01"/>
-                  </svg>
+                  <Frown className="w-12 h-12 text-red-500" />
                 </div>
               </div>
 
@@ -910,13 +873,15 @@ export default function GamePage() {
                 <button 
                   onClick={handleFindNewGame}
                   disabled={findingNewGame}
-                  className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors disabled:opacity-50"
+                  className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
+                  <Trophy className="w-5 h-5" />
                   {findingNewGame ? 'Finding...' : 'Play Again'}
                 </button>
                 
                 <Link href="/lobby" className="block">
-                  <button className="w-full bg-slate-700 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors">
+                  <button className="w-full bg-slate-700 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
+                    <ArrowLeft className="w-5 h-5" />
                     Close
                   </button>
                 </Link>

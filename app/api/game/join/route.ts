@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { hasActiveTimer, setGameTimer, activeCountdownTimers } from '@/lib/game-timers'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
@@ -36,7 +37,8 @@ export async function POST(request: NextRequest) {
     if (runningGame) {
       return NextResponse.json({
         status: 'queued',
-        message: 'Game is running, you are in queue'
+        message: 'Game is running, you are in queue',
+        gameId: runningGame.id
       })
     }
 
@@ -76,12 +78,12 @@ export async function POST(request: NextRequest) {
       const updatedPlayers = [...activeGame.players, userId]
       const updatedPrizePool = activeGame.prize_pool + stake
       
-      // Determine status: if 4+ players, start countdown immediately
-      let newStatus = 'waiting'
-      if (updatedPlayers.length >= 4) {
-        newStatus = 'countdown'
-      } else if (activeGame.status === 'countdown') {
+    
+      let newStatus = activeGame.status
+      if (activeGame.status === 'countdown') {
         newStatus = 'countdown'  // Keep countdown if already started
+      } else {
+        newStatus = 'waiting'  // Stay waiting
       }
       
       // Update game with new player
@@ -104,19 +106,31 @@ export async function POST(request: NextRequest) {
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
       // If we have minimum players (2), wait 15 seconds for more players before starting countdown
-      if (updatedPlayers.length === 2) {
+      // Only create timer if one doesn't already exist for this game
+      if (updatedPlayers.length === 2 && !hasActiveTimer(activeGame.id)) {
         console.log(`⏰ Game ${activeGame.id} has 2 players, waiting 15s for more players...`)
         
-        setTimeout(async () => {
-          // Check current player count
+        const timer = setTimeout(async () => {
+          // Remove timer from tracking
+          activeCountdownTimers.delete(activeGame.id)
+          
+          // Check current player count and validate players still exist
           const { data: currentGame } = await supabase
             .from('games')
             .select('players, status')
             .eq('id', activeGame.id)
             .single()
           
-          // Only start countdown if still waiting and has at least 2 players
-          if (currentGame && currentGame.status === 'waiting' && currentGame.players.length >= 2) {
+          if (!currentGame) {
+            console.log(`⚠️ Game ${activeGame.id} not found, may have been deleted`)
+            return
+          }
+          
+          // Validate that players still exist and haven't left
+          const validPlayers = currentGame.players.length >= 2
+          
+          // Only start countdown if still waiting and has at least 2 valid players
+          if (currentGame.status === 'waiting' && validPlayers) {
             await supabase
               .from('games')
               .update({ status: 'countdown' })
@@ -135,8 +149,15 @@ export async function POST(request: NextRequest) {
             } catch (error) {
               console.error('Error notifying socket server:', error)
             }
+          } else {
+            console.log(`⚠️ Game ${activeGame.id} cannot start: status=${currentGame.status}, players=${currentGame.players.length}`)
           }
         }, 15000)  // 15 second wait
+        
+        // Track the timer
+        setGameTimer(activeGame.id, timer)
+      } else if (updatedPlayers.length === 2 && hasActiveTimer(activeGame.id)) {
+        console.log(`⏰ Game ${activeGame.id} already has a countdown timer running`)
       }
 
       return NextResponse.json({

@@ -41,8 +41,8 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('✅ Register Now', 'register')],
-              [Markup.button.callback('❓ Help', 'help')]
+              [Markup.button.callback('Register Now', 'register')],
+              [Markup.button.callback('Help', 'help')]
             ])
           }
         )
@@ -60,9 +60,9 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-              [Markup.button.callback('💰 Balance', 'balance')],
-              [Markup.button.callback('🏆 Leaderboard', 'leaderboard')]
+              [Markup.button.webApp('Play Now', MINI_APP_URL)],
+              [Markup.button.callback('Balance', 'balance')],
+              [Markup.button.callback('Leaderboard', 'leaderboard')]
             ])
           }
         )
@@ -220,9 +220,9 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
-            [Markup.button.webApp('💰 Withdraw', `${MINI_APP_URL}/withdraw`)],
-            [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)]
+            [Markup.button.webApp('Deposit', `${MINI_APP_URL}/deposit`)],
+            [Markup.button.webApp('Withdraw', `${MINI_APP_URL}/withdraw`)],
+            [Markup.button.webApp('Play Game', MINI_APP_URL)]
           ])
         }
       )
@@ -261,9 +261,9 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
-            [Markup.button.webApp('💵 Withdraw', `${MINI_APP_URL}/withdraw`)],
-            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+            [Markup.button.webApp('Deposit', `${MINI_APP_URL}/deposit`)],
+            [Markup.button.webApp('Withdraw', `${MINI_APP_URL}/withdraw`)],
+            [Markup.button.webApp('Play Now', MINI_APP_URL)]
           ])
         }
       )
@@ -310,7 +310,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('📊 View Full Leaderboard', `${MINI_APP_URL}/leaderboard`)]
+          [Markup.button.webApp('View Full Leaderboard', `${MINI_APP_URL}/leaderboard`)]
         ])
       })
     } catch (error) {
@@ -343,8 +343,8 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('📊 Full Leaderboard', `${MINI_APP_URL}/leaderboard`)],
-          [Markup.button.callback('🔙 Back', 'back_to_start')]
+          [Markup.button.webApp('Full Leaderboard', `${MINI_APP_URL}/leaderboard`)],
+          [Markup.button.callback('Back', 'back_to_start')]
         ])
       })
     } catch (error) {
@@ -415,7 +415,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('💸 Deposit Now', `${MINI_APP_URL}/deposit`)]
+          [Markup.button.webApp('Deposit Now', `${MINI_APP_URL}/deposit`)]
         ])
       }
     )
@@ -429,7 +429,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('💰 Withdraw Now', `${MINI_APP_URL}/withdraw`)]
+          [Markup.button.webApp('Withdraw Now', `${MINI_APP_URL}/withdraw`)]
         ])
       }
     )
@@ -443,7 +443,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('👤 View Account', `${MINI_APP_URL}/account`)]
+          [Markup.button.webApp('View Account', `${MINI_APP_URL}/account`)]
         ])
       }
     )
@@ -457,7 +457,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('📜 View History', `${MINI_APP_URL}/history`)]
+          [Markup.button.webApp('View History', `${MINI_APP_URL}/history`)]
         ])
       }
     )
@@ -494,8 +494,8 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)],
-            [Markup.button.webApp('📊 Full Stats', `${MINI_APP_URL}/account`)]
+            [Markup.button.webApp('Play Game', MINI_APP_URL)],
+            [Markup.button.webApp('Full Stats', `${MINI_APP_URL}/account`)]
           ])
         }
       )
@@ -530,7 +530,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Join a Room', `${MINI_APP_URL}/lobby`)]
+          [Markup.button.webApp('Join a Room', `${MINI_APP_URL}/lobby`)]
         ])
       })
     } catch (error) {

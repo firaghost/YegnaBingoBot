@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { clearGameTimer } from '@/lib/game-timers'
 
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
@@ -37,7 +38,45 @@ export async function POST(request: NextRequest) {
     const updatedPlayers = game.players.filter((id: string) => id !== userId)
     const remainingPlayers = updatedPlayers.length
 
-    console.log(`👋 Player ${userId} left game ${gameId}. Remaining: ${remainingPlayers}`)
+    console.log(`👋 Player ${userId} left game ${gameId}. Remaining: ${remainingPlayers}, Status: ${game.status}`)
+
+    // If player leaves during waiting and no players remain, end the game
+    if (remainingPlayers === 0) {
+      await supabase
+        .from('games')
+        .update({
+          status: 'finished',
+          ended_at: new Date().toISOString(),
+          players: updatedPlayers
+        })
+        .eq('id', gameId)
+
+      console.log(`🏁 All players left during ${game.status}, game ended`)
+      return NextResponse.json({
+        success: true,
+        message: 'All players left, game ended'
+      })
+    }
+
+    // If player leaves during waiting and only 1 player remains, keep them waiting
+    if (remainingPlayers === 1 && game.status === 'waiting') {
+      // Clear any active countdown timer since we're back to 1 player
+      clearGameTimer(gameId)
+      
+      await supabase
+        .from('games')
+        .update({
+          players: updatedPlayers,
+          prize_pool: game.stake * remainingPlayers
+        })
+        .eq('id', gameId)
+
+      console.log(`⏳ 1 player remains in waiting state, keeping game open`)
+      return NextResponse.json({
+        success: true,
+        message: 'Player left, waiting for more players'
+      })
+    }
 
     // If only 1 player remains and game is active/countdown, declare them winner
     if (remainingPlayers === 1 && (game.status === 'active' || game.status === 'countdown')) {
