@@ -1,29 +1,83 @@
 "use client"
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
 
 export default function WithdrawPage() {
+  const router = useRouter()
+  const { user, isAuthenticated, loading: authLoading } = useAuth()
   const [amount, setAmount] = useState('')
   const [bankName, setBankName] = useState('')
   const [accountNumber, setAccountNumber] = useState('')
   const [accountHolder, setAccountHolder] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
 
-  const userBalance = 5250 // TODO: Get from actual user data
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login')
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  const userBalance = user?.balance || 0
 
   const handleWithdraw = async () => {
-    if (!amount || !bankName || !accountNumber || !accountHolder) return
-    if (parseFloat(amount) > userBalance) return
+    if (!amount || !bankName || !accountNumber || !accountHolder) {
+      setError('Please fill in all fields')
+      return
+    }
+    
+    const withdrawAmount = parseFloat(amount)
+    if (withdrawAmount > userBalance) {
+      setError('Insufficient balance')
+      return
+    }
+
+    if (withdrawAmount < 100) {
+      setError('Minimum withdrawal is 100 ETB')
+      return
+    }
     
     setLoading(true)
-    // TODO: Implement actual withdrawal logic
-    setTimeout(() => {
-      setLoading(false)
+    setError('')
+
+    try {
+      const response = await fetch('/api/wallet/withdraw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user?.id,
+          amount: withdrawAmount,
+          bankName,
+          accountNumber,
+          accountHolder
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Withdrawal failed')
+      }
+
       setSuccess(true)
-    }, 1500)
+    } catch (err: any) {
+      setError(err.message || 'Failed to process withdrawal')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    )
   }
 
   return (
@@ -142,6 +196,13 @@ export default function WithdrawPage() {
                   />
                 </div>
               </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 mb-6">
+                  <p className="text-red-700 font-medium">❌ {error}</p>
+                </div>
+              )}
 
               {/* Important Notice */}
               <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-6 mb-8">

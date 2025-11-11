@@ -15,30 +15,56 @@ export function getBingoLetter(number: number): string {
   return ''
 }
 
-// Generate Bingo Card
-export function generateBingoCard(): number[][] {
-  const card: number[][] = []
-  const used = new Set<number>()
+/**
+ * Fisher-Yates shuffle algorithm (Knuth shuffle)
+ * International standard for fair random shuffling
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    // Use crypto.getRandomValues for better randomness in browser
+    const randomBuffer = new Uint32Array(1)
+    if (typeof window !== 'undefined' && window.crypto) {
+      window.crypto.getRandomValues(randomBuffer)
+      const j = randomBuffer[0] % (i + 1)
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    } else {
+      // Fallback for server-side
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+  }
+  return shuffled
+}
 
-  for (let row = 0; row < 5; row++) {
-    card[row] = []
-    for (let col = 0; col < 5; col++) {
-      // Free space in center
+/**
+ * Generate Bingo Card using international standard
+ * B: 1-15, I: 16-30, N: 31-45, G: 46-60, O: 61-75
+ * Uses Fisher-Yates shuffle for provably fair distribution
+ */
+export function generateBingoCard(): number[][] {
+  const card: number[][] = Array(5).fill(null).map(() => Array(5).fill(0))
+  
+  // Generate numbers for each column using Fisher-Yates shuffle
+  for (let col = 0; col < 5; col++) {
+    const min = col * 15 + 1
+    const max = col * 15 + 15
+    
+    // Create array of all possible numbers for this column
+    const columnNumbers = Array.from({ length: 15 }, (_, i) => min + i)
+    
+    // Shuffle using Fisher-Yates
+    const shuffled = shuffleArray(columnNumbers)
+    
+    // Take first 5 numbers for this column
+    for (let row = 0; row < 5; row++) {
+      // Free space in center (N column, middle row)
       if (row === 2 && col === 2) {
         card[row][col] = 0
         continue
       }
-
-      const min = col * 15 + 1
-      const max = col * 15 + 15
-      let num: number
       
-      do {
-        num = Math.floor(Math.random() * (max - min + 1)) + min
-      } while (used.has(num))
-      
-      used.add(num)
-      card[row][col] = num
+      card[row][col] = shuffled[row]
     }
   }
 

@@ -193,30 +193,77 @@ export default function AccountPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {transactions.slice(0, 5).map((tx) => (
-                <div key={tx.id} className="bg-purple-900 bg-opacity-50 rounded-xl p-4 border border-purple-700">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <p className="text-white font-medium text-sm">{tx.description || tx.type}</p>
-                      <p className="text-purple-400 text-xs mt-1">
-                        {new Date(tx.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {tx.amount >= 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                      </p>
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        tx.status === 'completed' ? 'bg-green-900 text-green-300' :
-                        tx.status === 'pending' ? 'bg-yellow-900 text-yellow-300' :
-                        'bg-red-900 text-red-300'
-                      }`}>
-                        {tx.status}
-                      </span>
+              {transactions.slice(0, 5).map((tx) => {
+                // Format transaction type for display
+                const getTransactionLabel = () => {
+                  switch (tx.type) {
+                    case 'stake':
+                      return 'Game Entry Fee'
+                    case 'win':
+                      return 'Game Win'
+                    case 'deposit':
+                      return 'Deposit'
+                    case 'withdrawal':
+                      return 'Withdrawal'
+                    case 'bonus':
+                      return 'Bonus Received'
+                    default:
+                      return tx.type
+                  }
+                }
+
+                const getTransactionIcon = () => {
+                  switch (tx.type) {
+                    case 'stake':
+                      return '🎮'
+                    case 'win':
+                      return '🏆'
+                    case 'deposit':
+                      return '💰'
+                    case 'withdrawal':
+                      return '💸'
+                    case 'bonus':
+                      return '🎁'
+                    default:
+                      return '💳'
+                  }
+                }
+
+                return (
+                  <div key={tx.id} className="bg-purple-900 bg-opacity-50 rounded-xl p-4 border border-purple-700">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 flex items-start gap-2">
+                        <span className="text-xl">{getTransactionIcon()}</span>
+                        <div>
+                          <p className="text-white font-medium text-sm">
+                            {tx.description || getTransactionLabel()}
+                          </p>
+                          <p className="text-purple-400 text-xs mt-1">
+                            {new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${
+                          tx.type === 'win' || tx.type === 'deposit' || tx.type === 'bonus' 
+                            ? 'text-green-400' 
+                            : 'text-red-400'
+                        }`}>
+                          {(tx.type === 'win' || tx.type === 'deposit' || tx.type === 'bonus') ? '+' : '-'}
+                          {formatCurrency(Math.abs(tx.amount))}
+                        </p>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          tx.status === 'completed' ? 'bg-green-900 text-green-300' :
+                          tx.status === 'pending' ? 'bg-yellow-900 text-yellow-300' :
+                          'bg-red-900 text-red-300'
+                        }`}>
+                          {tx.status}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

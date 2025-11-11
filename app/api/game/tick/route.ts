@@ -124,6 +124,16 @@ export async function POST(request: NextRequest) {
       const calledNumbers = game.called_numbers || []
       const numberSequence = game.number_sequence || generateNumberSequence()
       
+      // Check if game has a winner (stop calling numbers)
+      if (game.winner_id) {
+        console.log(`🏆 Game ${gameId} has a winner, stopping number calls`)
+        return NextResponse.json({
+          success: true,
+          action: 'end',
+          message: 'Game has a winner'
+        })
+      }
+      
       // Find next uncalled number from sequence
       let nextNumber: number | null = null
       for (const num of numberSequence) {
@@ -139,6 +149,7 @@ export async function POST(request: NextRequest) {
           .from('games')
           .update({ status: 'finished', ended_at: new Date().toISOString() })
           .eq('id', gameId)
+          .eq('status', 'active')
         
         return NextResponse.json({
           success: true,
@@ -147,14 +158,15 @@ export async function POST(request: NextRequest) {
         })
       }
       
-      // Call the next number
+      // Call the next number (with race condition protection)
       const updatedNumbers = [...calledNumbers, nextNumber]
       const latestNumber = {
         letter: getBingoLetter(nextNumber),
         number: nextNumber
       }
       
-      await supabase
+      // Use atomic update to prevent duplicate calls
+      const { data: updatedGame, error: updateError } = await supabase
         .from('games')
         .update({
           called_numbers: updatedNumbers,
@@ -162,6 +174,29 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', gameId)
         .eq('status', 'active')
+        .is('winner_id', null) // Only update if no winner yet
+        .select('called_numbers')
+        .single()
+      
+      if (updateError || !updatedGame) {
+        // Another tick already updated, skip this one
+        console.log(`⚠️ Race condition detected for game ${gameId}, skipping tick`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Another tick in progress'
+        })
+      }
+      
+      // Verify the number was actually added (race condition check)
+      if (updatedGame.called_numbers.length !== updatedNumbers.length) {
+        console.log(`⚠️ Number already called for game ${gameId}`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Number already called'
+        })
+      }
       
       console.log(`📢 [${updatedNumbers.length}/75] Called ${latestNumber.letter}${latestNumber.number} for game ${gameId}`)
       

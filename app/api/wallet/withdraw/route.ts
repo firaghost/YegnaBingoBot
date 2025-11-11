@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
+
+// Use admin client to bypass RLS
+const supabase = supabaseAdmin
 
 export async function POST(request: Request) {
   try {
