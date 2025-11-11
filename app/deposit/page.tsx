@@ -42,6 +42,12 @@ export default function DepositPage() {
       return
     }
 
+    // Transaction reference is REQUIRED
+    if (!transactionRef || transactionRef.trim() === '') {
+      setError('Transaction reference/FTP number is required')
+      return
+    }
+
     if (!user) {
       setError('Please login first')
       return
@@ -177,15 +183,19 @@ export default function DepositPage() {
               {/* Transaction Reference */}
               <div className="mb-8">
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
-                  Transaction Reference (Optional)
+                  Transaction Reference / FTP Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={transactionRef}
                   onChange={(e) => setTransactionRef(e.target.value)}
-                  placeholder="Enter your bank transaction reference"
+                  placeholder="Enter your bank FTP number or transaction reference"
                   className="w-full px-4 py-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-lg"
+                  required
                 />
+                <p className="text-sm text-gray-500 mt-2">
+                  ⚠️ Required: Enter the FTP number or transaction reference from your bank transfer
+                </p>
                 <p className="text-xs text-gray-500 mt-2">
                   Include your transaction reference to speed up approval
                 </p>

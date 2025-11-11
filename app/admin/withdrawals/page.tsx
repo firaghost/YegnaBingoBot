@@ -16,22 +16,14 @@ export default function AdminWithdrawalsPage() {
 
   const fetchWithdrawals = async () => {
     try {
-      let query = supabase
-        .from('withdrawals')
-        .select(`
-          *,
-          users (username, telegram_id)
-        `)
-        .order('created_at', { ascending: false })
+      const response = await fetch(`/api/admin/withdrawals?status=${filter}`)
+      const result = await response.json()
 
-      if (filter !== 'all') {
-        query = query.eq('status', filter)
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch withdrawals')
       }
 
-      const { data, error } = await query
-
-      if (error) throw error
-      setWithdrawals(data || [])
+      setWithdrawals(result.data || [])
     } catch (error) {
       console.error('Error fetching withdrawals:', error)
     } finally {
@@ -43,21 +35,26 @@ export default function AdminWithdrawalsPage() {
     if (!confirm('Approve this withdrawal?')) return
 
     try {
-      const { error } = await supabase
-        .from('withdrawals')
-        .update({ 
-          status: 'approved',
-          processed_at: new Date().toISOString()
+      const response = await fetch('/api/admin/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'approve',
+          withdrawalId
         })
-        .eq('id', withdrawalId)
+      })
 
-      if (error) throw error
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to approve')
+      }
       
       alert('Withdrawal approved!')
       fetchWithdrawals()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error approving withdrawal:', error)
-      alert('Failed to approve withdrawal')
+      alert(error.message || 'Failed to approve withdrawal')
     }
   }
 
@@ -66,31 +63,27 @@ export default function AdminWithdrawalsPage() {
     if (!reason) return
 
     try {
-      // Reject withdrawal
-      const { error: withdrawalError } = await supabase
-        .from('withdrawals')
-        .update({ 
-          status: 'rejected',
-          admin_notes: reason,
-          processed_at: new Date().toISOString()
+      const response = await fetch('/api/admin/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reject',
+          withdrawalId,
+          adminNote: reason
         })
-        .eq('id', withdrawalId)
-
-      if (withdrawalError) throw withdrawalError
-
-      // Refund balance to user
-      const { error: userError } = await supabase.rpc('increment', {
-        row_id: userId,
-        x: amount
       })
 
-      if (userError) throw userError
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to reject')
+      }
 
       alert('Withdrawal rejected and balance refunded')
       fetchWithdrawals()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error rejecting withdrawal:', error)
-      alert('Failed to reject withdrawal')
+      alert(error.message || 'Failed to reject withdrawal')
     }
   }
 

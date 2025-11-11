@@ -15,6 +15,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Transaction reference is REQUIRED
+    if (!transactionRef || transactionRef.trim() === '') {
+      return NextResponse.json(
+        { error: 'Transaction reference/FTP number is required' },
+        { status: 400 }
+      )
+    }
+
     // Get user data
     const { data: user } = await supabase
       .from('users')
@@ -26,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Create pending transaction
+    // Create pending transaction with metadata
     const { data: transaction, error } = await supabase
       .from('transactions')
       .insert({
@@ -34,9 +42,11 @@ export async function POST(request: NextRequest) {
         type: 'deposit',
         amount: amount,
         status: 'pending',
-        payment_method: paymentMethod || 'bank_transfer',
-        transaction_reference: transactionRef || null,
-        proof_url: proofUrl || null
+        metadata: {
+          payment_method: paymentMethod || 'bank_transfer',
+          transaction_reference: transactionRef,
+          proof_url: proofUrl || null
+        }
       })
       .select()
       .single()
@@ -44,7 +54,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating transaction:', error)
       return NextResponse.json(
-        { error: 'Failed to create transaction' },
+        { error: 'Failed to create transaction', details: error.message },
         { status: 500 }
       )
     }
