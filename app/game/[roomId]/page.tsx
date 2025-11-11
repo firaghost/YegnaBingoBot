@@ -88,79 +88,34 @@ export default function GamePage() {
           return
         }
 
-        // Find active or waiting game for this room
-        let { data: activeGame } = await supabase
-          .from('games')
-          .select('*')
-          .eq('room_id', roomId)
-          .in('status', ['waiting', 'countdown'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
+        // Use API to join/create game (bypasses RLS issues)
+        console.log('📡 Calling join API...')
+        const joinResponse = await fetch('/api/game/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roomId: roomId,
+            userId: user.id,
+            stake: room.stake
+          })
+        })
 
-        // Check if there's an active game (player should be queued)
-        const { data: runningGame } = await supabase
-          .from('games')
-          .select('*')
-          .eq('room_id', roomId)
-          .eq('status', 'active')
-          .single()
+        if (!joinResponse.ok) {
+          const error = await joinResponse.json()
+          throw new Error(error.error || 'Failed to join game')
+        }
 
-        if (runningGame) {
+        const joinResult = await joinResponse.json()
+        console.log('✅ Join result:', joinResult)
+
+        if (joinResult.status === 'queued') {
           // Game is already running, put player in queue
           setPlayerState('queue')
           setLoading(false)
           return
         }
 
-        if (!activeGame) {
-          // Create new game with waiting status
-          const { data: newGame, error: createError } = await supabase
-            .from('games')
-            .insert({
-              room_id: roomId,
-              status: 'waiting',
-              countdown_time: 10,
-              players: [user.id],
-              bots: [],
-              called_numbers: [],
-              stake: room.stake,
-              prize_pool: room.stake,
-              min_players: 2,
-              started_at: new Date().toISOString()
-            })
-            .select()
-            .single()
-
-          if (createError) throw createError
-          activeGame = newGame
-        } else {
-          // Join existing game
-          if (!activeGame.players.includes(user.id)) {
-            const updatedPlayers = [...activeGame.players, user.id]
-            const updatedPrizePool = activeGame.prize_pool + room.stake
-            
-            // If we now have enough players, start countdown
-            const newStatus = updatedPlayers.length >= 2 ? 'countdown' : 'waiting'
-            
-            const { error: joinError } = await supabase
-              .from('games')
-              .update({
-                players: updatedPlayers,
-                prize_pool: updatedPrizePool,
-                status: newStatus
-              })
-              .eq('id', activeGame.id)
-
-            if (joinError) throw joinError
-            
-            // Update local game state
-            activeGame.players = updatedPlayers
-            activeGame.prize_pool = updatedPrizePool
-            activeGame.status = newStatus
-          }
-        }
-
+        const activeGame = joinResult.game
         setGameId(activeGame.id)
 
         // Deduct stake from user balance
