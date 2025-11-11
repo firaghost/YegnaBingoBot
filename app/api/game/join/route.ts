@@ -76,15 +76,13 @@ export async function POST(request: NextRequest) {
       const updatedPlayers = [...activeGame.players, userId]
       const updatedPrizePool = activeGame.prize_pool + stake
       
-      // If we now have enough players, start countdown
-      const newStatus = updatedPlayers.length >= 2 ? 'countdown' : 'waiting'
-      
+      // Update game with new player
       const { data: updatedGame, error: joinError } = await supabase
         .from('games')
         .update({
           players: updatedPlayers,
           prize_pool: updatedPrizePool,
-          status: newStatus
+          status: 'waiting'  // Keep waiting for more players
         })
         .eq('id', activeGame.id)
         .select()
@@ -95,11 +93,30 @@ export async function POST(request: NextRequest) {
         throw joinError
       }
 
-      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
+      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Players: ${updatedPlayers.length}`)
 
-      // Client-side ticker (useGameTicker) will automatically handle countdown progression
-      if (newStatus === 'countdown') {
-        console.log(`🎮 Game ${activeGame.id} entering countdown - client ticker will handle progression`)
+      // If we have minimum players (2), wait 15 seconds for more players before starting countdown
+      if (updatedPlayers.length === 2) {
+        console.log(`⏰ Game ${activeGame.id} has 2 players, waiting 15s for more players...`)
+        
+        setTimeout(async () => {
+          // Check current player count
+          const { data: currentGame } = await supabase
+            .from('games')
+            .select('players, status')
+            .eq('id', activeGame.id)
+            .single()
+          
+          // Only start countdown if still waiting and has at least 2 players
+          if (currentGame && currentGame.status === 'waiting' && currentGame.players.length >= 2) {
+            await supabase
+              .from('games')
+              .update({ status: 'countdown' })
+              .eq('id', activeGame.id)
+            
+            console.log(`🎮 Game ${activeGame.id} starting countdown with ${currentGame.players.length} players`)
+          }
+        }, 15000)  // 15 second wait
       }
 
       return NextResponse.json({

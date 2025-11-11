@@ -169,16 +169,41 @@ async function startActiveGameLoop(gameId: string, numberSequence: number[]) {
     }
 
     if (!nextNumber) {
-      // All numbers called
+      // All numbers called - wait 10 seconds for bingo claims, then finish with no winner
       clearInterval(numberInterval)
       activeGameLoops.delete(gameId)
-      await supabase
-        .from('games')
-        .update({ status: 'finished', ended_at: new Date().toISOString() })
-        .eq('id', gameId)
       
-      console.log(`🏁 Game ${gameId} finished - all numbers called`)
-      io.to(`game-${gameId}`).emit('game-state', { ...game, status: 'finished' })
+      console.log(`⏰ Game ${gameId} - all numbers called, waiting 10s for bingo claims...`)
+      
+      // Wait 10 seconds for players to claim
+      setTimeout(async () => {
+        // Check if someone claimed in the meantime
+        const { data: finalGame } = await supabase
+          .from('games')
+          .select('winner_id, status')
+          .eq('id', gameId)
+          .single()
+        
+        if (finalGame?.winner_id || finalGame?.status === 'finished') {
+          console.log(`✅ Game ${gameId} already finished with winner`)
+          return
+        }
+        
+        // No winner claimed - finish game
+        await supabase
+          .from('games')
+          .update({ 
+            status: 'finished', 
+            ended_at: new Date().toISOString(),
+            winner_id: null  // No winner
+          })
+          .eq('id', gameId)
+          .is('winner_id', null)  // Only if no winner yet
+        
+        console.log(`🏁 Game ${gameId} finished - no winner claimed`)
+        io.to(`game-${gameId}`).emit('game-state', { ...game, status: 'finished', winner_id: null })
+      }, 10000)  // 10 second grace period
+      
       return
     }
 
