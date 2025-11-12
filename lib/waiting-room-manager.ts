@@ -51,12 +51,33 @@ export class WaitingRoomManager {
    */
   async findOrCreateRoom(gameLevel: 'easy' | 'medium' | 'hard' = 'medium'): Promise<WaitingRoom> {
     try {
-      // First, try to find an available waiting room
-      const { data: availableRoom } = await this.supabase
-        .rpc('find_available_waiting_room', { p_game_level: gameLevel })
+      // First, check cached rooms for available ones
+      let foundRoom: WaitingRoom | null = null
+      activeRooms.forEach((room, roomId) => {
+        if (!foundRoom && room.game_level === gameLevel && 
+            room.status === 'waiting' && 
+            room.current_players < room.max_players) {
+          console.log(`🔄 Found existing room: ${roomId} (${room.current_players}/${room.max_players})`)
+          foundRoom = room
+        }
+      })
+      
+      if (foundRoom) {
+        return foundRoom
+      }
 
-      if (availableRoom && availableRoom.length > 0) {
-        const room = availableRoom[0]
+      // Try to find an available waiting room in database
+      const { data: availableRooms } = await this.supabase
+        .from('rooms')
+        .select('*')
+        .eq('game_level', gameLevel)
+        .eq('status', 'waiting')
+        .lt('current_players', 'max_players')
+        .order('created_at', { ascending: true })
+        .limit(1)
+
+      if (availableRooms && availableRooms.length > 0) {
+        const room = availableRooms[0]
         const players = await this.getRoomPlayers(room.id)
         
         const waitingRoom: WaitingRoom = {
@@ -67,18 +88,20 @@ export class WaitingRoomManager {
           max_players: room.max_players,
           min_players: room.min_players,
           current_players: room.current_players,
-          active_player_count: parseInt(room.active_player_count.toString()),
+          active_player_count: players.length, // Use actual player count
           countdown_started_at: room.countdown_started_at,
-          created_at: room.created_at,
+          created_at: new Date(room.created_at),
           players
         }
 
         // Cache the room
         activeRooms.set(room.id, waitingRoom)
+        console.log(`🔄 Found database room: ${room.id} (${players.length}/${room.max_players})`)
         return waitingRoom
       }
 
       // No available room found, create a new one
+      console.log(`🆕 Creating new room for ${gameLevel}`)
       return await this.createNewRoom(gameLevel)
     } catch (error) {
       console.error('Error finding or creating room:', error)
@@ -113,7 +136,7 @@ export class WaitingRoomManager {
           name: roomName,
           stake: gameLevel === 'easy' ? 5 : gameLevel === 'medium' ? 10 : 25,
           max_players: gameLevel === 'easy' ? 10 : gameLevel === 'medium' ? 8 : 6,
-          min_players: 2,
+          min_players: process.env.ALLOW_SINGLE_PLAYER === 'true' ? 1 : 2,
           status: 'waiting',
           description: `${levelSettings.description} - Waiting for players`,
           color: gameLevel === 'easy' ? 'from-green-500 to-green-700' : 
@@ -138,7 +161,7 @@ export class WaitingRoomManager {
         status: 'waiting',
         game_level: gameLevel,
         max_players: newRoom.max_players,
-        min_players: newRoom.min_players,
+        min_players: process.env.ALLOW_SINGLE_PLAYER === 'true' ? 1 : 2,
         current_players: 0,
         active_player_count: 0,
         created_at: new Date(newRoom.created_at),
@@ -193,6 +216,9 @@ export class WaitingRoomManager {
         throw new Error('Failed to add player to room')
       }
 
+      // Update room player count in database
+      await this.updateRoomPlayerCount(roomId)
+      
       // Update cached room
       const room = await this.getRoom(roomId)
       
@@ -224,6 +250,9 @@ export class WaitingRoomManager {
         throw new Error('Failed to remove player from room')
       }
 
+      // Update room player count in database
+      await this.updateRoomPlayerCount(roomId)
+
       // Get updated room
       const room = await this.getRoom(roomId)
       
@@ -242,6 +271,28 @@ export class WaitingRoomManager {
   }
 
   /**
+   * Update room player count in database
+   */
+  private async updateRoomPlayerCount(roomId: string): Promise<void> {
+    try {
+      const players = await this.getRoomPlayers(roomId)
+      const playerCount = players.length
+      
+      await this.supabase
+        .from('rooms')
+        .update({ 
+          current_players: playerCount,
+          active_player_count: playerCount
+        })
+        .eq('id', roomId)
+        
+      console.log(`📊 Updated room ${roomId} player count: ${playerCount}`)
+    } catch (error) {
+      console.error('Error updating room player count:', error)
+    }
+  }
+
+  /**
    * Get room with current player list
    */
   async getRoom(roomId: string): Promise<WaitingRoom> {
@@ -252,6 +303,7 @@ export class WaitingRoomManager {
         // Refresh player list from database
         cachedRoom.players = await this.getRoomPlayers(roomId)
         cachedRoom.active_player_count = cachedRoom.players.length
+        cachedRoom.current_players = cachedRoom.players.length
         return cachedRoom
       }
 

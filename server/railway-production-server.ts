@@ -23,8 +23,15 @@ app.use(cors({
 }))
 app.use(express.json())
 
-console.log('🚀 BingoX Production Server Starting...')
-console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://yegnagame.vercel.app'}`)
+console.log('🚀 bingoX Production Server Starting...')
+console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`)
+
+// Temporary: Allow single-player games for testing (default enabled for now)
+process.env.ALLOW_SINGLE_PLAYER = process.env.ALLOW_SINGLE_PLAYER || 'true'
+const ALLOW_SINGLE_PLAYER = process.env.ALLOW_SINGLE_PLAYER === 'true'
+if (ALLOW_SINGLE_PLAYER) {
+  console.log('🧪 TESTING MODE: Single-player games enabled')
+}
 
 // Create a single Socket.IO instance
 const io = new SocketServer(httpServer, {
@@ -94,6 +101,20 @@ class GameTransitionManager {
 
 // Initialize transition manager
 new GameTransitionManager()
+
+// Admin endpoint to toggle single-player mode
+app.post('/admin/toggle-single-player', (req, res) => {
+  const currentValue = process.env.ALLOW_SINGLE_PLAYER === 'true'
+  process.env.ALLOW_SINGLE_PLAYER = currentValue ? 'false' : 'true'
+  
+  res.json({
+    success: true,
+    message: `Single-player mode ${process.env.ALLOW_SINGLE_PLAYER === 'true' ? 'enabled' : 'disabled'}`,
+    allowSinglePlayer: process.env.ALLOW_SINGLE_PLAYER === 'true'
+  })
+  
+  console.log(`🔧 Admin: Single-player mode ${process.env.ALLOW_SINGLE_PLAYER === 'true' ? 'enabled' : 'disabled'}`)
+})
 
 // Health check endpoint
 app.get('/health', (req, res) => {
