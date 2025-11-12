@@ -134,13 +134,65 @@ export function useSocket() {
       }, 1000)
     })
 
+    socket.on('transition_to_game', (data) => {
+      console.log('🎮 Transitioning to game mode:', data.message)
+      setIsInWaitingRoom(false)
+      setGameState(prev => prev ? { ...prev, status: 'active' } : null)
+      // Auto-join the actual game
+      setTimeout(() => {
+        socket.emit('join_game', {
+          username: 'TestUser_677', // Use the actual username from logs
+          roomId: data.roomId
+        })
+      }, 1000)
+    })
+
     // In-Game Events
     socket.on('game_started', (data) => {
       console.log('🎮 In-game started:', data)
+      setGameState(prev => prev ? { ...prev, status: 'active' } : null)
+      setIsInWaitingRoom(false)
     })
+
+    socket.on('game_snapshot', (data) => {
+      console.log('📸 Game snapshot received:', data)
+      setGameState(prev => ({
+        ...prev,
+        id: data.roomId,
+        room_id: data.roomId,
+        status: data.status || 'active',
+        countdown_time: 0,
+        players: data.players?.map((p: any) => p.username) || [],
+        bots: [],
+        called_numbers: data.numbersCalled || [],
+        latest_number: data.currentNumber ? {
+          letter: data.currentNumber > 60 ? 'O' : data.currentNumber > 45 ? 'G' : data.currentNumber > 30 ? 'N' : data.currentNumber > 15 ? 'I' : 'B',
+          number: data.currentNumber
+        } : null,
+        stake: 10,
+        prize_pool: 100,
+        winner_id: null,
+        min_players: 1
+      }))
+    })
+
     socket.on('number_called', (data) => {
       console.log('📢 Number called:', data.letter + data.number)
-      // Update game state with called number
+      setGameState(prev => prev ? {
+        ...prev,
+        called_numbers: [...(prev.called_numbers || []), data.number],
+        latest_number: { letter: data.letter, number: data.number }
+      } : null)
+    })
+
+    socket.on('bingo_winner', (data) => {
+      console.log('🏆 Bingo winner:', data.username)
+      setGameState(prev => prev ? { ...prev, winner_id: data.username, status: 'finished' } : null)
+    })
+
+    socket.on('game_over', (data) => {
+      console.log('🏁 Game over:', data)
+      setGameState(prev => prev ? { ...prev, status: 'finished', winner_id: data.winner } : null)
     })
 
     socket.on('game_error', (data) => {
@@ -150,11 +202,34 @@ export function useSocket() {
         // Automatically join as spectator if game is in progress
         setTimeout(() => {
           socket.emit('join_spectator', {
-            username: 'Spectator',
+            username: 'TestUser_677',
             roomId: data.roomId
           })
         }, 1000)
       }
+    })
+
+    socket.on('invalid_claim', (data) => {
+      console.log('❌ Invalid bingo claim:', data.reason)
+    })
+
+    socket.on('valid_but_late', (data) => {
+      console.log('⏰ Valid but late claim:', data.message)
+    })
+
+    socket.on('late_claim', (data) => {
+      console.log('⏰ Late claim:', data.message)
+    })
+
+    socket.on('waiting_for_more_players', (data) => {
+      console.log('⏳ Waiting for more players:', data)
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        waitingForMore: true,
+        currentPlayers: data.currentPlayers,
+        minPlayers: data.minPlayers,
+        waitingTime: data.waitingTime
+      }))
     })
 
     socket.on('game_full', (data) => {

@@ -553,7 +553,7 @@ bot.action('help', async (ctx) => {
     `4. Complete a line to win!\n` +
     `5. Play daily for streak bonuses!\n\n` +
     `*Need Support?*\n` +
-    `Contact @YourSupportUsername`,
+    `Contact @FiraGhost2`,
     { parse_mode: 'Markdown' }
   )
 })

@@ -499,7 +499,8 @@ export default function GamePage() {
   }
 
   // If gameState hasn't loaded yet, show a brief loading state
-  if (!gameState) {
+  // BUT allow waiting room to be shown even without gameState
+  if (!gameState && !isInWaitingRoom && !isSpectator) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
@@ -510,11 +511,11 @@ export default function GamePage() {
     )
   }
 
-  const gameStatus = gameState.status
-  const calledNumbers = gameState.called_numbers
-  const latestNumber = gameState.latest_number
-  const players = gameState.players.length
-  const prizePool = gameState.prize_pool
+  const gameStatus = gameState?.status || 'waiting'
+  const calledNumbers = gameState?.called_numbers || []
+  const latestNumber = gameState?.latest_number
+  const players = gameState?.players?.length || 0
+  const prizePool = gameState?.prize_pool || roomData?.prize_pool || 0
   const stake = roomData.stake
 
   return (
@@ -664,6 +665,29 @@ export default function GamePage() {
                       <div className="flex items-center justify-center gap-2">
                         <Clock className="w-4 h-4 text-orange-600" />
                         <span className="font-medium text-orange-700">Starting in {waitingRoomState.countdown}s</span>
+                      </div>
+                    </div>
+                  ) : waitingRoomState?.waitingForMore ? (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Users className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-700">
+                          Waiting for more players ({waitingRoomState.currentPlayers}/{waitingRoomState.minPlayers}+ needed)
+                        </span>
+                      </div>
+                      {waitingRoomState.waitingTime && (
+                        <div className="text-xs text-green-600 text-center mt-1">
+                          Game starts in {waitingRoomState.waitingTime}s if no more players join
+                        </div>
+                      )}
+                    </div>
+                  ) : (waitingRoomState?.currentPlayers || 0) < 2 ? (
+                    <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Users className="w-4 h-4 text-yellow-600" />
+                        <span className="font-medium text-yellow-700">
+                          Need at least 2 players to start ({waitingRoomState?.currentPlayers || 0}/2)
+                        </span>
                       </div>
                     </div>
                   ) : (

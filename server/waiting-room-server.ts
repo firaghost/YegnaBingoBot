@@ -14,7 +14,7 @@ interface ServerToClientEvents {
     gameLevel: string
     status: string
   }) => void
-  waiting_for_more_players: (data: { currentPlayers: number; minPlayers: number }) => void
+  waiting_for_more_players: (data: { currentPlayers: number; minPlayers: number; waitingTime?: number }) => void
   game_starting_in: (data: { seconds: number; roomId: string }) => void
   start_game: (data: { roomId: string; gameLevel: string; players: Player[] }) => void
   player_joined: (data: { username: string; playerCount: number }) => void
@@ -276,10 +276,13 @@ export class WaitingRoomSocketServer {
   }
 
   /**
-   * Check if game should start (countdown or immediate)
+   * Check if game should start based on player count
    */
   private async checkGameStart(roomId: string, room: WaitingRoom): Promise<void> {
     try {
+      // Enforce minimum 2 players regardless of environment settings
+      const MIN_PLAYERS_REQUIRED = 2
+      
       // If room is full, start game immediately
       if (room.active_player_count >= room.max_players) {
         console.log(`🎮 Room ${roomId} is full, starting game immediately`)
@@ -287,34 +290,63 @@ export class WaitingRoomSocketServer {
         return
       }
 
-      // If minimum players reached and no countdown active, start countdown
-      if (room.active_player_count >= room.min_players && !waitingRoomManager.isCountdownActive(roomId)) {
-        console.log(`⏰ Starting countdown for room ${roomId}`)
+      // If we have minimum required players (2+) and no countdown active
+      if (room.active_player_count >= MIN_PLAYERS_REQUIRED && !waitingRoomManager.isCountdownActive(roomId)) {
+        // Wait for more players for 30 seconds before starting countdown
+        console.log(`⏳ Room ${roomId} has ${room.active_player_count} players, waiting 30s for more players`)
         
-        waitingRoomManager.startCountdown(
-          roomId,
-          (seconds) => {
-            // Emit countdown update
-            this.io.to(roomId).emit('game_starting_in', { seconds, roomId })
-          },
-          async () => {
-            // Countdown finished, start game
-            console.log(`🎮 Countdown finished for room ${roomId}, starting game`)
-            try {
-              const currentRoom = await waitingRoomManager.getRoom(roomId)
-              await this.startGame(roomId, currentRoom)
-            } catch (error) {
-              console.error('Error starting game after countdown:', error)
+        // Set a timer to start countdown after waiting period
+        setTimeout(async () => {
+          try {
+            const currentRoom = await waitingRoomManager.getRoom(roomId)
+            
+            // Check if room still exists and has enough players
+            if (currentRoom && currentRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
+              // Only start countdown if not already active
+              if (!waitingRoomManager.isCountdownActive(roomId)) {
+                console.log(`⏰ Starting countdown for room ${roomId} after waiting period`)
+                
+                waitingRoomManager.startCountdown(
+                  roomId,
+                  (seconds) => {
+                    // Emit countdown update
+                    this.io.to(roomId).emit('game_starting_in', { seconds, roomId })
+                  },
+                  async () => {
+                    // Countdown finished, start game
+                    console.log(`🎮 Countdown finished for room ${roomId}, starting game`)
+                    try {
+                      const finalRoom = await waitingRoomManager.getRoom(roomId)
+                      if (finalRoom && finalRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
+                        await this.startGame(roomId, finalRoom)
+                      } else {
+                        console.log(`❌ Cannot start game for room ${roomId}: insufficient players`)
+                      }
+                    } catch (error) {
+                      console.error('Error starting game after countdown:', error)
+                    }
+                  }
+                )
+              }
             }
+          } catch (error) {
+            console.error('Error in delayed countdown start:', error)
           }
-        )
+        }, 30000) // Wait 30 seconds for more players
+        
+        // Emit waiting status
+        this.io.to(roomId).emit('waiting_for_more_players', {
+          currentPlayers: room.active_player_count,
+          minPlayers: MIN_PLAYERS_REQUIRED,
+          waitingTime: 30
+        })
       }
 
       // If below minimum players, ensure we're in waiting state
-      if (room.active_player_count < room.min_players) {
+      if (room.active_player_count < MIN_PLAYERS_REQUIRED) {
         this.io.to(roomId).emit('waiting_for_more_players', {
           currentPlayers: room.active_player_count,
-          minPlayers: room.min_players
+          minPlayers: MIN_PLAYERS_REQUIRED
         })
       }
 
