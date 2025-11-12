@@ -34,8 +34,20 @@ export async function POST(request: NextRequest) {
 
     const stake = room.stake
 
+    // Force cleanup this user from any stuck games first
+    try {
+      await supabase.rpc('force_cleanup_user_from_games', { user_uuid: userId })
+      console.log(`🧹 Cleaned up user ${userId} from any previous games`)
+    } catch (cleanupError) {
+      console.warn('Cleanup warning:', cleanupError)
+      // Continue even if cleanup fails
+    }
+
+
     // Find active or waiting game for this room
-    let { data: activeGame } = await supabase
+    console.log(`🔍 Looking for existing games in room: ${roomId}`)
+    
+    let { data: activeGame, error: findError } = await supabase
       .from('games')
       .select('*')
       .eq('room_id', roomId)
@@ -43,6 +55,8 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+
+    console.log(`🎮 Found existing game:`, activeGame ? `${activeGame.id} (status: ${activeGame.status}, players: ${activeGame.players?.length})` : 'None')
 
     // Check if there's an active game (player should be queued)
     const { data: runningGame } = await supabase
@@ -53,6 +67,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runningGame) {
+      console.log(`🏃 Game is running, queueing player: ${runningGame.id}`)
       return NextResponse.json({
         status: 'queued',
         message: 'Game is running, you are in queue',
@@ -61,41 +76,62 @@ export async function POST(request: NextRequest) {
     }
 
     if (!activeGame) {
-      // Create new game with waiting status using room settings
-      const { data: newGame, error: createError } = await supabase
+      console.log(`🆕 No existing game found, creating new game for room: ${roomId}`)
+      
+      // Double-check for race condition - another player might have just created a game
+      const { data: raceCheckGame } = await supabase
         .from('games')
-        .insert({
-          room_id: roomId,
-          status: 'waiting',
-          countdown_time: 10,
-          players: [userId], // userId should be UUID string
-          bots: [],
-          called_numbers: [],
-          stake: room.stake,
-          prize_pool: room.stake,
-          started_at: new Date().toISOString()
+        .select('*')
+        .eq('room_id', roomId)
+        .in('status', ['waiting', 'countdown'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (raceCheckGame) {
+        console.log(`🏃 Race condition detected! Found game: ${raceCheckGame.id}, joining instead of creating`)
+        activeGame = raceCheckGame
+      } else {
+        // Create new game with waiting status using room settings
+        const { data: newGame, error: createError } = await supabase
+          .from('games')
+          .insert({
+            room_id: roomId,
+            status: 'waiting',
+            countdown_time: 10,
+            players: [userId], // userId should be UUID string
+            bots: [],
+            called_numbers: [],
+            stake: room.stake,
+            prize_pool: room.stake,
+            started_at: new Date().toISOString()
+          })
+          .select()
+          .single()
+
+        if (createError) {
+          console.error('Error creating game:', createError)
+          return NextResponse.json(
+            { error: 'Failed to create game', details: createError.message },
+            { status: 500 }
+          )
+        }
+
+        console.log(`✅ Created new game: ${newGame.id}`)
+        return NextResponse.json({
+          success: true,
+          gameId: newGame.id,
+          game: newGame,
+          action: 'created'
         })
-        .select()
-        .single()
-
-      if (createError) {
-        console.error('Error creating game:', createError)
-        return NextResponse.json(
-          { error: 'Failed to create game', details: createError.message },
-          { status: 500 }
-        )
       }
-
-      return NextResponse.json({
-        success: true,
-        gameId: newGame.id,
-        game: newGame,
-        action: 'created'
-      })
     }
 
-    // Join existing game
+    // Join existing game (or rejoin if already in)
+    console.log(`👥 Joining existing game: ${activeGame.id}, current players: ${activeGame.players?.length}`)
+    
     if (!activeGame.players.includes(userId)) {
+      console.log(`➕ Adding new player ${userId} to game ${activeGame.id}`)
       const updatedPlayers = [...activeGame.players, userId]
       const updatedPrizePool = activeGame.prize_pool + stake
       
@@ -163,6 +199,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Player already in game
+    console.log(`🔄 Player ${userId} already in game ${activeGame.id}, rejoining`)
+    
     // Check if game is stuck in waiting with 2+ players
     if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
       console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)

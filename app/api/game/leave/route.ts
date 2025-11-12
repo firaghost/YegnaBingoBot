@@ -8,7 +8,20 @@ const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
-    const { gameId, userId } = await request.json()
+    let gameId, userId
+    
+    // Handle both JSON and FormData (for sendBeacon)
+    const contentType = request.headers.get('content-type')
+    if (contentType?.includes('application/json')) {
+      const body = await request.json()
+      gameId = body.gameId
+      userId = body.userId
+    } else {
+      // Handle FormData from sendBeacon
+      const formData = await request.formData()
+      gameId = formData.get('gameId') as string
+      userId = formData.get('userId') as string
+    }
 
     if (!gameId || !userId) {
       return NextResponse.json(

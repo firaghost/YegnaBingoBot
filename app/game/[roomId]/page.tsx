@@ -220,6 +220,44 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Add cleanup on page unload/refresh
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (gameId && user?.id) {
+        // Use sendBeacon for reliable cleanup on page unload
+        const formData = new FormData()
+        formData.append('gameId', gameId)
+        formData.append('userId', user.id)
+        navigator.sendBeacon('/api/game/leave', formData)
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && gameId && user?.id) {
+        // User switched tabs or minimized - also cleanup
+        fetch('/api/game/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameId: gameId,
+            userId: user.id
+          }),
+          keepalive: true
+        }).catch(() => {
+          // Ignore errors on cleanup
+        })
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [gameId, user?.id])
+
   // Safety timeout - if loading takes too long, show error modal
   useEffect(() => {
     if (loading) {
@@ -533,6 +571,7 @@ export default function GamePage() {
   }
 
   const getRoomName = () => {
+    console.log('🏠 getRoomName called:', { roomData, roomId })
     return roomData?.name || 'Bingo Room'
   }
 
@@ -614,13 +653,22 @@ export default function GamePage() {
   const calledNumbers = gameState?.called_numbers || []
   const latestNumber = gameState?.latest_number
   const players = gameState?.players?.length || 0
-  const stake = gameConfig?.stake || roomData?.stake || 10
-  // Calculate actual prize pool using dynamic commission rate
-  const commissionRate = gameConfig?.commissionRate || 0.1
-  const netRate = 1 - commissionRate // e.g., 0.9 for 10% commission
-  const actualPrizePool = waitingRoomState?.currentPlayers ? 
-    Math.floor((waitingRoomState.currentPlayers * stake) * netRate) : 
-    (players > 0 ? Math.floor((players * stake) * netRate) : stake * 2)
+  
+  // Debug logging
+  console.log('🎮 Game render state:', {
+    gameStatus,
+    isInWaitingRoom,
+    hasGameState: !!gameState,
+    players,
+    gameId,
+    roomData: !!roomData
+  })
+  const stake = roomData?.stake || 10
+  // Calculate actual prize pool using dynamic commission rate  
+  const commissionRate = 0.1 // 10% commission
+  const netRate = 1 - commissionRate
+  const currentPlayers = gameState?.players?.length || 1
+  const actualPrizePool = Math.floor((currentPlayers * stake) * netRate)
   const prizePool = actualPrizePool
 
   return (
@@ -648,7 +696,7 @@ export default function GamePage() {
       <div className="max-w-2xl mx-auto px-4 py-3">
 
         {/* Enhanced Waiting Room System */}
-        {(gameStatus === 'waiting' || isInWaitingRoom) && (
+        {(gameStatus === 'waiting' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
           <div className="space-y-4 animate-in fade-in duration-500">
             
             {/* Invite Toast */}
@@ -661,25 +709,26 @@ export default function GamePage() {
             )}
 
             {/* Countdown Overlay */}
-            {waitingRoomState?.countdown && waitingRoomState.countdown <= 10 && (
+            {((waitingRoomState?.countdown && waitingRoomState.countdown <= 10) || 
+              (gameState?.status === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10)) && (
               <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 animate-in fade-in">
                 <div className="bg-white rounded-3xl p-12 text-center shadow-2xl max-w-sm w-full mx-4">
                   <div className="text-8xl font-black text-blue-600 mb-4 animate-pulse">
-                    {waitingRoomState.countdown}
+                    {waitingRoomState?.countdown || gameState?.countdown_time || 10}
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-2">Game Starting!</h3>
                   <p className="text-slate-600">Get ready to play...</p>
                   <div className="w-full bg-slate-200 rounded-full h-2 mt-6">
                     <div 
                       className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-1000"
-                      style={{ width: `${((10 - waitingRoomState.countdown) / 10) * 100}%` }}
+                      style={{ width: `${((10 - (waitingRoomState?.countdown || gameState?.countdown_time || 10)) / 10) * 100}%` }}
                     ></div>
                   </div>
                 </div>
               </div>
             )}
             {/* Game Level Header */}
-            <div className={`bg-gradient-to-r ${getGameLevelColor(waitingRoomState?.gameLevel || 'medium')} rounded-xl p-4 text-white shadow-lg transition-all duration-500`}>
+            <div className={`bg-gradient-to-r ${getGameLevelColor(roomData?.game_level || roomData?.default_level || 'medium')} rounded-xl p-4 text-white shadow-lg transition-all duration-500`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
@@ -687,9 +736,9 @@ export default function GamePage() {
                   </div>
                   <div>
                     <h2 className="text-xl font-bold">
-                      {waitingRoomState?.gameLevel ? `${waitingRoomState.gameLevel.toUpperCase()} Level` : 'MEDIUM Level'}
+                      {roomData?.name || 'Game Room'}
                     </h2>
-                    <p className="text-white/80 text-sm">BingoX Waiting Room</p>
+                    <p className="text-white/80 text-sm">Stake: {roomData?.stake} ETB • Max: {roomData?.max_players} players</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -702,8 +751,8 @@ export default function GamePage() {
             {/* Main Content */}
             <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
-                <div className={`p-2 rounded-lg ${getGameLevelTheme(waitingRoomState?.gameLevel || 'medium').bg}`}>
-                  <Users className={`w-5 h-5 ${getGameLevelTheme(waitingRoomState?.gameLevel || 'medium').text}`} />
+                <div className={`p-2 rounded-lg ${getGameLevelTheme(roomData?.game_level || roomData?.default_level || 'medium').bg}`}>
+                  <Users className={`w-5 h-5 ${getGameLevelTheme(roomData?.game_level || roomData?.default_level || 'medium').text}`} />
                 </div>
                 <h3 className="text-base font-bold text-slate-900">Players & Status</h3>
               </div>
@@ -810,10 +859,22 @@ export default function GamePage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+                    <div className={`bg-gradient-to-r border rounded-lg p-3 ${
+                      gameStatus === 'countdown' 
+                        ? 'from-orange-50 to-yellow-50 border-orange-200' 
+                        : 'from-blue-50 to-indigo-50 border-blue-200'
+                    }`}>
                       <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                        <span className="font-medium text-blue-700">Waiting for players...</span>
+                        <Loader2 className={`w-4 h-4 animate-spin ${
+                          gameStatus === 'countdown' ? 'text-orange-600' : 'text-blue-600'
+                        }`} />
+                        <span className={`font-medium ${
+                          gameStatus === 'countdown' ? 'text-orange-700' : 'text-blue-700'
+                        }`}>
+                          {gameStatus === 'countdown' 
+                            ? `Starting in ${gameState?.countdown_time || 10}s...` 
+                            : 'Waiting for players...'}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -973,7 +1034,7 @@ export default function GamePage() {
                   )}
                 </div>
               )}
-
+        
               {/* Back to Lobby */}
               <button
                 onClick={() => router.push('/lobby')}
