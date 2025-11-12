@@ -53,31 +53,34 @@ export default function AdminGamesPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       {/* Header */}
       <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-4">
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Link href="/mgmt-portal-x7k9p2" className="text-2xl text-white hover:opacity-70">←</Link>
-              <h1 className="text-2xl font-bold text-white">Game Monitoring</h1>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link href="/mgmt-portal-x7k9p2" className="text-xl sm:text-2xl text-white hover:opacity-70">←</Link>
+              <h1 className="text-lg sm:text-2xl font-bold text-white">Game Monitoring</h1>
             </div>
             <button
               onClick={fetchGames}
-              className="bg-blue-600/80 backdrop-blur text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+              className="bg-blue-600/80 backdrop-blur text-white px-3 sm:px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
-              🔄 Refresh
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
         {/* Filter Tabs */}
-        <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6 mb-6">
-          <div className="flex gap-4">
+        <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6 mb-6">
+          <div className="flex flex-wrap gap-2 sm:gap-4">
             {['waiting', 'countdown', 'active', 'finished', 'all'].map((status) => (
               <button
                 key={status}
                 onClick={() => setFilter(status)}
-                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                className={`px-3 sm:px-6 py-2 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                   filter === status
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -101,8 +104,8 @@ export default function AdminGamesPage() {
             </div>
           ) : (
             games.map((game) => (
-              <div key={game.id} className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <div key={game.id} className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                   {/* Game Info */}
                   <div>
                     <h3 className="font-semibold text-white mb-3">Game Information</h3>
@@ -137,7 +140,7 @@ export default function AdminGamesPage() {
                       {game.winner_id && (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Winner:</span>
-                          <span className="font-semibold text-purple-400">✓</span>
+                          <span className="font-semibold text-purple-400">Yes</span>
                         </div>
                       )}
                     </div>
@@ -170,9 +173,9 @@ export default function AdminGamesPage() {
                     </div>
                   </div>
 
-                  {/* Status & Timing */}
+                  {/* Status & Actions */}
                   <div>
-                    <h3 className="font-semibold text-white mb-3">Status & Timing</h3>
+                    <h3 className="font-semibold text-white mb-3">Status & Actions</h3>
                     <div className="space-y-3">
                       <div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -184,6 +187,21 @@ export default function AdminGamesPage() {
                           {game.status}
                         </span>
                       </div>
+                      
+                      {/* Live Watch Button */}
+                      {(game.status === 'active' || game.status === 'countdown') && (
+                        <Link
+                          href={`/mgmt-portal-x7k9p2/games/${game.id}`}
+                          className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          Watch Live
+                        </Link>
+                      )}
+                      
                       <div className="text-xs text-gray-500 space-y-1">
                         <div>Created: {new Date(game.created_at).toLocaleString()}</div>
                         {game.started_at && (
@@ -202,34 +220,34 @@ export default function AdminGamesPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mt-6">
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Waiting</div>
-            <div className="text-3xl font-bold text-yellow-400">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-6 mt-6">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-gray-400 mb-1">Waiting</div>
+            <div className="text-xl sm:text-3xl font-bold text-yellow-400">
               {games.filter(g => g.status === 'waiting').length}
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Countdown</div>
-            <div className="text-3xl font-bold text-blue-400">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-gray-400 mb-1">Countdown</div>
+            <div className="text-xl sm:text-3xl font-bold text-blue-400">
               {games.filter(g => g.status === 'countdown').length}
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Active</div>
-            <div className="text-3xl font-bold text-green-400">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-gray-400 mb-1">Active</div>
+            <div className="text-xl sm:text-3xl font-bold text-green-400">
               {games.filter(g => g.status === 'active').length}
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Completed</div>
-            <div className="text-3xl font-bold text-white">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6">
+            <div className="text-xs sm:text-sm text-gray-400 mb-1">Completed</div>
+            <div className="text-xl sm:text-3xl font-bold text-white">
               {games.filter(g => g.status === 'completed').length}
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Total Prize Pool</div>
-            <div className="text-3xl font-bold text-purple-400">
+          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6 col-span-2 sm:col-span-1">
+            <div className="text-xs sm:text-sm text-gray-400 mb-1">Total Prize Pool</div>
+            <div className="text-xl sm:text-3xl font-bold text-purple-400">
               {formatCurrency(games.reduce((sum, g) => sum + (g.prize_pool || 0), 0))}
             </div>
           </div>

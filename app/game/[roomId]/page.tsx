@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
+import { getGameConfig } from '@/lib/admin-config'
 import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
 
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
@@ -44,6 +45,7 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true)
   const [bingoError, setBingoError] = useState<string | null>(null)
   const [claimingBingo, setClaimingBingo] = useState(false)
+  const [gameConfig, setGameConfig] = useState<any>(null)
   
   // Enhanced waiting room states
   const [inviteToastVisible, setInviteToastVisible] = useState(false)
@@ -52,7 +54,7 @@ export default function GamePage() {
   const [connectionErrorMessage, setConnectionErrorMessage] = useState('')
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
 
-  // Fetch room data
+  // Fetch room data and game configuration
   const fetchRoomData = async () => {
     try {
       const { data: room, error } = await supabase
@@ -63,6 +65,15 @@ export default function GamePage() {
 
       if (error) throw error
       setRoomData(room)
+
+      // Fetch game configuration based on room level
+      if (room.game_level || room.default_level) {
+        const level = room.game_level || room.default_level || 'medium'
+        const config = await getGameConfig(level as 'easy' | 'medium' | 'hard')
+        setGameConfig(config)
+        console.log('📋 Game config loaded:', config)
+      }
+
       return room
     } catch (error) {
       console.error('Error fetching room data:', error)
@@ -333,20 +344,21 @@ export default function GamePage() {
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
     if (!gameState || gameState.status !== 'active') return
-    if (!gameId || !user) return
+    if (!user) return
     
     const num = bingoCard[row][col]
     if (num === 0) return // Free space (always marked)
     if (!gameState.called_numbers.includes(num)) return // Not called yet
     if (markedCells[row][col]) return // Already marked - don't allow unmarking
     
+    console.log(`🎯 Marking cell [${row},${col}] with number ${num}`)
+    
     // Mark the cell (no unmarking allowed)
     const newMarked = markedCells.map(r => [...r])
     newMarked[row][col] = true
     setMarkedCells(newMarked)
 
-    // Emit mark event to server
-    markNumber(gameId, user.id, num)
+    console.log('✅ Cell marked successfully')
   }
 
   // Handle BINGO button click
@@ -518,6 +530,22 @@ export default function GamePage() {
     return emojis[index]
   }
 
+  // Generate anonymous display name
+  const getAnonymousName = (username: string, index?: number) => {
+    if (!username) return `Player ${index || 1}`
+    
+    // Create a simple hash from username to ensure consistency
+    let hash = 0
+    for (let i = 0; i < username.length; i++) {
+      const char = username.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash // Convert to 32-bit integer
+    }
+    
+    const playerNumber = Math.abs(hash) % 999 + 1
+    return `Player ${playerNumber}`
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -556,8 +584,14 @@ export default function GamePage() {
   const calledNumbers = gameState?.called_numbers || []
   const latestNumber = gameState?.latest_number
   const players = gameState?.players?.length || 0
-  const prizePool = gameState?.prize_pool || roomData?.prize_pool || 0
-  const stake = roomData.stake
+  const stake = gameConfig?.stake || roomData?.stake || 10
+  // Calculate actual prize pool using dynamic commission rate
+  const commissionRate = gameConfig?.commissionRate || 0.1
+  const netRate = 1 - commissionRate // e.g., 0.9 for 10% commission
+  const actualPrizePool = waitingRoomState?.currentPlayers ? 
+    Math.floor((waitingRoomState.currentPlayers * stake) * netRate) : 
+    (players > 0 ? Math.floor((players * stake) * netRate) : stake * 2)
+  const prizePool = actualPrizePool
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -663,7 +697,7 @@ export default function GamePage() {
                           <div className="w-4 h-4 bg-green-600 rounded-full flex items-center justify-center text-white text-xs">
                             {getRandomEmoji(user.username || 'You')}
                           </div>
-                          {user.username || 'You'} (You)
+                          {getAnonymousName(user.username || 'You')} (You)
                         </div>
                       )}
                       {/* Show other players */}
@@ -672,7 +706,7 @@ export default function GamePage() {
                           <div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs">
                             {getRandomEmoji(player.username)}
                           </div>
-                          {player.username}
+                          {getAnonymousName(player.username, index + 1)}
                         </div>
                       ))}
                     </div>
@@ -748,11 +782,10 @@ export default function GamePage() {
                       <Trophy className="w-4 h-4" />
                       <span>Prize Pool</span>
                     </div>
-                    <div className="text-xs text-slate-500">Updates live</div>
                   </div>
                   <div className={`bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-3 transition-all duration-500 ${prizePoolAnimation ? 'scale-105 shadow-lg' : ''}`}>
                     <div className="text-2xl font-bold text-emerald-600 transition-all duration-300">
-                      {gameState ? formatCurrency(gameState.prize_pool) : (roomData ? formatCurrency(roomData.prize_pool) : 'Loading...')}
+                      {formatCurrency(prizePool)}
                     </div>
                   </div>
                 </div>

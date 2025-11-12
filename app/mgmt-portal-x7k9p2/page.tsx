@@ -171,21 +171,49 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
-      {/* Header - Mobile Responsive */}
-      <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-4 sm:px-6 py-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white">🎰 Bingo Royale Admin</h1>
-              <p className="text-gray-400 text-xs sm:text-sm">Dashboard & Management</p>
+      {/* Enhanced Header */}
+      <div className="bg-gradient-to-r from-gray-800 to-gray-900 border-b border-gray-700 shadow-xl">
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white">BingoX Admin</h1>
+                <p className="text-gray-300 text-xs sm:text-sm">Dashboard & Management Portal</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2 sm:gap-4 text-sm">
-              <span className="text-gray-300 hidden sm:inline">Welcome, {admin?.username}</span>
-              <Link href="/" className="text-gray-300 hover:text-white transition-colors">
-                View Site
+            
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* Live Games Quick Link */}
+              <Link href="/mgmt-portal-x7k9p2/games" className="flex items-center gap-2 bg-green-600/20 text-green-400 px-3 py-2 rounded-lg hover:bg-green-600/30 transition-colors text-sm">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="hidden sm:inline">Live Games</span>
+                <span className="sm:hidden">Live</span>
               </Link>
-              <button onClick={logout} className="bg-red-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg hover:bg-red-700 transition-colors text-xs sm:text-base">
-                Logout
+              
+              <div className="hidden sm:flex items-center gap-2 text-gray-300 bg-gray-700/50 px-3 py-2 rounded-lg">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-sm">{admin?.username}</span>
+              </div>
+              
+              <Link href="/" className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors bg-gray-700/50 px-3 py-2 rounded-lg text-sm">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                <span className="hidden sm:inline">View Site</span>
+              </Link>
+              
+              <button onClick={logout} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg transition-colors text-sm font-medium">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H3" />
+                </svg>
+                <span className="hidden sm:inline">Logout</span>
               </button>
             </div>
           </div>
@@ -193,87 +221,157 @@ export default function AdminDashboard() {
       </div>
 
       <div className="container mx-auto px-3 sm:px-6 py-3 sm:py-6">
-        {/* Stats Grid - 2 Columns on Mobile */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <div className="bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 text-xs sm:text-sm">Users</span>
-              <span className="text-xl sm:text-2xl">👥</span>
+        {/* Stats Grid - Mobile Responsive */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 text-sm font-medium">Total Users</span>
+              <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalUsers.toLocaleString()}</div>
-            <div className="text-xs text-green-400 mt-1">↑ {stats.activeUsers} active</div>
+            <div className="text-2xl font-bold text-white">{stats.totalUsers.toLocaleString()}</div>
+            <div className="text-xs text-green-400 mt-1">{stats.activeUsers} active users</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 text-xs sm:text-sm">Games</span>
-              <span className="text-xl sm:text-2xl">🎮</span>
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 text-sm font-medium">Total Games</span>
+              <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{stats.totalGames.toLocaleString()}</div>
-            <div className="text-xs text-green-400 mt-1">↑ {stats.activeGames} active</div>
+            <div className="text-2xl font-bold text-white">{stats.totalGames.toLocaleString()}</div>
+            <div className="text-xs text-green-400 mt-1">{stats.activeGames} active games</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20 col-span-2 lg:col-span-1">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 text-xs sm:text-sm">Revenue</span>
-              <span className="text-xl sm:text-2xl">💰</span>
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20 sm:col-span-2 lg:col-span-1">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 text-sm font-medium">Total Revenue</span>
+              <div className="w-8 h-8 bg-green-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{formatCurrency(stats.totalRevenue)}</div>
-            <div className="text-xs text-green-400 mt-1">↑ {formatCurrency(stats.todayRevenue)} today</div>
+            <div className="text-2xl font-bold text-white">{formatCurrency(stats.totalRevenue)}</div>
+            <div className="text-xs text-green-400 mt-1">{formatCurrency(stats.todayRevenue)} today</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 text-xs sm:text-sm">Deposits</span>
-              <span className="text-xl sm:text-2xl">💵</span>
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 text-sm font-medium">Pending Deposits</span>
+              <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-green-400">{stats.pendingDeposits}</div>
-            <div className="text-xs text-gray-400 mt-1">Pending</div>
+            <div className="text-2xl font-bold text-yellow-400">{stats.pendingDeposits}</div>
+            <div className="text-xs text-gray-400 mt-1">Awaiting approval</div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-white/20">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-300 text-xs sm:text-sm">Withdrawals</span>
-              <span className="text-xl sm:text-2xl">💸</span>
+          <div className="bg-white/10 backdrop-blur-md rounded-lg p-4 border border-white/20">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 text-sm font-medium">Pending Withdrawals</span>
+              <div className="w-8 h-8 bg-red-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H3" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-yellow-400">{stats.pendingWithdrawals}</div>
-            <div className="text-xs text-gray-400 mt-1">Pending</div>
+            <div className="text-2xl font-bold text-red-400">{stats.pendingWithdrawals}</div>
+            <div className="text-xs text-gray-400 mt-1">Awaiting approval</div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 backdrop-blur-md rounded-lg p-3 sm:p-4 border border-purple-400/30 shadow-lg">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-200 text-xs sm:text-sm font-semibold">Commission</span>
-              <span className="text-xl sm:text-2xl">💎</span>
+          <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 backdrop-blur-md rounded-lg p-4 border border-purple-400/30 shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-200 text-sm font-semibold">Commission Earned</span>
+              <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
             </div>
-            <div className="text-xl sm:text-2xl font-bold text-purple-300">{formatCurrency(stats.totalCommission)}</div>
-            <div className="text-xs text-purple-200 mt-1">↑ {formatCurrency(stats.todayCommission)} today</div>
+            <div className="text-2xl font-bold text-purple-300">{formatCurrency(stats.totalCommission)}</div>
+            <div className="text-xs text-purple-200 mt-1">{formatCurrency(stats.todayCommission)} today</div>
           </div>
         </div>
 
-        {/* Quick Actions - 2 Columns on Mobile */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-          <Link href="/mgmt-portal-x7k9p2/users" className="bg-blue-600 hover:bg-blue-700 rounded-lg p-3 sm:p-4 text-white transition-all">
-            <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">👥</div>
-            <h3 className="text-sm sm:text-base font-bold">Users</h3>
-            <p className="text-blue-100 text-xs hidden sm:block">Manage users</p>
+        {/* Quick Actions - Mobile Responsive */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <Link href="/mgmt-portal-x7k9p2/system-status" className="bg-emerald-600 hover:bg-emerald-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">System Status</h3>
+                <p className="text-emerald-100 text-xs opacity-80">Monitor system health</p>
+              </div>
+            </div>
           </Link>
 
-          <Link href="/mgmt-portal-x7k9p2/deposits" className="bg-green-600 hover:bg-green-700 rounded-lg p-3 sm:p-4 text-white transition-all">
-            <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">💵</div>
-            <h3 className="text-sm sm:text-base font-bold">Deposits</h3>
-            <p className="text-green-100 text-xs hidden sm:block">Approve/reject</p>
+          <Link href="/mgmt-portal-x7k9p2/users" className="bg-blue-600 hover:bg-blue-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">User Management</h3>
+                <p className="text-blue-100 text-xs opacity-80">View and manage users</p>
+              </div>
+            </div>
           </Link>
 
-          <Link href="/mgmt-portal-x7k9p2/withdrawals" className="bg-yellow-600 hover:bg-yellow-700 rounded-lg p-3 sm:p-4 text-white transition-all">
-            <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">💸</div>
-            <h3 className="text-sm sm:text-base font-bold">Withdrawals</h3>
-            <p className="text-yellow-100 text-xs hidden sm:block">Approve/reject</p>
+          <Link href="/mgmt-portal-x7k9p2/deposits" className="bg-green-600 hover:bg-green-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">Deposits</h3>
+                <p className="text-green-100 text-xs opacity-80">Approve or reject deposits</p>
+              </div>
+            </div>
           </Link>
 
-          <Link href="/mgmt-portal-x7k9p2/games" className="bg-purple-600 hover:bg-purple-700 rounded-lg p-3 sm:p-4 text-white transition-all">
-            <div className="text-2xl sm:text-3xl mb-1 sm:mb-2">📊</div>
-            <h3 className="text-sm sm:text-base font-bold">Live Games</h3>
-            <p className="text-purple-100 text-xs hidden sm:block">Monitor games</p>
+          <Link href="/mgmt-portal-x7k9p2/withdrawals" className="bg-orange-600 hover:bg-orange-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H3" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">Withdrawals</h3>
+                <p className="text-orange-100 text-xs opacity-80">Process withdrawal requests</p>
+              </div>
+            </div>
+          </Link>
+
+          <Link href="/mgmt-portal-x7k9p2/games" className="bg-purple-600 hover:bg-purple-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">Live Games</h3>
+                <p className="text-purple-100 text-xs opacity-80">Monitor active games</p>
+              </div>
+            </div>
           </Link>
         </div>
 

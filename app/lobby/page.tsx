@@ -48,10 +48,17 @@ export default function LobbyPage() {
       const { data, error } = await supabase
         .from('rooms')
         .select('*')
+        .eq('status', 'active')
         .order('stake', { ascending: true })
 
       if (error) throw error
-      setRooms(data || [])
+      
+      // Remove duplicates by ID
+      const uniqueRooms = (data || []).filter((room, index, self) => 
+        index === self.findIndex(r => r.id === room.id)
+      )
+      
+      setRooms(uniqueRooms)
     } catch (error) {
       console.error('Error fetching rooms:', error)
     } finally {
@@ -85,39 +92,39 @@ export default function LobbyPage() {
         </div>
       )}
 
-      {/* Simple Header */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
+      {/* Sticky Header */}
+      <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <LuZap className="w-6 h-6 text-blue-500" />
-            <h1 className="text-xl font-bold text-slate-900">BingoX</h1>
+            <LuZap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900">BingoX</h1>
           </div>
           {user && (
-            <div className="text-sm font-bold text-slate-900">
+            <div className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg">
               Balance {formatCurrency(user.balance + (user.bonus_balance || 0))}
             </div>
           )}
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">
+      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Game Rooms
         </h2>
 
         {!isAuthenticated && (
-          <div className="mb-6 bg-white rounded-2xl p-6 border border-slate-200 text-center">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <LuLock className="w-8 h-8 text-blue-500" />
+          <div className="mb-4 sm:mb-6 bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 text-center">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+              <LuLock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
             </div>
-            <h3 className="text-lg font-semibold mb-2 text-slate-900">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 text-slate-900">
               Login Required
             </h3>
-            <p className="text-slate-600 mb-4 text-sm">
+            <p className="text-slate-600 mb-3 sm:mb-4 text-sm">
               Connect with Telegram to start playing
             </p>
             <Link href="/login">
-              <button className="bg-blue-500 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-600 transition-colors text-sm w-full">
+              <button className="bg-blue-500 text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-lg font-medium hover:bg-blue-600 transition-colors text-sm w-full">
                 Connect Telegram
               </button>
             </Link>
@@ -129,7 +136,7 @@ export default function LobbyPage() {
             <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 sm:space-y-4">
             {rooms.map((room, index) => {
               const hasInsufficientBalance = user && (user.balance + (user.bonus_balance || 0)) < room.stake
               const roomColors = [
@@ -142,37 +149,44 @@ export default function LobbyPage() {
               const IconComponent = roomStyle.icon
               
               return (
-                <div key={room.id} className="bg-white rounded-xl p-4 border border-slate-200 hover:border-slate-300 transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3 flex-1">
-                      <IconComponent className={`w-8 h-8 flex-shrink-0 ${
-                        index % 4 === 0 ? 'text-emerald-500' :
-                        index % 4 === 1 ? 'text-blue-500' :
-                        index % 4 === 2 ? 'text-purple-500' :
-                        'text-orange-500'
-                      }`} />
+                <div key={room.id} className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-slate-300 transition-colors shadow-sm hover:shadow-md">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        index % 4 === 0 ? 'bg-emerald-100' :
+                        index % 4 === 1 ? 'bg-blue-100' :
+                        index % 4 === 2 ? 'bg-purple-100' :
+                        'bg-orange-100'
+                      }`}>
+                        <IconComponent className={`w-5 h-5 sm:w-6 sm:h-6 ${
+                          index % 4 === 0 ? 'text-emerald-600' :
+                          index % 4 === 1 ? 'text-blue-600' :
+                          index % 4 === 2 ? 'text-purple-600' :
+                          'text-orange-600'
+                        }`} />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-slate-900 truncate">{room.name}</h3>
-                        <p className="text-xs text-slate-500 truncate">{room.description}</p>
+                        <h3 className="text-base sm:text-lg font-semibold text-slate-900 truncate">{room.name}</h3>
+                        <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5">{room.description}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mb-3 text-sm">
-                    <div>
-                      <div className="text-slate-500 text-xs mb-0.5">Entry</div>
-                      <div className="font-semibold text-slate-900">{formatCurrency(room.stake)}</div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="text-center sm:text-left">
+                      <div className="text-slate-500 text-xs mb-1">Entry Fee</div>
+                      <div className="font-bold text-slate-900 text-sm sm:text-base">{formatCurrency(room.stake)}</div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-slate-500 text-xs mb-0.5">Prize</div>
-                      <div className="font-semibold text-emerald-600">{formatCurrency(room.prize_pool)}</div>
+                    <div className="text-center sm:text-right">
+                      <div className="text-slate-500 text-xs mb-1">Prize Pool</div>
+                      <div className="font-bold text-emerald-600 text-sm sm:text-base">{formatCurrency(room.prize_pool)}</div>
                     </div>
                   </div>
 
                   {authLoading ? (
                     <button 
                       disabled
-                      className="w-full bg-slate-200 text-slate-400 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 cursor-not-allowed"
+                      className="w-full bg-slate-200 text-slate-400 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-not-allowed text-sm sm:text-base"
                     >
                       <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
                       <span>Loading...</span>
@@ -181,26 +195,26 @@ export default function LobbyPage() {
                     hasInsufficientBalance ? (
                       <button 
                         onClick={() => handleInsufficientBalance(room.stake)}
-                        className="w-full bg-orange-500 hover:bg-orange-600 text-white py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2"
+                        className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"
                       >
-                        <LuPlay className="w-4 h-4" />
-                        <span>Join Game</span>
+                        <LuCoins className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span>Insufficient Balance</span>
                       </button>
                     ) : (
                       <Link href={`/game/${room.id}`}>
                         <button 
-                          className={`w-full ${roomStyle.bg} hover:opacity-90 text-white py-2.5 rounded-lg font-medium transition-all flex items-center justify-center gap-2`}
+                          className={`w-full ${roomStyle.bg} hover:opacity-90 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
                         >
-                          <LuPlay className="w-4 h-4" />
+                          <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
                           <span>Join Game</span>
                         </button>
                       </Link>
                     )
                   ) : (
                     <Link href="/login">
-                      <button className="w-full bg-slate-100 text-slate-600 py-2.5 rounded-lg font-medium hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 border border-slate-200">
-                        <LuLock className="w-4 h-4" />
-                        <span>Login</span>
+                      <button className="w-full bg-slate-100 text-slate-600 py-3 sm:py-3.5 rounded-xl font-semibold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 border border-slate-200 text-sm sm:text-base">
+                        <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span>Connect to Play</span>
                       </button>
                     </Link>
                   )}
@@ -210,10 +224,13 @@ export default function LobbyPage() {
           </div>
         )}
 
-        {rooms.length === 0 && (
-          <div className="text-center text-gray-500 py-16">
-            <div className="text-6xl mb-4">🎰</div>
-            <p className="text-xl">No rooms available at the moment. Please check back later!</p>
+        {rooms.length === 0 && !loading && (
+          <div className="text-center text-gray-500 py-12 sm:py-16">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <LuTrophy className="w-8 h-8 sm:w-10 sm:h-10 text-slate-400" />
+            </div>
+            <p className="text-lg sm:text-xl font-medium text-slate-600 mb-2">No rooms available</p>
+            <p className="text-sm text-slate-500">Please check back later for new games!</p>
           </div>
         )}
       </div>

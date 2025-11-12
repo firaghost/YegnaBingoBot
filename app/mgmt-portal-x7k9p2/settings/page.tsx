@@ -3,19 +3,21 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { getAllConfig, setConfig } from '@/lib/admin-config'
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState({
-    siteName: 'Bingo Royale',
+    siteName: 'BingoX',
     maintenanceMode: false,
+    maintenanceMessage: 'System under maintenance. Please try again later.',
     registrationEnabled: true,
-    minWithdrawal: 100,
-    maxWithdrawal: 100000,
-    withdrawalFee: 0,
-    commissionRate: 10,
-    depositBonus: 10,
-    referralBonus: 50,
-    dailyStreakBonus: 20,
+    minWithdrawal: 100 as number | string,
+    maxWithdrawal: 100000 as number | string,
+    withdrawalFee: 0 as number | string,
+    commissionRate: 10 as number | string,
+    depositBonus: 10 as number | string,
+    referralBonus: 50 as number | string,
+    dailyStreakBonus: 20 as number | string,
     telegramBotToken: '',
     socketUrl: '',
     emailNotifications: true,
@@ -27,6 +29,8 @@ export default function AdminSettings() {
     supportPhone: '+251 911 234 567',
   })
 
+  // Keep track of original settings to detect changes
+  const [originalSettings, setOriginalSettings] = useState(settings)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -35,24 +39,58 @@ export default function AdminSettings() {
 
   const fetchSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('*')
-
-      if (error) throw error
-
-      const settingsObj: any = {}
-      data?.forEach((setting) => {
-        let value = setting.value
-        // Parse boolean values
-        if (value === 'true') value = true
-        if (value === 'false') value = false
-        // Parse numbers
-        if (!isNaN(value) && value !== '') value = parseFloat(value)
-        settingsObj[setting.key] = value
-      })
+      // First try to get from new admin_config table
+      const config = await getAllConfig()
       
-      setSettings(prev => ({ ...prev, ...settingsObj }))
+      if (Object.keys(config).length > 0) {
+        // Map new config keys to old settings format
+        const mappedSettings = {
+          siteName: config.appName || 'BingoX',
+          maintenanceMode: config.maintenanceMode || false,
+          maintenanceMessage: config.maintenanceMessage || 'System under maintenance. Please try again later.',
+          registrationEnabled: config.registrationEnabled ?? true,
+          minWithdrawal: Number(config.minWithdrawalAmount) || 100,
+          maxWithdrawal: Number(config.maxWithdrawalAmount) || 100000,
+          withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100, // Convert to percentage with proper rounding
+          commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100, // Convert to percentage with proper rounding
+          depositBonus: Number(config.depositBonus) || 10,
+          referralBonus: Number(config.referralBonus) || 50,
+          dailyStreakBonus: Number(config.dailyStreakBonus) || 20,
+          telegramBotToken: config.telegramBotToken || '',
+          socketUrl: config.socketUrl || '',
+          emailNotifications: config.emailNotifications ?? true,
+          telegramNotifications: config.telegramNotifications ?? true,
+          autoApproveDeposits: config.autoApproveDeposits ?? false,
+          autoApproveWithdrawals: config.autoApproveWithdrawals ?? false,
+          supportEmail: config.supportEmail || 'support@bingox.com',
+          supportTelegram: config.telegramSupport || '@bingox_support',
+          supportPhone: config.supportPhone || '+251 911 234 567',
+        }
+        
+        setSettings(prev => ({ ...prev, ...mappedSettings }))
+        setOriginalSettings(prev => ({ ...prev, ...mappedSettings }))
+      } else {
+        // Fallback to old system_settings table
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('*')
+
+        if (error) throw error
+
+        const settingsObj: any = {}
+        data?.forEach((setting) => {
+          let value = setting.value
+          // Parse boolean values
+          if (value === 'true') value = true
+          if (value === 'false') value = false
+          // Parse numbers
+          if (!isNaN(value) && value !== '') value = parseFloat(value)
+          settingsObj[setting.key] = value
+        })
+        
+        setSettings(prev => ({ ...prev, ...settingsObj }))
+        setOriginalSettings(prev => ({ ...prev, ...settingsObj }))
+      }
     } catch (error) {
       console.error('Error fetching settings:', error)
     }
@@ -61,7 +99,55 @@ export default function AdminSettings() {
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Update each setting in the database
+      // Detect only changed settings
+      const changedSettings: { [key: string]: any } = {}
+      
+      if (settings.siteName !== originalSettings.siteName) changedSettings.app_name = settings.siteName
+      if (Boolean(settings.maintenanceMode) !== Boolean(originalSettings.maintenanceMode)) changedSettings.maintenance_mode = Boolean(settings.maintenanceMode)
+      if (settings.maintenanceMessage !== originalSettings.maintenanceMessage) changedSettings.maintenance_message = settings.maintenanceMessage
+      if (Boolean(settings.registrationEnabled) !== Boolean(originalSettings.registrationEnabled)) changedSettings.registration_enabled = Boolean(settings.registrationEnabled)
+      if (Number(settings.minWithdrawal) !== Number(originalSettings.minWithdrawal)) changedSettings.min_withdrawal_amount = Number(settings.minWithdrawal) || 0
+      if (Number(settings.maxWithdrawal) !== Number(originalSettings.maxWithdrawal)) changedSettings.max_withdrawal_amount = Number(settings.maxWithdrawal) || 0
+      if (Number(settings.withdrawalFee) !== Number(originalSettings.withdrawalFee)) changedSettings.withdrawal_fee_rate = (Number(settings.withdrawalFee) || 0) / 100
+      if (Number(settings.commissionRate) !== Number(originalSettings.commissionRate)) changedSettings.game_commission_rate = (Number(settings.commissionRate) || 0) / 100
+      if (Boolean(settings.autoApproveDeposits) !== Boolean(originalSettings.autoApproveDeposits)) changedSettings.auto_approve_deposits = Boolean(settings.autoApproveDeposits)
+      if (Boolean(settings.autoApproveWithdrawals) !== Boolean(originalSettings.autoApproveWithdrawals)) changedSettings.auto_approve_withdrawals = Boolean(settings.autoApproveWithdrawals)
+      if (Number(settings.referralBonus) !== Number(originalSettings.referralBonus)) changedSettings.referral_bonus = Number(settings.referralBonus) || 0
+      if (Number(settings.depositBonus) !== Number(originalSettings.depositBonus)) changedSettings.deposit_bonus = Number(settings.depositBonus) || 0
+      if (Number(settings.dailyStreakBonus) !== Number(originalSettings.dailyStreakBonus)) changedSettings.daily_streak_bonus = Number(settings.dailyStreakBonus) || 0
+      if (settings.supportEmail !== originalSettings.supportEmail) changedSettings.support_email = settings.supportEmail
+      if (settings.supportTelegram !== originalSettings.supportTelegram) changedSettings.telegram_support = settings.supportTelegram
+      if (settings.supportPhone !== originalSettings.supportPhone) changedSettings.support_phone = settings.supportPhone
+      if (settings.telegramBotToken !== originalSettings.telegramBotToken) changedSettings.telegram_bot_token = settings.telegramBotToken
+      if (settings.socketUrl !== originalSettings.socketUrl) changedSettings.socket_url = settings.socketUrl
+      if (Boolean(settings.emailNotifications) !== Boolean(originalSettings.emailNotifications)) changedSettings.email_notifications = Boolean(settings.emailNotifications)
+      if (Boolean(settings.telegramNotifications) !== Boolean(originalSettings.telegramNotifications)) changedSettings.telegram_notifications = Boolean(settings.telegramNotifications)
+
+      const changedCount = Object.keys(changedSettings).length
+      
+      if (changedCount === 0) {
+        alert('No changes detected!')
+        return
+      }
+
+      console.log(`Saving ${changedCount} changed settings:`, changedSettings)
+      
+      // Save only changed settings
+      const results = []
+      for (const [key, value] of Object.entries(changedSettings)) {
+        results.push(await setConfig(key, value))
+      }
+      
+      console.log('Save results:', results)
+      const failedSaves = results.filter(result => result === false)
+      if (failedSaves.length > 0) {
+        throw new Error(`${failedSaves.length} settings failed to save`)
+      }
+
+      // Update original settings to current settings
+      setOriginalSettings({ ...settings })
+
+      // Also save to old system_settings table for backward compatibility
       for (const [key, value] of Object.entries(settings)) {
         await supabase
           .from('system_settings')
@@ -74,10 +160,13 @@ export default function AdminSettings() {
           })
       }
 
-      alert('Settings saved successfully!')
-    } catch (error) {
+      // Clear cache to force refresh
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      alert(`Successfully saved ${changedCount} setting${changedCount > 1 ? 's' : ''}!`)
+    } catch (error: any) {
       console.error('Error saving settings:', error)
-      alert('Failed to save settings')
+      alert(`Failed to save settings: ${error.message || 'Unknown error'}`)
     } finally {
       setIsSaving(false)
     }
@@ -92,7 +181,7 @@ export default function AdminSettings() {
               <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
                 ← Back to Dashboard
               </Link>
-              <h1 className="text-2xl font-bold text-white">⚙️ System Settings</h1>
+              <h1 className="text-2xl font-bold text-white">System Settings</h1>
               <p className="text-gray-400 text-sm">Configure system-wide settings</p>
             </div>
             <button
@@ -106,7 +195,7 @@ export default function AdminSettings() {
                   Saving...
                 </>
               ) : (
-                <>💾 Save Changes</>
+                <>Save Changes</>
               )}
             </button>
           </div>
@@ -146,6 +235,20 @@ export default function AdminSettings() {
                 </label>
               </div>
 
+              {settings.maintenanceMode && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Maintenance Message</label>
+                  <textarea
+                    value={settings.maintenanceMessage}
+                    onChange={(e) => setSettings({...settings, maintenanceMessage: e.target.value})}
+                    rows={3}
+                    className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
+                    placeholder="Enter message to show during maintenance..."
+                  />
+                  <p className="text-xs text-gray-400 mt-1">This message will be displayed to users during maintenance</p>
+                </div>
+              )}
+
               <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
                 <div>
                   <div className="font-medium text-white">Registration Enabled</div>
@@ -173,30 +276,61 @@ export default function AdminSettings() {
                 <label className="block text-sm font-medium text-gray-300 mb-2">Min Withdrawal (ETB)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
                   value={settings.minWithdrawal}
-                  onChange={(e) => setSettings({...settings, minWithdrawal: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, minWithdrawal: ''})
+                    } else {
+                      setSettings({...settings, minWithdrawal: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Minimum amount users can withdraw (supports decimals like 0.5)</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Max Withdrawal (ETB)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
                   value={settings.maxWithdrawal}
-                  onChange={(e) => setSettings({...settings, maxWithdrawal: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, maxWithdrawal: ''})
+                    } else {
+                      setSettings({...settings, maxWithdrawal: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Maximum amount users can withdraw per transaction</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Withdrawal Fee (%)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
                   value={settings.withdrawalFee}
-                  onChange={(e) => setSettings({...settings, withdrawalFee: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, withdrawalFee: ''})
+                    } else {
+                      setSettings({...settings, withdrawalFee: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Percentage fee charged on withdrawals (0 = free withdrawals)</p>
               </div>
 
               <div>
@@ -207,7 +341,14 @@ export default function AdminSettings() {
                   max="100"
                   step="0.1"
                   value={settings.commissionRate}
-                  onChange={(e) => setSettings({...settings, commissionRate: parseFloat(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, commissionRate: ''})
+                    } else {
+                      setSettings({...settings, commissionRate: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
                 <p className="text-xs text-gray-400 mt-1">Commission deducted from prize pool before awarding winner</p>
@@ -256,37 +397,68 @@ export default function AdminSettings() {
                 <label className="block text-sm font-medium text-gray-300 mb-2">Deposit Bonus (%)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
                   value={settings.depositBonus}
-                  onChange={(e) => setSettings({...settings, depositBonus: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, depositBonus: ''})
+                    } else {
+                      setSettings({...settings, depositBonus: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Percentage bonus on deposits (0 = no bonus, 10 = 10% bonus)</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Referral Bonus (ETB)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
                   value={settings.referralBonus}
-                  onChange={(e) => setSettings({...settings, referralBonus: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, referralBonus: ''})
+                    } else {
+                      setSettings({...settings, referralBonus: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Amount given for successful referrals (supports decimals)</p>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Daily Streak Bonus (ETB)</label>
                 <input
                   type="number"
+                  step="0.01"
+                  min="0"
                   value={settings.dailyStreakBonus}
-                  onChange={(e) => setSettings({...settings, dailyStreakBonus: parseInt(e.target.value)})}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, dailyStreakBonus: ''})
+                    } else {
+                      setSettings({...settings, dailyStreakBonus: parseFloat(value) || 0})
+                    }
+                  }}
                   className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 />
+                <p className="text-xs text-gray-400 mt-1">Amount given for completing daily streaks (supports decimals)</p>
               </div>
             </div>
           </div>
 
           {/* Support Contact Settings */}
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">📧 Support Contact Information</h2>
+            <h2 className="text-xl font-bold text-white mb-6">Support Contact Information</h2>
             
             <div className="space-y-4">
               <div>

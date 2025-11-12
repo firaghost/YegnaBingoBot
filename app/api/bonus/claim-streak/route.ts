@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,21 +21,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Get streak settings
-    const { data: streakDaysSetting } = await supabase
-      .from('admin_settings')
-      .select('setting_value')
-      .eq('setting_key', 'daily_streak_days')
-      .single()
-
-    const { data: streakBonusSetting } = await supabase
-      .from('admin_settings')
-      .select('setting_value')
-      .eq('setting_key', 'daily_streak_bonus')
-      .single()
-
-    const requiredDays = parseInt(streakDaysSetting?.setting_value || '5')
-    const bonusAmount = parseFloat(streakBonusSetting?.setting_value || '5.00')
+    // Get streak settings from admin config
+    const requiredDays = await getConfig('daily_streak_days') || 5
+    const bonusAmount = await getConfig('daily_streak_bonus') || 20
 
     // Check if user has completed the streak
     if (user.daily_streak < requiredDays) {

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
+import { getConfig } from '@/lib/admin-config'
 import BottomNav from '@/app/components/BottomNav'
 import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck } from 'react-icons/lu'
 
@@ -35,6 +36,9 @@ export default function AccountPage() {
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [showFaqModal, setShowFaqModal] = useState(false)
+  const [showUsernameModal, setShowUsernameModal] = useState(false)
+  const [newUsername, setNewUsername] = useState('')
+  const [updatingUsername, setUpdatingUsername] = useState(false)
   const [supportInfo, setSupportInfo] = useState({
     email: 'support@bingox.com',
     telegram: '@bingox_support',
@@ -47,37 +51,30 @@ export default function AccountPage() {
     }
   }, [authLoading, isAuthenticated, router])
 
-  // Fetch support info from admin settings
+  // Fetch support information from database
   useEffect(() => {
     const fetchSupportInfo = async () => {
       try {
-        const { data, error } = await supabase
-          .from('admin_settings')
-          .select('setting_key, setting_value')
-          .in('setting_key', ['support_email', 'support_telegram', 'support_phone'])
+        const [email, telegram, phone] = await Promise.all([
+          getConfig('support_email'),
+          getConfig('telegram_support'),
+          getConfig('support_phone')
+        ])
 
-        if (error) throw error
-        
-        if (data) {
-          const newSupportInfo = { ...supportInfo }
-          data.forEach(setting => {
-            if (setting.setting_key === 'support_email') {
-              newSupportInfo.email = setting.setting_value
-            } else if (setting.setting_key === 'support_telegram') {
-              newSupportInfo.telegram = setting.setting_value
-            } else if (setting.setting_key === 'support_phone') {
-              newSupportInfo.phone = setting.setting_value
-            }
-          })
-          setSupportInfo(newSupportInfo)
-        }
+        setSupportInfo({
+          email: email || 'support@bingox.com',
+          telegram: telegram || '@bingox_support',
+          phone: phone || '+251 911 234 567'
+        })
       } catch (error) {
         console.error('Error fetching support info:', error)
+        // Keep default values if fetch fails
       }
     }
 
     fetchSupportInfo()
   }, [])
+
 
   useEffect(() => {
     if (!user) return
@@ -112,6 +109,33 @@ export default function AccountPage() {
   const handleLogout = () => {
     logout()
     router.push('/login')
+  }
+
+  const handleUsernameUpdate = async () => {
+    if (!user || !newUsername.trim() || newUsername.length < 3) {
+      alert('Username must be at least 3 characters long')
+      return
+    }
+
+    setUpdatingUsername(true)
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update({ username: newUsername.trim() })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      await refreshUser()
+      setShowUsernameModal(false)
+      setNewUsername('')
+      alert('Username updated successfully!')
+    } catch (error: any) {
+      console.error('Error updating username:', error)
+      alert(error.message || 'Failed to update username')
+    } finally {
+      setUpdatingUsername(false)
+    }
   }
 
   if (authLoading || !user) {
@@ -155,6 +179,56 @@ export default function AccountPage() {
                   {language === lang && <LuCheck className="w-5 h-5 text-blue-500" />}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Username Modal */}
+      {showUsernameModal && (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowUsernameModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">Edit Username</h3>
+              <button onClick={() => setShowUsernameModal(false)} className="text-slate-400 hover:text-slate-600">
+                <LuX className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
+                <input
+                  type="text"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder="Enter your username"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                  maxLength={20}
+                />
+                <p className="text-xs text-slate-500 mt-1">Minimum 3 characters, maximum 20 characters</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowUsernameModal(false)}
+                  className="flex-1 px-4 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUsernameUpdate}
+                  disabled={updatingUsername || !newUsername.trim() || newUsername.length < 3}
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                >
+                  {updatingUsername ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Username'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -266,13 +340,28 @@ export default function AccountPage() {
         
         {/* User Info */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <LuUser className="w-6 h-6 text-blue-500" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">{user.username || 'User'}</h2>
-              <p className="text-sm text-slate-500">Telegram ID: {user.telegram_id}</p>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <LuUser className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-semibold text-slate-900">{user.username || 'User'}</h2>
+                  <button
+                    onClick={() => {
+                      setNewUsername(user.username || '')
+                      setShowUsernameModal(true)
+                    }}
+                    className="text-blue-500 hover:text-blue-600 transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-sm text-slate-500">Telegram ID: {user.telegram_id}</p>
+              </div>
             </div>
           </div>
         </div>

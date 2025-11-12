@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
 
 // Check if a bingo card has a valid bingo
+
 function checkBingo(card: number[][], markedCells: boolean[][]): boolean {
   // Check rows
   for (let i = 0; i < 5; i++) {
@@ -132,14 +134,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get commission rate from settings
-    const { data: commissionSetting } = await supabase
-      .from('admin_settings')
-      .select('setting_value')
-      .eq('setting_key', 'commission_rate')
-      .single()
-
-    const commissionRate = commissionSetting ? parseFloat(commissionSetting.setting_value) : 10
+    // Get commission rate from admin config
+    const commissionRateDecimal = await getConfig('game_commission_rate') || 0.1
+    const commissionRate = commissionRateDecimal * 100 // Convert to percentage for display
     const commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
     const netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
 

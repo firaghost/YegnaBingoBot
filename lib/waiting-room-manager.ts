@@ -1,4 +1,5 @@
-import { supabaseAdmin } from './supabase'
+import { supabase } from './supabase'
+import { getGameConfig } from './admin-config'
 import { v4 as uuidv4 } from 'uuid'
 
 // Types for waiting room system
@@ -44,7 +45,7 @@ const roomCountdowns = new Map<string, NodeJS.Timeout>()
 const roomCleanupInterval = new Map<string, NodeJS.Timeout>()
 
 export class WaitingRoomManager {
-  private supabase = supabaseAdmin
+  private supabase = supabase
 
   /**
    * Find or create a waiting room for a player
@@ -128,21 +129,24 @@ export class WaitingRoomManager {
         throw new Error(`Level settings not found for ${gameLevel}`)
       }
 
+      // Get dynamic configuration for this game level
+      const config = await getGameConfig(gameLevel)
+
       // Create room in database
       const { data: newRoom, error } = await this.supabase
         .from('rooms')
         .insert({
           id: roomId,
           name: roomName,
-          stake: gameLevel === 'easy' ? 5 : gameLevel === 'medium' ? 10 : 25,
-          max_players: gameLevel === 'easy' ? 10 : gameLevel === 'medium' ? 8 : 6,
-          min_players: process.env.ALLOW_SINGLE_PLAYER === 'true' ? 1 : 2,
+          stake: config.stake,
+          max_players: config.maxPlayers,
+          min_players: config.minPlayers,
           status: 'waiting',
           description: `${levelSettings.description} - Waiting for players`,
           color: gameLevel === 'easy' ? 'from-green-500 to-green-700' : 
                  gameLevel === 'medium' ? 'from-blue-500 to-blue-700' : 
                  'from-red-500 to-red-700',
-          prize_pool: gameLevel === 'easy' ? 50 : gameLevel === 'medium' ? 80 : 150,
+          prize_pool: config.prizePool,
           game_level: gameLevel,
           room_type: 'waiting',
           current_players: 0

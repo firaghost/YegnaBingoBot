@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 
 const supabase = supabaseAdmin
 
@@ -100,13 +101,31 @@ export async function POST(request: NextRequest) {
 
       if (updateError) throw updateError
 
-      // Add balance to user
+      // Get deposit bonus percentage from admin config
+      const depositBonusPercent = await getConfig('deposit_bonus') || 0
+      const bonusAmount = (transaction.amount * depositBonusPercent) / 100
+      const totalAmount = transaction.amount + bonusAmount
+
+      // Add balance to user (deposit + bonus)
       const { error: balanceError } = await supabase.rpc('add_balance', {
         user_id: transaction.user_id,
-        amount: transaction.amount
+        amount: totalAmount
       })
 
       if (balanceError) throw balanceError
+
+      // If there's a bonus, create a separate bonus transaction
+      if (bonusAmount > 0) {
+        await supabase
+          .from('transactions')
+          .insert({
+            user_id: transaction.user_id,
+            type: 'bonus',
+            amount: bonusAmount,
+            status: 'completed',
+            description: `Deposit bonus (${depositBonusPercent}% of ${transaction.amount} ETB)`
+          })
+      }
 
       // Send Telegram notification
       if (user?.telegram_id) {
@@ -118,7 +137,9 @@ export async function POST(request: NextRequest) {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 chat_id: user.telegram_id,
-                text: `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved and added to your account.\n\nYou can now use this balance to play games!`,
+                text: bonusAmount > 0 
+                  ? `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved!\n\n💰 *Bonus Applied:* ${bonusAmount} ETB (${depositBonusPercent}%)\n📊 *Total Added:* ${totalAmount} ETB\n\nYou can now use this balance to play games!`
+                  : `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved and added to your account.\n\nYou can now use this balance to play games!`,
                 parse_mode: 'Markdown'
               })
             })

@@ -1,6 +1,7 @@
 import { Server as SocketServer } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { waitingRoomManager, WaitingRoom, Player } from '../lib/waiting-room-manager'
+import { getGameConfig } from '../lib/admin-config'
 import { supabaseAdmin } from '../lib/supabase'
 
 // Socket event types
@@ -280,8 +281,10 @@ export class WaitingRoomSocketServer {
    */
   private async checkGameStart(roomId: string, room: WaitingRoom): Promise<void> {
     try {
-      // Enforce minimum 2 players regardless of environment settings
-      const MIN_PLAYERS_REQUIRED = 2
+      // Get dynamic configuration for this game level
+      const config = await getGameConfig(room.game_level as 'easy' | 'medium' | 'hard')
+      const MIN_PLAYERS_REQUIRED = config.minPlayers
+      const WAITING_TIME = config.waitingTime * 1000 // Convert to milliseconds
       
       // If room is full, start game immediately
       if (room.active_player_count >= room.max_players) {
@@ -292,8 +295,8 @@ export class WaitingRoomSocketServer {
 
       // If we have minimum required players (2+) and no countdown active
       if (room.active_player_count >= MIN_PLAYERS_REQUIRED && !waitingRoomManager.isCountdownActive(roomId)) {
-        // Wait for more players for 30 seconds before starting countdown
-        console.log(`⏳ Room ${roomId} has ${room.active_player_count} players, waiting 30s for more players`)
+        // Wait for more players before starting countdown
+        console.log(`⏳ Room ${roomId} has ${room.active_player_count} players, waiting ${config.waitingTime}s for more players`)
         
         // Set a timer to start countdown after waiting period
         setTimeout(async () => {
@@ -332,13 +335,13 @@ export class WaitingRoomSocketServer {
           } catch (error) {
             console.error('Error in delayed countdown start:', error)
           }
-        }, 30000) // Wait 30 seconds for more players
+        }, WAITING_TIME) // Wait configured time for more players
         
         // Emit waiting status
         this.io.to(roomId).emit('waiting_for_more_players', {
           currentPlayers: room.active_player_count,
           minPlayers: MIN_PLAYERS_REQUIRED,
-          waitingTime: 30
+          waitingTime: config.waitingTime
         })
       }
 

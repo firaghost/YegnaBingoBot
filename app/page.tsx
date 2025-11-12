@@ -71,10 +71,10 @@ export default function HomePage() {
             Your Lucky Card!
           </h2>
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-4 sm:mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight px-2">
-            Enter the Palace of Prizes!
+            Welcome to BingoX!
           </h1>
           <p className="text-base sm:text-lg md:text-xl text-gray-700 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-4">
-            Experience the thrill of royal bingo! Join players worldwide, claim magnificent bonuses, and compete in daily tournaments for glorious rewards.
+            Experience the thrill of competitive bingo! Join players worldwide, win amazing prizes, and compete in exciting tournaments for incredible rewards.
           </p>
 
           {/* CTA Buttons - Mobile Responsive */}
@@ -83,14 +83,18 @@ export default function HomePage() {
               href="/lobby"
               className="bg-blue-600 text-white px-6 sm:px-10 py-3 sm:py-4 rounded-lg text-base sm:text-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
             >
-              <span>🎮</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               <span>Join the Fun!</span>
             </Link>
             <Link
               href="/login"
               className="border-2 border-blue-600 text-blue-600 px-6 sm:px-10 py-3 sm:py-4 rounded-lg text-base sm:text-lg font-semibold hover:bg-blue-50 transition-all shadow-md flex items-center justify-center gap-2"
             >
-              <span>✈️</span>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
               <span>Login with Telegram</span>
             </Link>
           </div>
@@ -121,8 +125,12 @@ export default function HomePage() {
               <div className="rounded-[2rem] overflow-hidden w-full h-full bg-white">
                 <div className="h-full bg-gradient-to-b from-blue-100 to-purple-100 flex items-center justify-center p-4">
                   <div className="text-center">
-                    <div className="text-7xl mb-4">🎰</div>
-                    <div className="text-2xl font-bold text-blue-600 mb-2">Bingo Royale</div>
+                    <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <div className="text-2xl font-bold text-blue-600 mb-2">BingoX</div>
                     <div className="text-sm text-gray-600">Play & Win!</div>
                   </div>
                 </div>
@@ -135,12 +143,16 @@ export default function HomePage() {
         <section className="py-8 sm:py-16 bg-white/70 backdrop-blur rounded-3xl shadow-xl mb-8 sm:mb-12">
           <div className="max-w-6xl mx-auto px-4 sm:px-6">
             <h3 className="text-2xl sm:text-4xl font-bold text-center mb-8 sm:mb-12 text-blue-600">
-              Why Bingo Royale?
+              Why Choose BingoX?
             </h3>
             <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
               {/* Feature 1 */}
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1">
-                <div className="text-6xl mb-4">🌍</div>
+                <div className="w-16 h-16 bg-blue-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                  </svg>
+                </div>
                 <h4 className="text-2xl font-bold mb-3 text-gray-800">Real-Time Multiplayer</h4>
                 <p className="text-gray-600 leading-relaxed">
                   Challenge players from around the globe in exciting, live bingo matches. Feel the rush of competing for the win!
@@ -149,19 +161,27 @@ export default function HomePage() {
 
               {/* Feature 2 */}
               <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1">
-                <div className="text-6xl mb-4">👑</div>
-                <h4 className="text-2xl font-bold mb-3 text-gray-800">Royal Bonuses</h4>
+                <div className="w-16 h-16 bg-purple-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                  </svg>
+                </div>
+                <h4 className="text-2xl font-bold mb-3 text-gray-800">Amazing Prizes</h4>
                 <p className="text-gray-600 leading-relaxed">
-                  Unlock majestic bonuses and daily rewards. The more you play, the more treasures you'll uncover in the palace!
+                  Win real money and exciting bonuses! The more you play, the more rewards you can earn in our competitive games.
                 </p>
               </div>
 
               {/* Feature 3 */}
               <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1">
-                <div className="text-6xl mb-4">🏆</div>
-                <h4 className="text-2xl font-bold mb-3 text-gray-800">Daily Tournaments</h4>
+                <div className="w-16 h-16 bg-pink-500 rounded-xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                  </svg>
+                </div>
+                <h4 className="text-2xl font-bold mb-3 text-gray-800">Fair & Secure</h4>
                 <p className="text-gray-600 leading-relaxed">
-                  Prove your bingo prowess in daily tournaments. Climb the leaderboards and claim your champion's crown and prizes!
+                  Play with confidence! Our platform ensures fair gameplay, secure transactions, and transparent prize distribution.
                 </p>
               </div>
             </div>

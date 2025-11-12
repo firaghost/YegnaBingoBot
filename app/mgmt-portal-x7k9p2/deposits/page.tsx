@@ -128,7 +128,7 @@ export default function AdminDeposits() {
           <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
             ← Back to Dashboard
           </Link>
-          <h1 className="text-2xl font-bold text-white">💵 Deposit Management</h1>
+          <h1 className="text-2xl font-bold text-white">Deposit Management</h1>
           <p className="text-gray-400 text-sm">Approve or reject deposit requests</p>
         </div>
       </div>
@@ -142,7 +142,17 @@ export default function AdminDeposits() {
               : 'bg-red-500/90 border-red-400 text-white'
           }`}>
             <div className="flex items-center gap-3">
-              <span className="text-2xl">{notification.type === 'success' ? '✓' : '✗'}</span>
+              <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+              }`}>
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {notification.type === 'success' ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  )}
+                </svg>
+              </div>
               <span className="font-semibold">{notification.message}</span>
             </div>
           </div>
@@ -237,7 +247,11 @@ export default function AdminDeposits() {
           </div>
         ) : deposits.length === 0 ? (
           <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-12 text-center">
-            <div className="text-6xl mb-4">📭</div>
+            <div className="w-16 h-16 bg-gray-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+              </svg>
+            </div>
             <p className="text-gray-400 text-lg">No deposits found</p>
           </div>
         ) : (
@@ -315,13 +329,13 @@ export default function AdminDeposits() {
                               onClick={() => handleApprove(deposit.id)}
                               className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                             >
-                              ✓ Approve
+                              Approve
                             </button>
                             <button
                               onClick={() => handleReject(deposit.id)}
                               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                             >
-                              ✗ Reject
+                              Reject
                             </button>
                           </div>
                         )}
@@ -395,13 +409,13 @@ export default function AdminDeposits() {
                         onClick={() => handleApprove(deposit.id)}
                         className="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                       >
-                        ✓ Approve
+                        Approve
                       </button>
                       <button
                         onClick={() => handleReject(deposit.id)}
                         className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
                       >
-                        ✗ Reject
+                        Reject
                       </button>
                     </div>
                   )}

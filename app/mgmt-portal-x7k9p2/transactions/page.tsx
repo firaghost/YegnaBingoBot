@@ -9,10 +9,19 @@ export default function AdminTransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [dateFilter, setDateFilter] = useState('all')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalCount, setTotalCount] = useState(0)
+  const itemsPerPage = 20
 
   useEffect(() => {
     fetchTransactions()
-  }, [filter])
+  }, [filter, currentPage, dateFilter])
+
+  useEffect(() => {
+    setCurrentPage(1) // Reset to first page when filters change
+  }, [filter, searchTerm, dateFilter])
 
   const fetchTransactions = async () => {
     try {
@@ -21,18 +30,43 @@ export default function AdminTransactionsPage() {
         .select(`
           *,
           users (username)
-        `)
+        `, { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(100)
 
       if (filter !== 'all') {
         query = query.eq('type', filter)
       }
 
-      const { data, error } = await query
+      // Date filtering
+      if (dateFilter !== 'all') {
+        const now = new Date()
+        let startDate = new Date()
+        
+        switch (dateFilter) {
+          case 'today':
+            startDate.setHours(0, 0, 0, 0)
+            break
+          case 'week':
+            startDate.setDate(now.getDate() - 7)
+            break
+          case 'month':
+            startDate.setMonth(now.getMonth() - 1)
+            break
+        }
+        
+        query = query.gte('created_at', startDate.toISOString())
+      }
+
+      // Pagination
+      const from = (currentPage - 1) * itemsPerPage
+      const to = from + itemsPerPage - 1
+      query = query.range(from, to)
+
+      const { data, error, count } = await query
 
       if (error) throw error
       setTransactions(data || [])
+      setTotalCount(count || 0)
     } catch (error) {
       console.error('Error fetching transactions:', error)
     } finally {
@@ -40,29 +74,54 @@ export default function AdminTransactionsPage() {
     }
   }
 
+  const filteredTransactions = transactions.filter(tx =>
+    tx.users?.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    tx.id.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const totalPages = Math.ceil(totalCount / itemsPerPage)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       {/* Header */}
       <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 sm:px-6 py-4">
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Link href="/mgmt-portal-x7k9p2" className="text-2xl text-white hover:opacity-70">←</Link>
-              <h1 className="text-2xl font-bold text-white">Transactions</h1>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link href="/mgmt-portal-x7k9p2" className="text-xl sm:text-2xl text-white hover:opacity-70">←</Link>
+              <h1 className="text-lg sm:text-2xl font-bold text-white">Transactions</h1>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Filter Tabs */}
-        <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6 mb-6">
-          <div className="flex gap-4">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
+        {/* Enhanced Filters */}
+        <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-4 sm:p-6 mb-6 space-y-4">
+          {/* Search Bar */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by username or transaction ID..."
+              className="w-full px-4 py-3 bg-white/10 border-2 border-white/20 rounded-lg focus:border-blue-400 focus:outline-none text-white placeholder-gray-400"
+            />
+            <button
+              onClick={() => setSearchTerm('')}
+              className="px-4 py-2 rounded-lg bg-white/10 border-2 border-white/20 text-gray-300 hover:bg-white/20"
+            >
+              Clear
+            </button>
+          </div>
+
+          {/* Filter Tabs */}
+          <div className="flex flex-wrap gap-2 sm:gap-4">
             {['all', 'stake', 'win', 'deposit', 'withdrawal'].map((type) => (
               <button
                 key={type}
                 onClick={() => setFilter(type)}
-                className={`px-6 py-2 rounded-lg font-semibold transition-all ${
+                className={`px-3 sm:px-6 py-2 rounded-lg font-semibold transition-all text-sm sm:text-base ${
                   filter === type
                     ? 'bg-blue-600 text-white shadow-lg'
                     : 'bg-white/10 text-gray-300 hover:bg-white/20'
@@ -71,6 +130,30 @@ export default function AdminTransactionsPage() {
                 {type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             ))}
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex flex-wrap gap-2 sm:gap-4">
+            <span className="text-gray-300 text-sm font-medium">Time Period:</span>
+            {['all', 'today', 'week', 'month'].map((period) => (
+              <button
+                key={period}
+                onClick={() => setDateFilter(period)}
+                className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                  dateFilter === period
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                }`}
+              >
+                {period === 'all' ? 'All Time' : period.charAt(0).toUpperCase() + period.slice(1)}
+              </button>
+            ))}
+          </div>
+
+          {/* Results Info */}
+          <div className="flex justify-between items-center text-sm text-gray-400">
+            <span>Showing {filteredTransactions.length} of {totalCount} transactions</span>
+            <span>Page {currentPage} of {totalPages}</span>
           </div>
         </div>
 
@@ -95,14 +178,14 @@ export default function AdminTransactionsPage() {
                       Loading transactions...
                     </td>
                   </tr>
-                ) : transactions.length === 0 ? (
+                ) : filteredTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-gray-400">
                       No transactions found
                     </td>
                   </tr>
                 ) : (
-                  transactions.map((tx) => (
+                  filteredTransactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-white/5">
                       <td className="px-6 py-4 text-gray-300 font-mono text-xs">{tx.id.slice(0, 8)}</td>
                       <td className="px-6 py-4 text-white">{tx.users?.username || 'Unknown'}</td>
