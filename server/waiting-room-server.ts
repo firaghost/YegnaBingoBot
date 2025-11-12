@@ -22,6 +22,7 @@ interface ServerToClientEvents {
   error: (data: { message: string }) => void
   room_assigned: (data: { roomId: string; gameLevel: string }) => void
   countdown_cancelled: (data: { roomId: string; reason: string }) => void
+  transition_to_game: (data: { roomId: string; gameLevel: string; message: string }) => void
 }
 
 interface ClientToServerEvents {

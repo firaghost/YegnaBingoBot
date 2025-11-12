@@ -26,6 +26,9 @@ export interface GameState {
 export function useSocket() {
   const [connected, setConnected] = useState(false)
   const [gameState, setGameState] = useState<GameState | null>(null)
+  const [waitingRoomState, setWaitingRoomState] = useState<any>(null)
+  const [isInWaitingRoom, setIsInWaitingRoom] = useState(false)
+  const [isSpectator, setIsSpectator] = useState(false)
   const [channel, setChannel] = useState<RealtimeChannel | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const socketRef = useRef<Socket | null>(null)
@@ -55,6 +58,129 @@ export function useSocket() {
     socket.on('connect_error', (error) => {
       console.error('❌ Socket.IO connection error:', error.message)
       setConnected(false)
+    })
+
+    // Waiting Room Events
+    socket.on('room_assigned', (data) => {
+      console.log('🏠 Assigned to waiting room:', data.roomId)
+      setIsInWaitingRoom(true)
+      setWaitingRoomState(data)
+    })
+
+    socket.on('room_update', (data) => {
+      console.log('📊 Waiting room update:', data)
+      setWaitingRoomState(data)
+    })
+
+    socket.on('player_joined', (data) => {
+      console.log('👤 Player joined:', data.username)
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        players: data.players || [],
+        currentPlayers: data.totalPlayers
+      }))
+    })
+
+    socket.on('player_left', (data) => {
+      console.log('👋 Player left:', data.username)
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        players: data.players || [],
+        currentPlayers: data.totalPlayers
+      }))
+    })
+
+    socket.on('room_ready_status', (data) => {
+      console.log('✅ Ready status update:', data)
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        readyCount: data.readyCount,
+        totalPlayers: data.totalPlayers
+      }))
+    })
+
+    socket.on('countdown_start', (data) => {
+      console.log('⏰ Countdown started:', data.seconds)
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        countdown: data.seconds,
+        isCountdownActive: true
+      }))
+    })
+
+    socket.on('countdown_cancelled', () => {
+      console.log('❌ Countdown cancelled')
+      setWaitingRoomState((prev: any) => ({
+        ...prev,
+        countdown: null,
+        isCountdownActive: false
+      }))
+    })
+
+    socket.on('game_starting_in', (data) => {
+      console.log('⏰ Game starting in:', data.seconds)
+      setWaitingRoomState((prev: any) => ({ ...prev, countdown: data.seconds }))
+    })
+
+    socket.on('start_game', (data) => {
+      console.log('🎮 Game started, transitioning...')
+      setIsInWaitingRoom(false)
+      // Auto-join the actual game
+      setTimeout(() => {
+        socket.emit('join_game', {
+          username: 'Player', // Will be replaced with actual username
+          roomId: data.roomId
+        })
+      }, 1000)
+    })
+
+    // In-Game Events
+    socket.on('game_started', (data) => {
+      console.log('🎮 In-game started:', data)
+    })
+    socket.on('number_called', (data) => {
+      console.log('📢 Number called:', data.letter + data.number)
+      // Update game state with called number
+    })
+
+    socket.on('game_error', (data) => {
+      console.log('❌ Game error:', data.message)
+      if (data.canSpectate) {
+        console.log('💡 Auto-joining as spectator')
+        // Automatically join as spectator if game is in progress
+        setTimeout(() => {
+          socket.emit('join_spectator', {
+            username: 'Spectator',
+            roomId: data.roomId
+          })
+        }, 1000)
+      }
+    })
+
+    socket.on('game_full', (data) => {
+      console.log('🎮 Game is full, joining as spectator')
+      setIsSpectator(true)
+      // Auto-spectate when game is full
+      setTimeout(() => {
+        socket.emit('join_spectator', {
+          username: 'Spectator', 
+          roomId: data.roomId
+        })
+      }, 500)
+    })
+
+    socket.on('spectator_joined', (data) => {
+      console.log('👁️ Spectator joined:', data.username)
+    })
+
+    socket.on('bingo_winner', (data) => {
+      console.log('🏆 Bingo winner:', data.username)
+    })
+
+    socket.on('game_over', (data) => {
+      console.log('🏁 Game over:', data)
+      setIsInWaitingRoom(false)
+      setIsSpectator(false)
     })
 
     socketRef.current = socket
@@ -242,12 +368,64 @@ export function useSocket() {
     }
   }
 
+  // Waiting Room Functions
+  const joinWaitingRoom = async (level: 'easy' | 'medium' | 'hard' = 'medium', username: string = 'Player') => {
+    console.log(`🏠 Joining waiting room (${level})`)
+    
+    if (socketRef.current) {
+      socketRef.current.emit('join_waiting_room', {
+        username,
+        level,
+        telegram_id: `user_${Date.now()}`
+      })
+    }
+  }
+
+  const spectateGame = async (roomId: string, username: string = 'Spectator') => {
+    console.log(`👁️ Joining as spectator: ${roomId}`)
+    
+    if (socketRef.current) {
+      socketRef.current.emit('join_spectator', {
+        username,
+        roomId
+      })
+    }
+  }
+
+  const leaveWaitingRoom = () => {
+    console.log('👋 Leaving waiting room')
+    
+    if (socketRef.current) {
+      socketRef.current.emit('leave_waiting_room', {})
+      setIsInWaitingRoom(false)
+      setWaitingRoomState(null)
+    }
+  }
+
+  const togglePlayerReady = (username: string, roomId: string) => {
+    console.log('✅ Toggling ready status')
+    
+    if (socketRef.current) {
+      socketRef.current.emit('player_ready', {
+        username,
+        roomId
+      })
+    }
+  }
+
   return {
     connected,
     gameState,
+    waitingRoomState,
+    isInWaitingRoom,
+    isSpectator,
     joinGame,
     leaveGame,
     markNumber,
-    claimBingo
+    claimBingo,
+    joinWaitingRoom,
+    spectateGame,
+    leaveWaitingRoom,
+    togglePlayerReady
   }
 }

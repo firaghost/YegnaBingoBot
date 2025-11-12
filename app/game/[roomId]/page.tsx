@@ -7,25 +7,32 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
-import { Users, Trophy, DollarSign, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
+import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
 
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
-
-interface CalledNumber {
-  letter: string
-  number: number
-}
 
 export default function GamePage() {
   const params = useParams()
   const router = useRouter()
   const roomId = params?.roomId as string
   const { user, isAuthenticated, loading: authLoading } = useAuth()
-  const { connected, gameState, joinGame, leaveGame, markNumber, claimBingo } = useSocket()
+  const { 
+    connected, 
+    gameState, 
+    waitingRoomState, 
+    isInWaitingRoom, 
+    isSpectator,
+    joinGame, 
+    leaveGame, 
+    markNumber, 
+    claimBingo, 
+    joinWaitingRoom, 
+    spectateGame,
+    leaveWaitingRoom
+  } = useSocket()
 
   const [gameId, setGameId] = useState<string | null>(null)
   const [roomData, setRoomData] = useState<any>(null)
-  const [playerState, setPlayerState] = useState<'playing' | 'queue' | 'spectator'>('playing')
   const [bingoCard, setBingoCard] = useState<number[][]>([])
   const [markedCells, setMarkedCells] = useState<boolean[][]>([])
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
@@ -33,164 +40,124 @@ export default function GamePage() {
   const [showLoseDialog, setShowLoseDialog] = useState(false)
   const [winAmount, setWinAmount] = useState(0)
   const [winnerName, setWinnerName] = useState('')
-  const [redirectCountdown, setRedirectCountdown] = useState(5)
   const [findingNewGame, setFindingNewGame] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [autoWin, setAutoWin] = useState(false)
   const [bingoError, setBingoError] = useState<string | null>(null)
   const [claimingBingo, setClaimingBingo] = useState(false)
-  const initializingRef = useRef(false)
+  
+  // Enhanced waiting room states
+  const [inviteToastVisible, setInviteToastVisible] = useState(false)
+  const [prizePoolAnimation, setPrizePoolAnimation] = useState(false)
+  const [showConnectionError, setShowConnectionError] = useState(false)
+  const [connectionErrorMessage, setConnectionErrorMessage] = useState('')
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
-  const queueRedirectRef = useRef(false)
 
-  // Check authentication - only redirect after auth is loaded
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/login')
+  // Fetch room data
+  const fetchRoomData = async () => {
+    try {
+      const { data: room, error } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single()
+
+      if (error) throw error
+      setRoomData(room)
+      return room
+    } catch (error) {
+      console.error('Error fetching room data:', error)
+      return null
     }
-  }, [authLoading, isAuthenticated, router])
+  }
 
-  // Fetch room data and join/create game
+  // Smart room joining logic - waiting room or spectator mode
   useEffect(() => {
-    // Wait for auth to load before initializing game
-    if (authLoading) return
-    if (!user || !roomId) return
-    if (gameId) return // Already initialized
-    if (initializingRef.current) return // Already initializing
+    if (!isAuthenticated || !user || !connected || !roomId) return
+    if (isInWaitingRoom || gameId || isSpectator) return // Already in a mode
 
-    let isMounted = true
-    initializingRef.current = true
-
-    const initializeGame = async () => {
-      if (!isMounted) return
-      console.log('🎮 Initializing game for room:', roomId)
+    const smartJoinRoom = async () => {
+      console.log('🎯 Smart joining room:', roomId)
       
       try {
-        // Fetch room data
-        console.log('📡 Fetching room data...')
-        const { data: room, error: roomError } = await supabase
-          .from('rooms')
-          .select('*')
-          .eq('id', roomId)
-          .single()
-
-        if (roomError) {
-          console.error('❌ Room error:', roomError)
-          throw roomError
-        }
-        console.log('✅ Room data:', room)
-        setRoomData(room)
-
-        // Check if user has sufficient balance
-        if (user.balance < room.stake) {
-          alert('Insufficient balance!')
-          router.push('/lobby')
-          return
-        }
-
-        // Use API to join/create game (bypasses RLS issues)
-        console.log('📡 Calling join API...')
-        const joinResponse = await fetch('/api/game/join', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            roomId: roomId,
-            userId: user.id,
-            stake: room.stake
-          })
-        })
-
-        if (!joinResponse.ok) {
-          const error = await joinResponse.json()
-          throw new Error(error.error || 'Failed to join game')
-        }
-
-        const joinResult = await joinResponse.json()
-        console.log('✅ Join result:', joinResult)
-
-        if (joinResult.status === 'queued') {
-          // Game is already running, put player in queue
-          setPlayerState('queue')
+        // First, try to join waiting room
+        const room = await fetchRoomData()
+        if (room) {
+          const level = room.default_level || 'medium'
+          console.log(`🏠 Attempting to join ${level} waiting room`)
           
-          // Still need to join socket to get game updates
-          if (joinResult.gameId) {
-            setGameId(joinResult.gameId)
-            await joinGame(joinResult.gameId, user.id)
-            cleanupRef.current = { gameId: joinResult.gameId, userId: user.id }
+          // Try to join waiting room with timeout
+          const joinPromise = joinWaitingRoom(level, user.username || 'Player')
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Waiting room join timeout')), 8000)
+          )
+          
+          try {
+            await Promise.race([joinPromise, timeoutPromise])
+            console.log('✅ Waiting room join initiated')
+          } catch (joinError) {
+            console.log('⚠️ Waiting room join failed:', joinError)
+            throw joinError
           }
-          
+        } else {
+          console.log('❌ No room data found')
           setLoading(false)
-          return
         }
-
-        const activeGame = joinResult.game
-        setGameId(activeGame.id)
-
-        // DON'T deduct stake yet - only deduct when game becomes active
-        // This allows players to leave during waiting without losing money
-
-        // Generate bingo card
-        const card = generateBingoCard()
-        setBingoCard(card)
-        
-        const marked: boolean[][] = []
-        for (let i = 0; i < 5; i++) {
-          marked[i] = []
-          for (let j = 0; j < 5; j++) {
-            marked[i][j] = (i === 2 && j === 2) // Free space
-          }
-        }
-        setMarkedCells(marked)
-
-        // Save card to database (upsert to avoid conflicts)
-        await supabase.from('player_cards').upsert({
-          game_id: activeGame.id,
-          user_id: user.id,
-          card: card
-        }, {
-          onConflict: 'game_id,user_id'
-        })
-
-        // Join socket room and wait for initial state
-        console.log('🔌 About to join socket game:', activeGame.id)
-        await joinGame(activeGame.id, user.id)
-        console.log('🔌 Socket join completed')
-        
-        // Store cleanup info
-        cleanupRef.current = { gameId: activeGame.id, userId: user.id }
-
-        // Game ticker (useGameTicker hook) will automatically handle countdown and number calling
-        console.log('✅ Game joined, ticker will handle progression')
-
-        // Update daily streak (only when actually playing a game)
-        try {
-          await fetch('/api/game/update-streak', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.id })
-          })
-        } catch (streakError) {
-          console.error('Error updating streak:', streakError)
-          // Don't fail the game join if streak update fails
-        }
-
       } catch (error) {
-        console.error('❌ Error initializing game:', error)
-        alert('Failed to join game: ' + (error as any).message)
-        initializingRef.current = false
-        router.push('/lobby')
-      } finally {
-        console.log('✅ Game initialization complete')
+        console.log('⚠️ Waiting room join failed:', error)
+        // If waiting room join fails, try to create/join a regular game
+        console.log('🎮 Falling back to regular game join')
         setLoading(false)
       }
     }
 
-    initializeGame()
+    smartJoinRoom()
+  }, [isAuthenticated, user, connected, roomId, isInWaitingRoom, gameId, isSpectator])
 
-    return () => {
-      isMounted = false
+  // Debug waiting room state and stop loading when connected
+  useEffect(() => {
+    console.log('🔍 Waiting room state changed:', {
+      isInWaitingRoom,
+      waitingRoomState,
+      isSpectator,
+      gameStatus: gameState?.status,
+      connected
+    })
+
+    // Stop loading when we successfully join waiting room or become spectator
+    if (isInWaitingRoom || isSpectator || gameState) {
+      console.log('✅ Successfully connected, stopping loading')
+      setLoading(false)
     }
-  }, [user, roomId, router, authLoading, gameId])
+  }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState])
+
+  // Prize pool animation effect
+  useEffect(() => {
+    if (roomData?.prize_pool) {
+      setPrizePoolAnimation(true)
+      const timer = setTimeout(() => setPrizePoolAnimation(false), 600)
+      return () => clearTimeout(timer)
+    }
+  }, [roomData?.prize_pool])
+
+  // Handle game over for spectators - auto redirect to new game
+  useEffect(() => {
+    if (isSpectator && gameState?.status === 'finished') {
+      console.log('🏁 Game finished, spectator will be redirected to new game')
+      
+      // Wait 3 seconds then try to join a new game
+      const redirectTimer = setTimeout(() => {
+        // Try to join waiting room for new game
+        if (user && roomId) {
+          console.log('🔄 Redirecting spectator to new game')
+          const level = roomData?.default_level || 'medium'
+          joinWaitingRoom(level, user.username || 'Player')
+        }
+      }, 3000)
+
+      return () => clearTimeout(redirectTimer)
+    }
+  }, [isSpectator, gameState?.status, user, roomId, roomData?.default_level, joinWaitingRoom])
+
 
   // Cleanup socket connection on unmount only
   useEffect(() => {
@@ -202,19 +169,22 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Safety timeout - if gameState doesn't load within 10 seconds, show error
+  // Safety timeout - if loading takes too long, show error modal
   useEffect(() => {
-    if (!loading && !gameState && gameId) {
+    if (loading) {
       const timeout = setTimeout(() => {
-        console.error('⚠️ Game state failed to load after 10 seconds')
-        console.log('Debug - gameId:', gameId, 'loading:', loading, 'gameState:', gameState)
-        alert('Failed to connect to game. Please try again.')
-        router.push('/lobby')
-      }, 10000)
+        console.error('⚠️ Loading timeout after 15 seconds')
+        console.log('Debug - isInWaitingRoom:', isInWaitingRoom, 'isSpectator:', isSpectator, 'gameState:', gameState)
+        setLoading(false)
+        if (!isInWaitingRoom && !isSpectator && !gameState) {
+          setConnectionErrorMessage('Failed to connect to game. The server might be busy or the room might not exist.')
+          setShowConnectionError(true)
+        }
+      }, 15000)
 
       return () => clearTimeout(timeout)
     }
-  }, [loading, gameState, gameId, router])
+  }, [loading, isInWaitingRoom, isSpectator, gameState])
 
   // Deduct stake when game transitions to countdown/active
   const [stakeDeducted, setStakeDeducted] = useState(false)
@@ -273,21 +243,8 @@ export default function GamePage() {
       }
     }
 
-    // Handle queued players when game finishes
-    if (playerState === 'queue' && gameState.status === 'finished' && !queueRedirectRef.current) {
-      console.log('🎮 Game finished, redirecting queued player to new game...')
-      queueRedirectRef.current = true // Prevent multiple redirects
-      
-      // Reload the page to join a new game
-      setTimeout(() => {
-        window.location.href = `/game/${roomId}`
-      }, 2000) // Wait 2 seconds before redirecting
-      
-      return // Don't process win/lose logic for queued players
-    }
-
-    // Check if game finished (for active players only)
-    if (gameState.status === 'finished' && gameState.winner_id && playerState === 'playing') {
+    // Check if game finished
+    if (gameState.status === 'finished' && gameState.winner_id) {
       console.log('🏁 Game finished! Winner:', gameState.winner_id)
       
       if (gameState.winner_id === user?.id) {
@@ -295,10 +252,7 @@ export default function GamePage() {
         const prize = gameState.net_prize || gameState.prize_pool
         setWinAmount(prize)
         
-        // Check if it's an auto-win (opponent left)
-        if (gameState.players.length === 1) {
-          setAutoWin(true)
-        }
+        // Note: Auto-win when opponent left
         
         console.log('🎉 You won!', prize)
         setShowWinDialog(true)
@@ -331,7 +285,7 @@ export default function GamePage() {
         }, 8000)
       }
     }
-  }, [gameState?.status, gameState?.winner_id, user, playerState, roomId, router])
+  }, [gameState?.status, gameState?.winner_id, user, roomId, router])
 
   // REMOVED: Auto-mark feature - Players must manually mark numbers
 
@@ -489,6 +443,40 @@ export default function GamePage() {
     return roomData?.name || 'Bingo Room'
   }
 
+  // Helper functions for enhanced waiting room
+  const getGameLevelColor = (level: string) => {
+    switch (level?.toLowerCase()) {
+      case 'easy': return 'from-green-500 to-green-600'
+      case 'medium': return 'from-blue-500 to-blue-600'
+      case 'hard': return 'from-red-500 to-red-600'
+      default: return 'from-blue-500 to-blue-600'
+    }
+  }
+
+  const getGameLevelTheme = (level: string) => {
+    switch (level?.toLowerCase()) {
+      case 'easy': return { bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-200' }
+      case 'medium': return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' }
+      case 'hard': return { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-200' }
+      default: return { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' }
+    }
+  }
+
+  const generateInviteLink = () => {
+    const inviteUrl = `https://t.me/BingoXOfficialBot?start=join_room_${roomId}`
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setInviteToastVisible(true)
+      setTimeout(() => setInviteToastVisible(false), 3000)
+    })
+  }
+
+
+  const getRandomEmoji = (username: string) => {
+    const emojis = ['🎮', '🎯', '🎲', '🎪', '🎨', '🎭', '🎺', '🎸', '🎹', '🎤']
+    const index = username.length % emojis.length
+    return emojis[index]
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -523,7 +511,6 @@ export default function GamePage() {
   }
 
   const gameStatus = gameState.status
-  const countdownTime = gameState.countdown_time
   const calledNumbers = gameState.called_numbers
   const latestNumber = gameState.latest_number
   const players = gameState.players.length
@@ -554,51 +541,154 @@ export default function GamePage() {
 
       <div className="max-w-2xl mx-auto px-4 py-3">
 
-        {/* Waiting for Players State */}
-        {gameStatus === 'waiting' && (
-          <div className="space-y-4">
-            {/* Current Game Section */}
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Trophy className="w-6 h-6 text-blue-600" />
+        {/* Enhanced Waiting Room System */}
+        {(gameStatus === 'waiting' || isInWaitingRoom) && (
+          <div className="space-y-4 animate-in fade-in duration-500">
+            
+            {/* Invite Toast */}
+            {inviteToastVisible && (
+              <div className="fixed top-4 left-4 right-4 z-50 animate-in slide-in-from-top">
+                <div className="max-w-md mx-auto bg-green-500 text-white rounded-xl p-4 shadow-lg">
+                  <p className="text-sm font-medium">Invite link copied to clipboard!</p>
                 </div>
-                <h2 className="text-lg font-bold text-slate-900">Waiting Room</h2>
+              </div>
+            )}
+
+            {/* Countdown Overlay */}
+            {waitingRoomState?.countdown && waitingRoomState.countdown <= 10 && (
+              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-12 text-center shadow-2xl max-w-sm w-full mx-4">
+                  <div className="text-8xl font-black text-blue-600 mb-4 animate-pulse">
+                    {waitingRoomState.countdown}
+                  </div>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Game Starting!</h3>
+                  <p className="text-slate-600">Get ready to play...</p>
+                  <div className="w-full bg-slate-200 rounded-full h-2 mt-6">
+                    <div 
+                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${((10 - waitingRoomState.countdown) / 10) * 100}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Game Level Header */}
+            <div className={`bg-gradient-to-r ${getGameLevelColor(waitingRoomState?.gameLevel || 'medium')} rounded-xl p-4 text-white shadow-lg transition-all duration-500`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <Trophy className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">
+                      {waitingRoomState?.gameLevel ? `${waitingRoomState.gameLevel.toUpperCase()} Level` : 'MEDIUM Level'}
+                    </h2>
+                    <p className="text-white/80 text-sm">BingoX Waiting Room</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold">{Math.max(waitingRoomState?.currentPlayers || 0, isInWaitingRoom ? 1 : 0)}</div>
+                  <div className="text-white/80 text-sm">/ {waitingRoomState?.maxPlayers || 8}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-lg ${getGameLevelTheme(waitingRoomState?.gameLevel || 'medium').bg}`}>
+                  <Users className={`w-5 h-5 ${getGameLevelTheme(waitingRoomState?.gameLevel || 'medium').text}`} />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">Players & Status</h3>
               </div>
               
-              <div className="space-y-6">
-                {/* Players in Lobby */}
+              <div className="space-y-4">
+                {/* Compact Players List */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Users className="w-4 h-4" />
-                      <span>Players in Lobby</span>
+                      <span>Players ({Math.max(waitingRoomState?.currentPlayers || 0, isInWaitingRoom ? 1 : 0)}/{waitingRoomState?.maxPlayers || 8})</span>
                     </div>
-                    <span className="text-2xl font-bold text-blue-600">
-                      {players}
-                    </span>
                   </div>
+
+                  {/* Simplified Players Display */}
+                  {(waitingRoomState?.players && waitingRoomState.players.length > 0) || isInWaitingRoom ? (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {/* Show current user first if in waiting room */}
+                      {isInWaitingRoom && user && (
+                        <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border-2 border-green-300">
+                          <div className="w-4 h-4 bg-green-600 rounded-full flex items-center justify-center text-white text-xs">
+                            {getRandomEmoji(user.username || 'You')}
+                          </div>
+                          {user.username || 'You'} (You)
+                        </div>
+                      )}
+                      {/* Show other players */}
+                      {waitingRoomState?.players?.map((player: any, index: number) => (
+                        <div key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
+                          <div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs">
+                            {getRandomEmoji(player.username)}
+                          </div>
+                          {player.username}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-slate-500">
+                      <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                      <p className="text-sm">Waiting for players to join...</p>
+                    </div>
+                  )}
+
+                  {/* Spectators List */}
+                  {waitingRoomState?.spectators && waitingRoomState.spectators.length > 0 && (
+                    <div className="border-t pt-4">
+                      <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
+                        <Star className="w-4 h-4" />
+                        <span>Watching ({waitingRoomState.spectators.length})</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {waitingRoomState.spectators.map((spectator: any, index: number) => (
+                          <div key={index} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
+                            {spectator.username}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
-                  {/* Waiting for Players Status */}
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                      <span className="font-bold text-blue-700">Waiting for players...</span>
+                  {/* Compact Waiting Status */}
+                  {waitingRoomState?.countdown ? (
+                    <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg p-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Clock className="w-4 h-4 text-orange-600" />
+                        <span className="font-medium text-orange-700">Starting in {waitingRoomState.countdown}s</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-blue-600 text-center">
-                      Game starts when enough players join
-                    </p>
-                  </div>
+                  ) : (
+                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
+                        <span className="font-medium text-blue-700">Waiting for players...</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
-                {/* Prize Pool */}
+                {/* Compact Prize Pool */}
                 <div>
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-2">
-                    <DollarSign className="w-4 h-4" />
-                    <span>Prize Pool</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
+                      <Trophy className="w-4 h-4" />
+                      <span>Prize Pool</span>
+                    </div>
+                    <div className="text-xs text-slate-500">Updates live</div>
                   </div>
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
-                    <div className="text-2xl font-bold text-emerald-600">{formatCurrency(prizePool)}</div>
+                  <div className={`bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-3 transition-all duration-500 ${prizePoolAnimation ? 'scale-105 shadow-lg' : ''}`}>
+                    <div className="text-2xl font-bold text-emerald-600 transition-all duration-300">
+                      {gameState ? formatCurrency(gameState.prize_pool) : (roomData ? formatCurrency(roomData.prize_pool) : 'Loading...')}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -606,239 +696,158 @@ export default function GamePage() {
             
             {/* Action Buttons */}
             <div className="space-y-3">
+              {/* Invite Friend Button */}
               <button 
-                onClick={() => router.push('/lobby')}
-                className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                onClick={generateInviteLink}
+                className="w-full bg-gradient-to-r from-purple-500 to-purple-600 text-white py-3 rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back to Lobby</span>
+                <Star className="w-4 h-4" />
+                <span>Invite a Friend</span>
               </button>
-              
-              <button 
-                onClick={() => setShowLeaveDialog(true)}
-                className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <LogOut className="w-5 h-5" />
-                <span>Leave Game</span>
-              </button>
+
+
+              {/* Secondary Actions */}
+              <div className="grid grid-cols-1 gap-3">
+                <button 
+                  onClick={() => {
+                    if (isInWaitingRoom) {
+                      leaveWaitingRoom()
+                    }
+                    router.push('/lobby')
+                  }}
+                  className="bg-slate-600 text-white py-3 rounded-xl font-medium hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to Lobby</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Countdown State - Show on same page */}
-        {gameStatus === 'countdown' && (
-          <div className="space-y-4">
-            {/* Game Info Section */}
+        {/* Enhanced Spectator Mode */}
+        {isSpectator && (
+          <div className="space-y-4 animate-in fade-in duration-500">
+            {/* Spectator Header */}
+            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-4 text-white shadow-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <Star className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Spectator Mode</h2>
+                    <p className="text-white/80 text-sm">Watching live game</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-2xl font-bold">LIVE</div>
+                  <div className="text-white/80 text-sm">Game in progress</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Game Progress */}
             <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
-                <div className={`p-2 rounded-lg ${countdownTime > 10 ? 'bg-purple-100' : 'bg-green-100'}`}>
-                  <Trophy className={`w-6 h-6 ${countdownTime > 10 ? 'text-purple-600' : 'text-green-600'}`} />
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Trophy className="w-6 h-6 text-purple-600" />
                 </div>
-                <h2 className="text-lg font-bold text-slate-900">
-                  {countdownTime > 10 ? 'Waiting for Players' : 'Game Starting'}
-                </h2>
+                <h3 className="text-lg font-bold text-slate-900">Game Progress</h3>
               </div>
-              
-              <div className="space-y-4">
-                {/* Players */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                    <Users className="w-4 h-4" />
-                    <span>Players</span>
-                  </div>
-                  <span className="text-lg font-bold text-slate-900">{players}</span>
-                </div>
-                
-                {/* Prize Pool */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                    <DollarSign className="w-4 h-4" />
-                    <span>Prize Pool</span>
-                  </div>
-                  <span className="text-lg font-bold text-emerald-600">{formatCurrency(prizePool)}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Countdown Progress Box */}
-            <div className={`rounded-xl p-8 border-2 shadow-lg ${
-              countdownTime > 10 
-                ? 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200' 
-                : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200'
-            }`}>
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <Clock className={`w-8 h-8 ${countdownTime > 10 ? 'text-purple-600' : 'text-blue-600'}`} />
-                <h2 className="text-2xl font-bold text-slate-900">
-                  {countdownTime > 10 ? 'Waiting' : 'Starting In'}
-                </h2>
-              </div>
-              
-              <div className="text-center mb-6">
-                <div className={`text-7xl font-black mb-2 ${countdownTime > 10 ? 'text-purple-600' : 'text-blue-600'}`}>
-                  {countdownTime}
-                </div>
-                <p className="text-slate-600 font-medium">
-                  seconds
-                </p>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden mb-3">
-                <div 
-                  className={`h-4 rounded-full transition-all duration-1000 ease-linear ${
-                    countdownTime > 10 
-                      ? 'bg-gradient-to-r from-purple-500 to-indigo-600' 
-                      : 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                  }`}
-                  style={{ 
-                    width: countdownTime > 10 
-                      ? `${((15 - countdownTime) / 15) * 100}%`
-                      : `${((10 - countdownTime) / 10) * 100}%` 
-                  }}
-                ></div>
-              </div>
-              
-              <p className="text-center text-sm text-slate-600">
-                {countdownTime > 10 
-                  ? 'Waiting for more players to join...' 
-                  : 'Get ready! The game is about to begin...'}
-              </p>
-            </div>
+              {gameState && (
+                <div className="space-y-6">
+                  {/* Game Status */}
+                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-xl p-4">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <div className="w-3 h-3 bg-purple-600 rounded-full animate-pulse"></div>
+                      <span className="font-bold text-purple-700">
+                        {gameState.status === 'active' ? 'Game Active' : 
+                         gameState.status === 'finished' ? 'Game Finished' : 
+                         'Game Starting'}
+                      </span>
+                    </div>
+                    {gameState.status === 'finished' && (
+                      <p className="text-sm text-purple-600 text-center">
+                        Redirecting to new game in 3 seconds...
+                      </p>
+                    )}
+                  </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              <button 
+                  {/* Game Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 rounded-lg p-4 text-center">
+                      <div className="text-2xl font-bold text-slate-900">{gameState.players?.length || 0}</div>
+                      <div className="text-sm text-slate-600">Active Players</div>
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-4 text-center">
+                      <div className="text-2xl font-bold text-emerald-600">
+                        {gameState.called_numbers?.length || 0}/75
+                      </div>
+                      <div className="text-sm text-slate-600">Numbers Called</div>
+                    </div>
+                  </div>
+
+                  {/* Prize Pool */}
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
+                    <div className="text-center">
+                      <div className="text-sm text-emerald-600 mb-1">Prize Pool</div>
+                      <div className="text-3xl font-bold text-emerald-600">
+                        {formatCurrency(gameState.prize_pool)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Latest Number Called */}
+                  {gameState.latest_number && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="text-center">
+                        <div className="text-sm text-blue-600 mb-2">Latest Number</div>
+                        <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white mx-auto">
+                          {gameState.latest_number.number}
+                        </div>
+                        <div className="text-lg font-bold text-blue-600 mt-2">
+                          {gameState.latest_number.letter}{gameState.latest_number.number}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Progress Bar */}
+                  {gameState.called_numbers && (
+                    <div>
+                      <div className="flex justify-between text-sm text-slate-600 mb-2">
+                        <span>Game Progress</span>
+                        <span>{Math.round((gameState.called_numbers.length / 75) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-3">
+                        <div 
+                          className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-500"
+                          style={{ width: `${(gameState.called_numbers.length / 75) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Back to Lobby */}
+              <button
                 onClick={() => router.push('/lobby')}
-                className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 mt-6"
               >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back to Lobby</span>
-              </button>
-              
-              <button 
-                onClick={() => setShowLeaveDialog(true)}
-                className="w-full bg-red-500 text-white py-3.5 rounded-xl font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <LogOut className="w-5 h-5" />
-                <span>Leave Game</span>
+                <ArrowLeft className="w-4 h-4" />
+                Back to Lobby
               </button>
             </div>
           </div>
         )}
 
-        {/* Queue State */}
-        {playerState === 'queue' && (
-          <div className="space-y-4">
-            {/* Queue Status */}
-            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl p-8 border-2 border-purple-200 shadow-lg">
-              <div className="flex items-center justify-center gap-3 mb-6">
-                {gameState?.status === 'finished' ? (
-                  <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
-                ) : (
-                  <Clock className="w-10 h-10 text-purple-600" />
-                )}
-                <h2 className="text-2xl font-bold text-slate-900">
-                  {gameState?.status === 'finished' ? 'Joining New Game...' : 'In Queue'}
-                </h2>
-              </div>
-              
-              <p className="text-center text-lg text-slate-700 mb-6">
-                {gameState?.status === 'finished' 
-                  ? 'Game finished! Redirecting you to a new game...' 
-                  : "You'll join the next game when this one ends"}
-              </p>
-              
-              <div className="bg-white rounded-lg p-6 mb-6">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
-                  <Trophy className="w-4 h-4" />
-                  <span>{gameState?.status === 'finished' ? 'Game Finished' : 'Current Game Progress'}</span>
-                </div>
-                
-                {/* Game Progress Bar */}
-                <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden mb-2">
-                  <div 
-                    className={`h-3 rounded-full transition-all duration-500 ${
-                      gameState?.status === 'finished' 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-600' 
-                        : 'bg-gradient-to-r from-purple-500 to-indigo-600'
-                    }`}
-                    style={{ width: gameState?.status === 'finished' ? '100%' : `${Math.min((calledNumbers.length / 75) * 100, 100)}%` }}
-                  ></div>
-                </div>
-                
-                <p className="text-xs text-slate-500 text-center">
-                  {gameState?.status === 'finished' 
-                    ? 'Winner claimed BINGO!' 
-                    : `${calledNumbers.length} / 75 numbers called`}
-                </p>
-              </div>
-              
-              <div className="bg-purple-100 rounded-lg p-4 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 text-slate-700">
-                    <Users className="w-4 h-4" />
-                    <span>Players in game:</span>
-                  </div>
-                  <span className="font-bold text-slate-900">{players}</span>
-                </div>
-              </div>
-              
-              <div className="text-sm text-slate-600 text-center space-y-1">
-                <div>Your stake: <span className="font-bold text-purple-600">{formatCurrency(stake)}</span></div>
-                <div>Room: <span className="font-semibold">{getRoomName()}</span></div>
-              </div>
-            </div>
-            
-            {/* Action Buttons */}
-            <div className="space-y-3">
-              <button 
-                onClick={() => router.push('/lobby')}
-                disabled={gameState?.status === 'finished'}
-                className={`w-full py-3.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
-                  gameState?.status === 'finished'
-                    ? 'bg-slate-400 text-slate-600 cursor-not-allowed'
-                    : 'bg-slate-700 text-white hover:bg-slate-800'
-                }`}
-              >
-                <ArrowLeft className="w-5 h-5" />
-                <span>Back to Lobby</span>
-              </button>
-              
-              <button 
-                onClick={() => setShowLeaveDialog(true)}
-                disabled={gameState?.status === 'finished'}
-                className={`w-full py-3.5 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
-                  gameState?.status === 'finished'
-                    ? 'bg-slate-400 text-slate-600 cursor-not-allowed'
-                    : 'bg-red-500 text-white hover:bg-red-600'
-                }`}
-              >
-                <LogOut className="w-5 h-5" />
-                <span>Leave Queue</span>
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* Spectator Mode */}
-        {playerState === 'spectator' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-sm text-center">
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
-                  <Clock className="w-10 h-10 text-slate-600" />
-                </div>
-              </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-4">Spectator Mode</h2>
-              <p className="text-slate-600">
-                Waiting for game to start...
-              </p>
-            </div>
-          </div>
-        )}
 
         {/* Active Game */}
-        {gameStatus === 'active' && playerState === 'playing' && (
+        {gameStatus === 'active' && (
           <div className="space-y-3 pb-4">
             {/* Stake & Prize Info - Clean header */}
             <div className="text-center text-sm text-slate-700 font-medium py-2">
@@ -1119,6 +1128,49 @@ export default function GamePage() {
                   className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors"
                 >
                   Stay
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Connection Error Modal */}
+        {showConnectionError && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+              <div className="flex justify-center mb-6">
+                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                  <XCircle className="w-8 h-8 text-red-500" />
+                </div>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-center mb-4 text-slate-900">Connection Failed</h2>
+              
+              <p className="text-center text-slate-600 mb-6">
+                {connectionErrorMessage}
+              </p>
+              
+              <div className="space-y-3">
+                <button 
+                  onClick={() => {
+                    setShowConnectionError(false)
+                    setLoading(true)
+                    // Retry connection
+                    window.location.reload()
+                  }}
+                  className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold hover:bg-blue-600 transition-colors"
+                >
+                  Try Again
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    setShowConnectionError(false)
+                    router.push('/lobby')
+                  }}
+                  className="w-full bg-slate-600 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
+                >
+                  Back to Lobby
                 </button>
               </div>
             </div>
