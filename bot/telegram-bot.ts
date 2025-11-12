@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { Telegraf, Markup } from 'telegraf'
 import { supabase } from '../lib/supabase.js'
+import { setupLevelHandlers } from '../lib/level-handlers.js'
 const BOT_TOKEN = process.env.BOT_TOKEN!
 const MINI_APP_URL = process.env.MINI_APP_URL || 'http://localhost:3000'
 
@@ -895,18 +896,23 @@ bot.catch((err, ctx) => {
 
 // Launch bot
 export async function startBot() {
+  // Setup level handlers
+  setupLevelHandlers(bot)
+  
   // Set bot commands for the menu
   await bot.telegram.setMyCommands([
     { command: 'start', description: '🎮 Start the bot and register' },
     { command: 'play', description: '🎯 Play bingo game' },
+    { command: 'levels', description: '🎯 View game difficulty levels' },
     { command: 'balance', description: '💰 Check your balance' },
+    { command: 'leaderboard', description: '🏆 View leaderboard rankings' },
+    { command: 'mystats', description: '📊 View your XP and statistics' },
     { command: 'deposit', description: '💸 Deposit funds' },
     { command: 'withdraw', description: '💵 Withdraw winnings' },
     { command: 'account', description: '👤 View your account' },
     { command: 'stats', description: '📊 View your statistics' },
     { command: 'history', description: '📜 View game history' },
     { command: 'rooms', description: '🏠 View available rooms' },
-    { command: 'leaderboard', description: '🏆 View top players' },
     { command: 'help', description: '❓ Get help and info' }
   ])
 
@@ -914,6 +920,7 @@ export async function startBot() {
   console.log('✅ Telegram bot started successfully')
   console.log('📱 Inline mode enabled')
   console.log('🎮 All commands registered')
+  console.log('🏆 Level system and leaderboard enabled')
 
   // Enable graceful stop
   process.once('SIGINT', () => bot.stop('SIGINT'))

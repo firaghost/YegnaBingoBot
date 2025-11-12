@@ -17,7 +17,8 @@ export default function AdminRoomsPage() {
     max_players: '',
     description: '',
     color: 'from-blue-500 to-blue-700',
-    prize_pool: ''
+    prize_pool: '',
+    default_level: 'medium'
   })
 
   useEffect(() => {
@@ -67,7 +68,8 @@ export default function AdminRoomsPage() {
       max_players: '',
       description: '',
       color: 'from-blue-500 to-blue-700',
-      prize_pool: ''
+      prize_pool: '',
+      default_level: 'medium'
     })
     setShowCreateModal(true)
   }
@@ -81,7 +83,8 @@ export default function AdminRoomsPage() {
       max_players: room.max_players.toString(),
       description: room.description || '',
       color: room.color || 'from-blue-500 to-blue-700',
-      prize_pool: room.prize_pool.toString()
+      prize_pool: room.prize_pool.toString(),
+      default_level: room.default_level || 'medium'
     })
     setShowCreateModal(true)
   }
@@ -98,6 +101,7 @@ export default function AdminRoomsPage() {
         description: formData.description,
         color: formData.color,
         prize_pool: parseFloat(formData.prize_pool),
+        default_level: formData.default_level,
         status: 'active',
         current_players: 0
       }
@@ -128,20 +132,35 @@ export default function AdminRoomsPage() {
   }
 
   const handleDeleteRoom = async (roomId: string) => {
-    if (!confirm('Are you sure you want to delete this room?')) return
+    // Simple confirmation
+    if (!confirm(`Are you sure you want to delete room "${roomId}"?\n\nThis will permanently delete the room and all associated games, players, and data.\n\nThis action cannot be undone.`)) {
+      return
+    }
 
     try {
+      // Direct deletion - CASCADE constraints will handle associated data
       const { error } = await supabase
         .from('rooms')
         .delete()
         .eq('id', roomId)
 
-      if (error) throw error
+      if (error) {
+        console.error('Error deleting room:', error)
+        
+        // Check if it's still a foreign key constraint error
+        if (error.code === '23503') {
+          alert(`Cannot delete room: Foreign key constraint error.\n\nPlease run the database fix first:\n1. Go to Supabase SQL Editor\n2. Run: supabase/fix_foreign_key_constraints.sql\n\nThis will enable automatic deletion of associated data.`)
+        } else {
+          alert(`Failed to delete room: ${error.message}`)
+        }
+        return
+      }
+
       alert('Room deleted successfully!')
       fetchRooms()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting room:', error)
-      alert('Failed to delete room')
+      alert(`Failed to delete room: ${error?.message || 'Unknown error'}`)
     }
   }
 
@@ -208,6 +227,13 @@ export default function AdminRoomsPage() {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-400">Current Players:</span>
                     <span className="font-bold text-blue-400">{room.current_players || 0}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Default Level:</span>
+                    <span className="font-bold text-white">
+                      {room.default_level === 'easy' ? '🟢 Easy' : 
+                       room.default_level === 'hard' ? '🔴 Hard' : '🟡 Medium'}
+                    </span>
                   </div>
                 </div>
 
@@ -351,6 +377,21 @@ export default function AdminRoomsPage() {
                   <option value="from-yellow-500 to-yellow-700">Yellow</option>
                   <option value="from-pink-500 to-pink-700">Pink</option>
                 </select>
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2">Default Difficulty Level</label>
+                <select
+                  value={formData.default_level}
+                  onChange={(e) => setFormData({...formData, default_level: e.target.value})}
+                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                >
+                  <option value="easy">🟢 Easy (1s intervals, 3 matches, 10 XP)</option>
+                  <option value="medium">🟡 Medium (2s intervals, 5 matches, 25 XP)</option>
+                  <option value="hard">🔴 Hard (3s intervals, 7 matches, 50 XP)</option>
+                </select>
+                <p className="text-gray-400 text-sm mt-1">
+                  Players can still choose their preferred difficulty when joining
+                </p>
               </div>
               <div className="flex gap-3 pt-4">
                 <button
