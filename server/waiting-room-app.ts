@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import { createServer } from 'http'
+import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
 import WaitingRoomSocketServer from './waiting-room-server'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
@@ -15,8 +16,18 @@ app.use(cors({
 }))
 app.use(express.json())
 
+// Create Socket.IO instance
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+})
+
 // Initialize Socket.IO server
-const waitingRoomSocketServer = new WaitingRoomSocketServer(httpServer)
+const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -47,15 +47,8 @@ export class WaitingRoomSocketServer {
   private playerRooms = new Map<string, string>() // socketId -> roomId
   private roomSockets = new Map<string, Set<string>>() // roomId -> Set<socketId>
 
-  constructor(httpServer: HttpServer) {
-    this.io = new SocketServer(httpServer, {
-      cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000",
-        methods: ["GET", "POST"],
-        credentials: true
-      },
-      transports: ['websocket', 'polling']
-    })
+  constructor(io: SocketServer<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>) {
+    this.io = io
 
     this.setupEventHandlers()
     this.startPeriodicCleanup()

@@ -17,11 +17,13 @@ interface InGameServerToClientEvents {
   
   // Bingo events
   bingo_claimed: (data: { username: string; pattern: string }) => void
-  bingo_winner: (data: { username: string; pattern: string; winningCells: number[] }) => void
-  invalid_claim: (data: { reason: string; details: any }) => void
+  bingo_winner: (data: { username: string; pattern: string; winningCells: number[]; timestamp?: string }) => void
+  invalid_claim: (data: { reason: string; details: any; timestamp?: string }) => void
+  late_claim: (data: { message: string; winner: string; timestamp: string }) => void
+  valid_but_late: (data: { message: string; details: any; timestamp: string }) => void
   
   // Game end events
-  game_over: (data: { winner: string | null; reason: string; finalNumbers: number[]; duration: number }) => void
+  game_over: (data: { winner: string | null; reason: string; finalNumbers: number[]; duration: number; timestamp?: string }) => void
   
   // Error events
   game_error: (data: { message: string }) => void
@@ -56,15 +58,8 @@ export class InGameSocketServer {
   private gameRooms = new Map<string, Set<string>>() // roomId -> Set<socketId>
   private socketToRoom = new Map<string, string>() // socketId -> roomId
 
-  constructor(httpServer: HttpServer) {
-    this.io = new SocketServer(httpServer, {
-      cors: {
-        origin: process.env.FRONTEND_URL || "http://localhost:3000",
-        methods: ["GET", "POST"],
-        credentials: true
-      },
-      transports: ['websocket', 'polling']
-    })
+  constructor(io: SocketServer<InGameClientToServerEvents, InGameServerToClientEvents, InGameInterServerEvents, InGameSocketData>) {
+    this.io = io
 
     this.setupEventHandlers()
     console.log('🎮 In-Game Socket Server initialized')
@@ -310,7 +305,7 @@ export class InGameSocketServer {
     }
 
     // Try to reconnect player
-    const player = await gameStateManager.handlePlayerReconnect(roomId, username, socket.id)
+    const player = gameStateManager.handlePlayerReconnect(roomId, username, socket.id)
     
     if (player) {
       // Successful reconnect
@@ -355,13 +350,13 @@ export class InGameSocketServer {
   }
 
   /**
-   * Handle bingo claim
+   * Handle bingo claim with atomic winner validation
    */
   private async handleBingoClaim(socket: any, data: { 
     username: string; 
     claimedCells: number[]; 
     bingoPattern: string; 
-    board: number[][] 
+    board: number[][]
   }): Promise<void> {
     const { username, claimedCells, bingoPattern, board } = data
     const roomId = socket.data.roomId
@@ -371,11 +366,7 @@ export class InGameSocketServer {
       return
     }
 
-    const gameState = gameStateManager.getGameState(roomId)
-    if (!gameState || gameState.status !== 'in_progress') {
-      socket.emit('game_error', { message: 'Game not in progress' })
-      return
-    }
+    console.log(`🎯 Bingo claim from ${username} in room ${roomId}: ${bingoPattern}`)
 
     const claim: BingoClaim = {
       username,
@@ -384,50 +375,71 @@ export class InGameSocketServer {
       board
     }
 
-    // Validate claim
+    // Validate the claim with atomic winner logic
     const validation = await gameStateManager.validateBingoClaim(roomId, claim)
 
-    if (validation.isValid) {
-      // Valid bingo claim - end game
+    if (validation.isLateClaim) {
+      // Late claim - winner already determined
+      socket.emit('late_claim', {
+        message: 'Winner already determined',
+        winner: validation.details.winner,
+        timestamp: new Date().toISOString()
+      })
+      console.log(`⏰ Late bingo claim from ${username} in room ${roomId} - winner already determined`)
+      return
+    }
+
+    if (validation.isValid && validation.isWinner) {
+      // ATOMIC WINNER - First valid claim wins
       await gameStateManager.endGame(roomId, username, 'bingo_claimed')
 
-      // Notify all players
+      // Notify all players of the winner
       this.io.to(roomId).emit('bingo_winner', {
         username,
         pattern: bingoPattern,
-        winningCells: claimedCells
+        winningCells: claimedCells,
+        timestamp: new Date().toISOString()
       })
 
-      const gameSnapshot = gameStateManager.getGameSnapshot(roomId)
-      const duration = gameSnapshot ? Date.now() - new Date(gameSnapshot.startedAt).getTime() : 0
+      const gameState = gameStateManager.getGameState(roomId)
+      const duration = gameState ? Date.now() - gameState.started_at.getTime() : 0
 
       this.io.to(roomId).emit('game_over', {
         winner: username,
         reason: 'bingo_claimed',
-        finalNumbers: gameState.numbers_called,
-        duration: Math.floor(duration / 1000)
+        finalNumbers: gameState?.numbers_called || [],
+        duration: Math.floor(duration / 1000),
+        timestamp: new Date().toISOString()
       })
 
-      console.log(`🏆 BINGO! ${username} won in room ${roomId} with ${bingoPattern}`)
+      console.log(`🏆 ATOMIC WINNER! ${username} won in room ${roomId} with ${bingoPattern}`)
 
       // Schedule cleanup
       setTimeout(() => {
         this.cleanupGameRoom(roomId)
-      }, 30000) // 30 seconds to view results
+      }, 5000)
+
+    } else if (validation.isValid && !validation.isWinner) {
+      // Valid claim but someone else already won
+      socket.emit('valid_but_late', {
+        message: 'Your bingo was valid, but someone else claimed victory first',
+        details: validation.details,
+        timestamp: new Date().toISOString()
+      })
+      console.log(`✅❌ Valid but late bingo claim from ${username} in room ${roomId}`)
 
     } else {
       // Invalid claim
       socket.emit('invalid_claim', {
         reason: 'Invalid bingo claim',
-        details: validation.details
+        details: validation.details,
+        timestamp: new Date().toISOString()
       })
-
       console.log(`❌ Invalid bingo claim from ${username} in room ${roomId}:`, validation.details)
     }
   }
 
   /**
-   * Handle get game state
    */
   private async handleGetGameState(socket: any, data: { roomId: string }): Promise<void> {
     const { roomId } = data

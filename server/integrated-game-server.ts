@@ -1,5 +1,6 @@
 import express from 'express'
 import { createServer } from 'http'
+import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
 import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
@@ -16,9 +17,19 @@ app.use(cors({
 }))
 app.use(express.json())
 
-// Initialize both socket servers on the same HTTP server
-const waitingRoomSocketServer = new WaitingRoomSocketServer(httpServer)
-const inGameSocketServer = new InGameSocketServer(httpServer)
+// Create a single Socket.IO instance
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+})
+
+// Initialize both socket servers with the shared Socket.IO instance
+const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
+const inGameSocketServer = new InGameSocketServer(io as any)
 
 // Connect waiting room to in-game transition
 class GameTransitionManager {

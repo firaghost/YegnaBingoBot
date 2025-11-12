@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import { createServer } from 'http'
+import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
 import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
@@ -25,9 +26,24 @@ app.use(express.json())
 console.log('🚀 BingoX Production Server Starting...')
 console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'https://yegnagame.vercel.app'}`)
 
-// Initialize both socket servers on the same HTTP server
-const waitingRoomSocketServer = new WaitingRoomSocketServer(httpServer)
-const inGameSocketServer = new InGameSocketServer(httpServer)
+// Create a single Socket.IO instance
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: [
+      process.env.FRONTEND_URL || "http://localhost:3000",
+      "https://yegnagame.vercel.app",
+      /\.vercel\.app$/,
+      /localhost:\d+$/
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+})
+
+// Initialize both socket servers with the shared Socket.IO instance
+const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
+const inGameSocketServer = new InGameSocketServer(io as any)
 
 // Connect waiting room to in-game transition
 class GameTransitionManager {
@@ -243,8 +259,8 @@ httpServer.listen(PORT, () => {
   console.log('🎮 ========================================')
   console.log('')
   console.log(`🚀 Server running on port ${PORT}`)
-  console.log(`🌐 Health check: https://your-railway-domain.railway.app/health`)
-  console.log(`📊 Admin stats: https://your-railway-domain.railway.app/api/admin/stats`)
+  console.log(`🌐 Health check: https://yegnabingobot-production.up.railway.app/health`)
+  console.log(`📊 Admin stats: https://yegnabingobot-production.up.railway.app/api/admin/stats`)
   console.log('')
   console.log('🔌 Socket.IO Features Available:')
   console.log('   🏠 Waiting Room System (Phase 1)')

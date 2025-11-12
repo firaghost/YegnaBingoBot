@@ -20,6 +20,8 @@
     "test:waiting-room": "tsx test/waiting-room-test.ts",
     "test:waiting-room-simple": "tsx test/simple-waiting-room-test.ts",
     "test:ingame": "tsx test/ingame-test-suite.ts",
+    "test:atomic-winner": "tsx test/atomic-winner-test.ts",
+    "test:atomic-unit": "tsx test/atomic-winner-unit-test.ts",
     "lint": "next lint",
     "bot": "tsx bot/index.ts"
   },

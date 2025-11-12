@@ -33,6 +33,12 @@ export interface GameState {
   number_call_timer?: NodeJS.Timeout
   reconnect_timers: Map<string, NodeJS.Timeout>
   last_activity: Date
+  // Atomic winner validation
+  winner_claimed: boolean
+  winner_claim_timestamp?: Date
+  // Player tracking for auto-end
+  active_player_count: number
+  min_players_to_continue: number
 }
 
 export interface BingoClaim {
@@ -91,7 +97,12 @@ export class GameStateManager {
         players: new Map(),
         spectators: new Map(),
         reconnect_timers: new Map(),
-        last_activity: new Date()
+        last_activity: new Date(),
+        // Atomic winner validation
+        winner_claimed: false,
+        // Player tracking for auto-end
+        active_player_count: players.length,
+        min_players_to_continue: 1
       }
 
       // Add players to game state and database
@@ -239,116 +250,13 @@ export class GameStateManager {
     const activePlayers = Array.from(game.players.values()).filter(p => p.status === 'active')
     if (activePlayers.length > 0) {
       console.log(`▶️ Resuming number calling for room ${roomId}`)
-      this.startNumberCalling(roomId, onNumberCalled)
+      this.resumeNumberCalling(roomId, onNumberCalled)
     }
-  }
-
-  /**
-   * Handle player disconnect with grace period
-   */
-  async handlePlayerDisconnect(roomId: string, username: string): Promise<void> {
-    const game = activeGames.get(roomId)
-    if (!game) return
-
-    const player = game.players.get(username)
-    if (!player) return
-
-    // Set reconnect deadline (30 seconds)
-    const reconnectDeadline = new Date(Date.now() + 30000)
-    player.status = 'disconnected'
-    player.reconnect_deadline = reconnectDeadline
-    player.last_seen = new Date()
-
-    // Update database
-    await this.supabase.rpc('set_player_reconnect_deadline', {
-      p_session_id: game.id,
-      p_username: username,
-      p_grace_seconds: 30
-    })
-
-    // Set reconnect timer
-    const timer = setTimeout(async () => {
-      await this.handleReconnectTimeout(roomId, username)
-    }, 30000)
-
-    game.reconnect_timers.set(username, timer)
-
-    console.log(`🔌 Player ${username} disconnected from room ${roomId}, grace period: 30s`)
-  }
-
-  /**
-   * Handle reconnect timeout
-   */
-  private async handleReconnectTimeout(roomId: string, username: string): Promise<void> {
-    const game = activeGames.get(roomId)
-    if (!game) return
-
-    const player = game.players.get(username)
-    if (!player || player.status !== 'disconnected') return
-
-    // Remove player from active game
-    game.players.delete(username)
-    game.reconnect_timers.delete(username)
-
-    // Update database
-    await this.supabase
-      .from('game_players')
-      .update({ status: 'finished' })
-      .eq('session_id', game.id)
-      .eq('username', username)
-
-    console.log(`⏰ Player ${username} reconnect timeout in room ${roomId}`)
-
-    // Check if game should be paused or ended
-    const activePlayers = Array.from(game.players.values()).filter(p => p.status === 'active')
-    if (activePlayers.length === 0) {
-      this.pauseNumberCalling(roomId)
-    }
-  }
-
-  /**
-   * Handle player reconnect
-   */
-  async handlePlayerReconnect(roomId: string, username: string, socketId: string): Promise<GamePlayer | null> {
-    const game = activeGames.get(roomId)
-    if (!game) return null
-
-    const player = game.players.get(username)
-    if (!player || player.status !== 'disconnected') return null
-
-    // Check if within grace period
-    if (!player.reconnect_deadline || new Date() > player.reconnect_deadline) {
-      return null
-    }
-
-    // Reconnect player
-    player.status = 'active'
-    player.socket_id = socketId
-    player.last_seen = new Date()
-    player.reconnect_deadline = undefined
-
-    // Clear reconnect timer
-    const timer = game.reconnect_timers.get(username)
-    if (timer) {
-      clearTimeout(timer)
-      game.reconnect_timers.delete(username)
-    }
-
-    // Update database
-    const { data } = await this.supabase.rpc('reconnect_player', {
-      p_session_id: game.id,
-      p_username: username,
-      p_socket_id: socketId
-    })
-
-    console.log(`🔄 Player ${username} reconnected to room ${roomId}`)
-
-    // Resume number calling if it was paused
-    return player
   }
 
   /**
    * Add spectator to game
+{{ ... }}
    */
   async addSpectator(roomId: string, username: string, socketId: string): Promise<GamePlayer | null> {
     const game = activeGames.get(roomId)
@@ -379,22 +287,43 @@ export class GameStateManager {
         score: 0
       })
 
-    console.log(`👁️ Spectator ${username} joined room ${roomId}`)
+    console.log(` Spectator ${username} joined room ${roomId}`)
     return spectator
   }
 
   /**
-   * Validate bingo claim
+   * Validate bingo claim with atomic first-come-first-serve logic
    */
-  async validateBingoClaim(roomId: string, claim: BingoClaim): Promise<{ isValid: boolean; details: any }> {
+  async validateBingoClaim(roomId: string, claim: BingoClaim): Promise<{ 
+    isValid: boolean; 
+    details: any; 
+    isWinner: boolean; 
+    isLateClaim: boolean 
+  }> {
     const game = activeGames.get(roomId)
     if (!game) {
-      return { isValid: false, details: { error: 'Game not found' } }
+      return { isValid: false, details: { error: 'Game not found' }, isWinner: false, isLateClaim: false }
+    }
+
+    // ATOMIC CHECK: If winner already claimed, this is a late claim
+    if (game.winner_claimed) {
+      console.log(`⏰ Late bingo claim from ${claim.username} in room ${roomId} - winner already determined`)
+      return { 
+        isValid: false, 
+        details: { error: 'Winner already determined', winner: game.winner }, 
+        isWinner: false, 
+        isLateClaim: true 
+      }
     }
 
     const player = game.players.get(claim.username)
     if (!player || player.status !== 'active') {
-      return { isValid: false, details: { error: 'Player not found or not active' } }
+      return { 
+        isValid: false, 
+        details: { error: 'Player not found or not active' }, 
+        isWinner: false, 
+        isLateClaim: false 
+      }
     }
 
     try {
@@ -407,12 +336,33 @@ export class GameStateManager {
       })
 
       if (!validation || validation.length === 0) {
-        return { isValid: false, details: { error: 'Validation failed' } }
+        return { 
+          isValid: false, 
+          details: { error: 'Validation failed' }, 
+          isWinner: false, 
+          isLateClaim: false 
+        }
       }
 
       const result = validation[0]
+      const isValidClaim = result.is_valid
 
-      // Record the claim
+      // ATOMIC WINNER ASSIGNMENT: Only if claim is valid and no winner yet
+      let isWinner = false
+      if (isValidClaim && !game.winner_claimed) {
+        // Double-check atomically - another claim might have won between checks
+        if (!game.winner_claimed) {
+          game.winner_claimed = true
+          game.winner = claim.username
+          game.winner_claim_timestamp = new Date()
+          player.claimed_at = new Date()
+          player.bingo_pattern = claim.bingo_pattern
+          isWinner = true
+          console.log(`🏆 ATOMIC WINNER: ${claim.username} claimed victory in room ${roomId}`)
+        }
+      }
+
+      // Record the claim in database
       await this.supabase
         .from('bingo_claims')
         .insert({
@@ -421,18 +371,152 @@ export class GameStateManager {
           username: claim.username,
           claimed_cells: claim.claimed_cells,
           bingo_pattern: claim.bingo_pattern,
-          is_valid: result.is_valid,
-          validation_result: result.validation_details
+          is_valid: isValidClaim,
+          validation_result: result.validation_details,
+          is_winner: isWinner,
+          claimed_at: new Date().toISOString()
         })
 
       return {
-        isValid: result.is_valid,
-        details: result.validation_details
+        isValid: isValidClaim,
+        details: result.validation_details,
+        isWinner: isWinner,
+        isLateClaim: false
       }
 
     } catch (error) {
       console.error('Error validating bingo claim:', error)
-      return { isValid: false, details: { error: 'Validation error' } }
+      return { 
+        isValid: false, 
+        details: { error: 'Validation error' }, 
+        isWinner: false, 
+        isLateClaim: false 
+      }
+    }
+  }
+
+  /**
+   * Handle player disconnect with reconnect grace period
+   */
+  handlePlayerDisconnect(roomId: string, username: string): void {
+    const game = activeGames.get(roomId)
+    if (!game) return
+
+    const player = game.players.get(username)
+    if (!player) return
+
+    // Set player as disconnected
+    player.status = 'disconnected'
+    player.last_seen = new Date()
+    player.reconnect_deadline = new Date(Date.now() + 30000) // 30 second grace period
+
+    console.log(`🔌 Player ${username} disconnected from room ${roomId}, grace period: 30s`)
+
+    // Start reconnect timer
+    const reconnectTimer = setTimeout(() => {
+      this.removeDisconnectedPlayer(roomId, username)
+    }, 30000)
+
+    game.reconnect_timers.set(username, reconnectTimer)
+    
+    // Update active player count
+    this.updateActivePlayerCount(roomId)
+  }
+
+  /**
+   * Handle player reconnect within grace period
+   */
+  handlePlayerReconnect(roomId: string, username: string, socketId: string): GamePlayer | null {
+    const game = activeGames.get(roomId)
+    if (!game) return null
+
+    const player = game.players.get(username)
+    if (!player) return null
+
+    // Check if within grace period
+    if (player.reconnect_deadline && new Date() <= player.reconnect_deadline) {
+      // Clear reconnect timer
+      const timer = game.reconnect_timers.get(username)
+      if (timer) {
+        clearTimeout(timer)
+        game.reconnect_timers.delete(username)
+      }
+
+      // Restore player
+      player.status = 'active'
+      player.socket_id = socketId
+      player.last_seen = new Date()
+      player.reconnect_deadline = undefined
+
+      console.log(`🔄 Player ${username} reconnected to room ${roomId}`)
+      
+      // Update active player count
+      this.updateActivePlayerCount(roomId)
+      return player
+    }
+
+    return null
+  }
+
+  /**
+   * Remove disconnected player after grace period
+   */
+  private removeDisconnectedPlayer(roomId: string, username: string): void {
+    const game = activeGames.get(roomId)
+    if (!game) return
+
+    const player = game.players.get(username)
+    if (!player || player.status !== 'disconnected') return
+
+    // Remove player from game
+    game.players.delete(username)
+    game.reconnect_timers.delete(username)
+
+    console.log(`❌ Player ${username} removed from room ${roomId} after grace period`)
+
+    // Update active player count and check for auto-end
+    this.updateActivePlayerCount(roomId)
+    this.checkAutoEndGame(roomId)
+  }
+
+  /**
+   * Update active player count
+   */
+  private updateActivePlayerCount(roomId: string): void {
+    const game = activeGames.get(roomId)
+    if (!game) return
+
+    const activePlayers = Array.from(game.players.values()).filter(p => p.status === 'active')
+    game.active_player_count = activePlayers.length
+    game.last_activity = new Date()
+
+    console.log(`📊 Room ${roomId} active players: ${game.active_player_count}`)
+  }
+
+  /**
+   * Check if game should auto-end due to insufficient players
+   */
+  private async checkAutoEndGame(roomId: string): Promise<void> {
+    const game = activeGames.get(roomId)
+    if (!game || game.status !== 'in_progress') return
+
+    // Auto-end if no active players remain
+    if (game.active_player_count === 0) {
+      console.log(`🏁 Auto-ending game ${roomId} - no active players`)
+      await this.endGame(roomId, null, 'all_players_left')
+      return
+    }
+
+    // Auto-end if only one player remains (they win by default)
+    if (game.active_player_count === 1 && !game.winner_claimed) {
+      const remainingPlayer = Array.from(game.players.values()).find(p => p.status === 'active')
+      if (remainingPlayer) {
+        console.log(`🏁 Auto-ending game ${roomId} - only one player remains: ${remainingPlayer.username}`)
+        game.winner_claimed = true
+        game.winner = remainingPlayer.username
+        game.winner_claim_timestamp = new Date()
+        await this.endGame(roomId, remainingPlayer.username, 'last_player_standing')
+      }
     }
   }
 
@@ -463,7 +547,8 @@ export class GameStateManager {
       .update({
         status: 'finished',
         ended_at: new Date().toISOString(),
-        winner_username: winner
+        winner_username: winner,
+        end_reason: reason
       })
       .eq('id', game.id)
 
