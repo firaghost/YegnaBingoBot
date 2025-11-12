@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
-    // Check if game is still active
+    // Only allow claims on active games
     if (game.status !== 'active') {
       return NextResponse.json(
         { error: 'Game is not active', status: game.status },
@@ -156,8 +156,8 @@ export async function POST(request: NextRequest) {
         net_prize: netPrize
       })
       .eq('id', gameId)
-      .eq('status', 'active') // Only update if still active (race condition protection)
-      .is('winner_id', null) // Only update if no winner yet
+      .eq('status', 'active') // Only update active games (atomic operation)
+      .is('winner_id', null) // Only update if no winner yet (race condition protection)
 
     if (updateError) {
       console.error('Error updating game:', updateError)
@@ -203,13 +203,19 @@ export async function POST(request: NextRequest) {
     console.log(`💵 Gross Prize: ${game.prize_pool} ETB`)
     console.log(`💰 Net Prize (after ${commissionRate}% commission): ${netPrize} ETB`)
 
+    // TODO: Emit socket event to stop number calling and announce winner
+    // This would require socket server integration
+    console.log(`🛑 Game ${gameId} ended - number calling should stop`)
+
     return NextResponse.json({
       success: true,
       message: 'Bingo claimed successfully!',
       prize: netPrize,
       gross_prize: game.prize_pool,
       commission_rate: commissionRate,
-      commission_amount: commissionAmount
+      commission_amount: commissionAmount,
+      winner_id: userId,
+      game_status: 'finished'
     })
   } catch (error) {
     console.error('Error claiming bingo:', error)

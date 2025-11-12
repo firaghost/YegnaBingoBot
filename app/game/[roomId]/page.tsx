@@ -57,22 +57,42 @@ export default function GamePage() {
   // Fetch room data and game configuration
   const fetchRoomData = async () => {
     try {
-      const { data: room, error } = await supabase
+      // Try exact match first, then case-insensitive
+      let { data: room, error } = await supabase
         .from('rooms')
         .select('*')
         .eq('id', roomId)
-        .single()
+        .maybeSingle()
+      
+      // If not found, try case-insensitive search
+      if (!room && roomId) {
+        const { data: rooms } = await supabase
+          .from('rooms')
+          .select('*')
+          .ilike('id', roomId)
+          .limit(1)
+        
+        room = rooms?.[0] || null
+      }
+      
+      if (!room) {
+        throw new Error(`Room '${roomId}' not found`)
+      }
 
       if (error) throw error
       setRoomData(room)
 
-      // Fetch game configuration based on room level
-      if (room.game_level || room.default_level) {
-        const level = room.game_level || room.default_level || 'medium'
-        const config = await getGameConfig(level as 'easy' | 'medium' | 'hard')
-        setGameConfig(config)
-        console.log('📋 Game config loaded:', config)
+      // Create game configuration using room's actual data
+      const config = {
+        stake: room.stake,
+        maxPlayers: room.max_players,
+        callInterval: 2000, // 2 seconds between numbers
+        prizePool: room.stake * room.max_players,
+        commissionRate: 0.1, // 10%
+        level: room.game_level || room.default_level || 'medium'
       }
+      setGameConfig(config)
+      console.log('📋 Game config loaded from room data:', config)
 
       return room
     } catch (error) {
@@ -81,48 +101,68 @@ export default function GamePage() {
     }
   }
 
-  // Smart room joining logic - waiting room or spectator mode
+  // Direct room joining logic - join the specific room that was clicked
   useEffect(() => {
     if (!isAuthenticated || !user || !connected || !roomId) return
-    if (isInWaitingRoom || gameId || isSpectator || gameState) return // Already in a mode or game active
+    if (gameId || gameState) return // Already in a game
 
-    const smartJoinRoom = async () => {
-      console.log('🎯 Smart joining room:', roomId)
+    const joinSpecificRoom = async () => {
+      console.log('🎯 Joining specific room:', roomId)
       
       try {
-        // First, try to join waiting room
+        // Get room data first
         const room = await fetchRoomData()
-        if (room) {
-          const level = room.default_level || 'medium'
-          console.log(`🏠 Attempting to join ${level} waiting room`)
+        if (!room) {
+          console.log('❌ Room not found')
+          setLoading(false)
+          return
+        }
+
+        // Check user balance
+        const totalBalance = user.balance + (user.bonus_balance || 0)
+        if (totalBalance < room.stake) {
+          console.log('❌ Insufficient balance')
+          setLoading(false)
+          return
+        }
+
+        // Call the game join API directly for this specific room
+        console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
+        
+        const response = await fetch('/api/game/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            roomId: roomId,
+            userId: user.id
+          })
+        })
+
+        const result = await response.json()
+        console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
+        
+        if (response.ok && result.gameId) {
+          console.log('✅ Game joined successfully:', result.gameId)
+          setGameId(result.gameId)
           
-          // Try to join waiting room with timeout
-          const joinPromise = joinWaitingRoom(level, user.username || 'Player')
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Waiting room join timeout')), 8000)
-          )
-          
-          try {
-            await Promise.race([joinPromise, timeoutPromise])
-            console.log('✅ Waiting room join initiated')
-          } catch (joinError) {
-            console.log('⚠️ Waiting room join failed:', joinError)
-            throw joinError
-          }
+          // Join the game via socket
+          console.log('🔌 Joining game via socket...')
+          await joinGame(result.gameId, user.id)
+          console.log('🔌 Socket join completed')
         } else {
-          console.log('❌ No room data found')
+          console.error('❌ Failed to join game. Response:', response.status, result)
+          console.error('❌ Full error details:', result)
           setLoading(false)
         }
+        
       } catch (error) {
-        console.log('⚠️ Waiting room join failed:', error)
-        // If waiting room join fails, try to create/join a regular game
-        console.log('🎮 Falling back to regular game join')
+        console.error('❌ Error joining room:', error)
         setLoading(false)
       }
     }
 
-    smartJoinRoom()
-  }, [isAuthenticated, user, connected, roomId, isInWaitingRoom, gameId, isSpectator, gameState])
+    joinSpecificRoom()
+  }, [isAuthenticated, user, connected, roomId, gameId, gameState, joinGame])
 
   // Debug waiting room state and stop loading when connected
   useEffect(() => {
@@ -414,7 +454,7 @@ export default function GamePage() {
 
     // Check if user actually has a bingo
     if (!checkBingoWin(markedCells)) {
-      setBingoError('Not a valid BINGO! Keep playing.')
+      setBingoError('Not a valid BINGO! Complete a line, column, or diagonal first!')
       setTimeout(() => setBingoError(null), 3000)
       return
     }
@@ -530,20 +570,10 @@ export default function GamePage() {
     return emojis[index]
   }
 
-  // Generate anonymous display name
+  // Generate sequential player numbers
   const getAnonymousName = (username: string, index?: number) => {
-    if (!username) return `Player ${index || 1}`
-    
-    // Create a simple hash from username to ensure consistency
-    let hash = 0
-    for (let i = 0; i < username.length; i++) {
-      const char = username.charCodeAt(i)
-      hash = ((hash << 5) - hash) + char
-      hash = hash & hash // Convert to 32-bit integer
-    }
-    
-    const playerNumber = Math.abs(hash) % 999 + 1
-    return `Player ${playerNumber}`
+    if (index) return `Player ${index}`
+    return username || 'Player'
   }
 
   if (loading) {
@@ -569,7 +599,7 @@ export default function GamePage() {
 
   // If gameState hasn't loaded yet, show a brief loading state
   // BUT allow waiting room to be shown even without gameState
-  if (!gameState && !isInWaitingRoom && !isSpectator) {
+  if (!gameState && !isInWaitingRoom && !isSpectator && !gameId) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
@@ -663,8 +693,8 @@ export default function GamePage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{Math.max(waitingRoomState?.currentPlayers || 0, isInWaitingRoom ? 1 : 0)}</div>
-                  <div className="text-white/80 text-sm">/ {waitingRoomState?.maxPlayers || 8}</div>
+                  <div className="text-2xl font-bold">{gameState?.players?.length || 1}</div>
+                  <div className="text-white/80 text-sm">/ {roomData?.max_players || 8}</div>
                 </div>
               </div>
             </div>
@@ -684,31 +714,45 @@ export default function GamePage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Users className="w-4 h-4" />
-                      <span>Players ({Math.max(waitingRoomState?.currentPlayers || 0, isInWaitingRoom ? 1 : 0)}/{waitingRoomState?.maxPlayers || 8})</span>
+                      <span>Players ({gameState?.players?.length || 1}/{roomData?.max_players || 8})</span>
                     </div>
                   </div>
 
                   {/* Simplified Players Display */}
-                  {(waitingRoomState?.players && waitingRoomState.players.length > 0) || isInWaitingRoom ? (
+                  {(gameState?.players && gameState.players.length > 0) ? (
                     <div className="flex flex-wrap gap-2 mb-3">
-                      {/* Show current user first if in waiting room */}
-                      {isInWaitingRoom && user && (
-                        <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 border-2 border-green-300">
-                          <div className="w-4 h-4 bg-green-600 rounded-full flex items-center justify-center text-white text-xs">
-                            {getRandomEmoji(user.username || 'You')}
+                      {(() => {
+                        // Create a combined list of all players with proper indexing
+                        const allPlayers: Array<{username: string, isCurrentUser: boolean, playerNumber: number}> = []
+                        
+                        // Add all players from gameState
+                        gameState.players.forEach((playerId: string, index: number) => {
+                          const isCurrentUser = playerId === user?.id
+                          allPlayers.push({
+                            username: isCurrentUser ? (user.username || 'You') : `Player ${index + 1}`,
+                            isCurrentUser: isCurrentUser,
+                            playerNumber: index + 1
+                          })
+                        })
+                        
+                        return allPlayers.map((player, index) => (
+                          <div 
+                            key={index} 
+                            className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+                              player.isCurrentUser 
+                                ? 'bg-green-100 text-green-800 border-2 border-green-300' 
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-xs ${
+                              player.isCurrentUser ? 'bg-green-600' : 'bg-blue-600'
+                            }`}>
+                              {getRandomEmoji(player.username)}
+                            </div>
+                            Player {player.playerNumber}{player.isCurrentUser ? ' (You)' : ''}
                           </div>
-                          {getAnonymousName(user.username || 'You')} (You)
-                        </div>
-                      )}
-                      {/* Show other players */}
-                      {waitingRoomState?.players?.map((player: any, index: number) => (
-                        <div key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2">
-                          <div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs">
-                            {getRandomEmoji(player.username)}
-                          </div>
-                          {getAnonymousName(player.username, index + 1)}
-                        </div>
-                      ))}
+                        ))
+                      })()}
                     </div>
                   ) : (
                     <div className="text-center py-4 text-slate-500">

@@ -84,7 +84,11 @@ export function checkBingoWin(marked: boolean[][]): boolean {
   }
 
   // Check diagonals
+  // Top-left to bottom-right diagonal
   if (marked[0][0] && marked[1][1] && marked[2][2] && marked[3][3] && marked[4][4]) return true
+  
+  // Top-right to bottom-left diagonal  
+  if (marked[0][4] && marked[1][3] && marked[2][2] && marked[3][1] && marked[4][0]) return true
 
   return false
 }

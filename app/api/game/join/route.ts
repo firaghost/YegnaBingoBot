@@ -1,19 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
-    const { roomId, userId, stake } = await request.json()
+    const { roomId, userId } = await request.json()
 
-    if (!roomId || !userId || stake === undefined) {
+    if (!roomId || !userId) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: roomId, userId' },
         { status: 400 }
       )
     }
+
+    // Get room data to use correct stake and settings
+    console.log('🔍 Looking for room with ID:', roomId)
+    const { data: room, error: roomError } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('id', roomId)
+      .single()
+
+    if (roomError || !room) {
+      console.error('❌ Room not found:', roomId, roomError)
+      return NextResponse.json(
+        { error: `Room '${roomId}' not found`, details: roomError?.message },
+        { status: 404 }
+      )
+    }
+
+    console.log('✅ Found room:', room.name, 'Stake:', room.stake)
+
+    const stake = room.stake
 
     // Find active or waiting game for this room
     let { data: activeGame } = await supabase
@@ -42,19 +61,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (!activeGame) {
-      // Create new game with waiting status
+      // Create new game with waiting status using room settings
       const { data: newGame, error: createError } = await supabase
         .from('games')
         .insert({
           room_id: roomId,
           status: 'waiting',
           countdown_time: 10,
-          players: [userId],
+          players: [userId], // userId should be UUID string
           bots: [],
           called_numbers: [],
-          stake: stake,
-          prize_pool: stake,
-          min_players: 2,
+          stake: room.stake,
+          prize_pool: room.stake,
           started_at: new Date().toISOString()
         })
         .select()
@@ -62,11 +80,15 @@ export async function POST(request: NextRequest) {
 
       if (createError) {
         console.error('Error creating game:', createError)
-        throw createError
+        return NextResponse.json(
+          { error: 'Failed to create game', details: createError.message },
+          { status: 500 }
+        )
       }
 
       return NextResponse.json({
         success: true,
+        gameId: newGame.id,
         game: newGame,
         action: 'created'
       })
@@ -98,7 +120,10 @@ export async function POST(request: NextRequest) {
 
       if (joinError) {
         console.error('Error joining game:', joinError)
-        throw joinError
+        return NextResponse.json(
+          { error: 'Failed to join game', details: joinError.message },
+          { status: 500 }
+        )
       }
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
@@ -131,6 +156,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
+        gameId: activeGame.id,
         game: updatedGame,
         action: 'joined'
       })
@@ -163,6 +189,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
+      gameId: activeGame.id,
       game: activeGame,
       action: 'already_joined'
     })
