@@ -15,6 +15,7 @@ export default function AdminSettings() {
     maxWithdrawal: 100000 as number | string,
     withdrawalFee: 0 as number | string,
     commissionRate: 10 as number | string,
+    welcomeBonus: 5 as number | string,
     depositBonus: 10 as number | string,
     referralBonus: 50 as number | string,
     dailyStreakBonus: 20 as number | string,
@@ -53,6 +54,7 @@ export default function AdminSettings() {
           maxWithdrawal: Number(config.maxWithdrawalAmount) || 100000,
           withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100, // Convert to percentage with proper rounding
           commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100, // Convert to percentage with proper rounding
+          welcomeBonus: Number(config.welcomeBonus) || 5,
           depositBonus: Number(config.depositBonus) || 10,
           referralBonus: Number(config.referralBonus) || 50,
           dailyStreakBonus: Number(config.dailyStreakBonus) || 20,
@@ -69,27 +71,6 @@ export default function AdminSettings() {
         
         setSettings(prev => ({ ...prev, ...mappedSettings }))
         setOriginalSettings(prev => ({ ...prev, ...mappedSettings }))
-      } else {
-        // Fallback to old system_settings table
-        const { data, error } = await supabase
-          .from('system_settings')
-          .select('*')
-
-        if (error) throw error
-
-        const settingsObj: any = {}
-        data?.forEach((setting) => {
-          let value = setting.value
-          // Parse boolean values
-          if (value === 'true') value = true
-          if (value === 'false') value = false
-          // Parse numbers
-          if (!isNaN(value) && value !== '') value = parseFloat(value)
-          settingsObj[setting.key] = value
-        })
-        
-        setSettings(prev => ({ ...prev, ...settingsObj }))
-        setOriginalSettings(prev => ({ ...prev, ...settingsObj }))
       }
     } catch (error) {
       console.error('Error fetching settings:', error)
@@ -112,6 +93,7 @@ export default function AdminSettings() {
       if (Number(settings.commissionRate) !== Number(originalSettings.commissionRate)) changedSettings.game_commission_rate = (Number(settings.commissionRate) || 0) / 100
       if (Boolean(settings.autoApproveDeposits) !== Boolean(originalSettings.autoApproveDeposits)) changedSettings.auto_approve_deposits = Boolean(settings.autoApproveDeposits)
       if (Boolean(settings.autoApproveWithdrawals) !== Boolean(originalSettings.autoApproveWithdrawals)) changedSettings.auto_approve_withdrawals = Boolean(settings.autoApproveWithdrawals)
+      if (Number(settings.welcomeBonus) !== Number(originalSettings.welcomeBonus)) changedSettings.welcome_bonus = Number(settings.welcomeBonus) || 0
       if (Number(settings.referralBonus) !== Number(originalSettings.referralBonus)) changedSettings.referral_bonus = Number(settings.referralBonus) || 0
       if (Number(settings.depositBonus) !== Number(originalSettings.depositBonus)) changedSettings.deposit_bonus = Number(settings.depositBonus) || 0
       if (Number(settings.dailyStreakBonus) !== Number(originalSettings.dailyStreakBonus)) changedSettings.daily_streak_bonus = Number(settings.dailyStreakBonus) || 0
@@ -146,19 +128,6 @@ export default function AdminSettings() {
 
       // Update original settings to current settings
       setOriginalSettings({ ...settings })
-
-      // Also save to old system_settings table for backward compatibility
-      for (const [key, value] of Object.entries(settings)) {
-        await supabase
-          .from('system_settings')
-          .upsert({ 
-            key, 
-            value: String(value),
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'key'
-          })
-      }
 
       // Clear cache to force refresh
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -393,6 +362,26 @@ export default function AdminSettings() {
             <h2 className="text-xl font-bold text-white mb-6">Bonus Settings</h2>
             
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Welcome Bonus (ETB)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={settings.welcomeBonus}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value === '') {
+                      setSettings({...settings, welcomeBonus: ''})
+                    } else {
+                      setSettings({...settings, welcomeBonus: parseFloat(value) || 0})
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">Bonus amount given to new users upon registration (supports decimals)</p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Deposit Bonus (%)</label>
                 <input

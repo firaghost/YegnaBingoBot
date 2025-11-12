@@ -63,6 +63,7 @@ VALUES
   ('game_commission_rate', '0.1', 'Game commission rate (0.1 = 10%)', true, NOW(), NOW()),
   
   -- Bonus Settings
+  ('welcome_bonus', '3', 'Welcome bonus for new users in ETB', true, NOW(), NOW()),
   ('deposit_bonus', '10', 'Deposit bonus percentage (e.g., 10 for 10%)', true, NOW(), NOW()),
   ('daily_streak_bonus', '20', 'Daily streak bonus amount in ETB', true, NOW(), NOW()),
   ('daily_streak_days', '5', 'Number of days required for streak bonus', true, NOW(), NOW()),
@@ -124,4 +125,9 @@ COMMENT ON TABLE admin_config IS 'Unified admin configuration table';
 COMMENT ON FUNCTION get_config(TEXT) IS 'Retrieves configuration value by key from admin_config table';
 COMMENT ON FUNCTION set_admin_config(TEXT, TEXT, UUID) IS 'Sets configuration value in admin_config table with optional user tracking';
 
-RAISE NOTICE 'Admin configuration migration completed successfully';
+-- Final notice (moved inside a DO block)
+DO $$
+BEGIN
+  RAISE NOTICE 'Admin configuration migration completed successfully';
+END
+$$;

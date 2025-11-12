@@ -1,11 +1,21 @@
 import 'dotenv/config'
 import { Telegraf, Markup } from 'telegraf'
-import { supabase } from '../lib/supabase.js'
-import { setupLevelHandlers } from '../lib/level-handlers.js'
+import { supabase } from '../lib/supabase'
+import { getConfig } from '../lib/admin-config'
+import { setupLevelHandlers } from '../lib/level-handlers'
 const BOT_TOKEN = process.env.BOT_TOKEN!
 const MINI_APP_URL = process.env.MINI_APP_URL || 'http://localhost:3000'
 
 const bot = new Telegraf(BOT_TOKEN)
+
+// Helper function to get level badge
+function getLevelBadge(level: number): string {
+  if (level <= 10) return 'Beginner'
+  if (level <= 25) return 'Intermediate'
+  if (level <= 50) return 'Advanced'
+  if (level <= 75) return 'Expert'
+  return 'Legend'
+}
 
 // Start command - Register user
 bot.command('start', async (ctx) => {
@@ -106,14 +116,8 @@ bot.action('register', async (ctx) => {
       return
     }
 
-    // Get registration bonus from admin settings
-    const { data: bonusSetting } = await supabase
-      .from('admin_settings')
-      .select('setting_value')
-      .eq('setting_key', 'welcome_bonus')
-      .single()
-
-    const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
+    // Get registration bonus from admin config
+    const registrationBonus = (await getConfig('welcome_bonus')) || 5.00
 
     // Create new user with registration bonus
     const { data: newUser, error: insertError } = await supabase
@@ -495,7 +499,7 @@ bot.command('help', async (ctx) => {
     `3. Mark numbers as they're called\n` +
     `4. Complete a line, column, or diagonal to win!\n` +
     `5. Play daily to build your streak and earn bonuses!\n\n` +
-    `💡 *Tip:* Use inline mode by typing @YourBotUsername in any chat!\n\n` +
+    `💡 *Tip:* Use inline mode by typing @BingoXofficialbot in any chat!\n\n` +
     `🎮 *Ready to play? Tap the button below!*`,
     {
       parse_mode: 'Markdown',
@@ -506,67 +510,104 @@ bot.command('help', async (ctx) => {
   )
 })
 
-// Callback query handlers
-bot.action('balance', async (ctx) => {
-  await ctx.answerCbQuery()
-  const userId = ctx.from.id
+// Balance command
+bot.command('balance', async (ctx) => {
+  const userId = ctx.from?.id
+  if (!userId) return
 
   try {
     const { data: user } = await supabase
       .from('users')
-      .select('balance')
+      .select('balance, bonus_balance, games_played, games_won, total_winnings')
       .eq('telegram_id', userId.toString())
       .single()
 
-    await ctx.reply(`💰 Your balance: *${user?.balance || 0} ETB*`, { parse_mode: 'Markdown' })
+    if (!user) {
+      await ctx.reply('❌ User not found. Please use /start to register first.')
+      return
+    }
+
+    const totalBalance = user.balance + (user.bonus_balance || 0)
+
+    await ctx.reply(
+      `💰 *Your Balance*\n\n` +
+      `💵 Main Balance: ${user.balance.toFixed(2)} ETB\n` +
+      `🎁 Bonus Balance: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
+      `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
+      `🎮 Games Played: ${user.games_played || 0}\n` +
+      `🏆 Games Won: ${user.games_won || 0}\n` +
+      `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
   } catch (error) {
-    await ctx.reply('Failed to fetch balance.')
+    console.error('Error fetching balance:', error)
+    await ctx.reply('❌ Error fetching balance. Please try again.')
   }
 })
 
-bot.action('leaderboard', async (ctx) => {
-  await ctx.answerCbQuery()
+// Leaderboard command
+bot.command('leaderboard', async (ctx) => {
   await ctx.reply(
-    'View the leaderboard:',
-    Markup.inlineKeyboard([
-      [Markup.button.webApp('🏆 Leaderboard', `${MINI_APP_URL}/leaderboard`)]
-    ])
+    '🏆 *Leaderboard*\n\nView top players and rankings:',
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('🏆 View Leaderboard', `${MINI_APP_URL}/leaderboard`)]
+      ])
+    }
   )
 })
 
-bot.action('help', async (ctx) => {
-  await ctx.answerCbQuery()
-  await ctx.reply(
-    `📖 *Bingo Royale Help*\n\n` +
-    `*Quick Commands:*\n` +
-    `/start - Register & get bonus\n` +
-    `/play - Join a game\n` +
-    `/balance - Check your balance\n` +
-    `/deposit - Add funds\n` +
-    `/withdraw - Withdraw winnings\n` +
-    `/leaderboard - View rankings\n` +
-    `/help - Show all commands\n\n` +
-    `*How to Play:*\n` +
-    `1. Register with /start (3 ETB bonus!)\n` +
-    `2. Choose a game room\n` +
-    `3. Mark numbers as they're called\n` +
-    `4. Complete a line to win!\n` +
-    `5. Play daily for streak bonuses!\n\n` +
-    `*Need Support?*\n` +
-    `Contact @FiraGhost2`,
-    { parse_mode: 'Markdown' }
-  )
+// Play command
+bot.command('play', async (ctx) => {
+  const userId = ctx.from?.id
+  if (!userId) return
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('balance, bonus_balance')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('❌ User not found. Please use /start to register first.')
+      return
+    }
+
+    const totalBalance = user.balance + (user.bonus_balance || 0)
+
+    await ctx.reply(
+      `🎮 *Ready to Play?*\n\n` +
+      `💰 Available Balance: ${totalBalance.toFixed(2)} ETB\n\n` +
+      `Choose your game room and start playing!`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in play command:', error)
+    await ctx.reply('❌ Error loading game. Please try again.')
+  }
 })
 
 // Deposit command
 bot.command('deposit', async (ctx) => {
   await ctx.reply(
     '💸 *Deposit Funds*\n\n' +
-    'Click the button below to deposit funds to your account:',
+    'Add money to your account to play more games!',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.webApp('💰 Deposit Now', `${MINI_APP_URL}/deposit`)]
+        [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)]
       ])
     }
   )
@@ -574,55 +615,265 @@ bot.command('deposit', async (ctx) => {
 
 // Withdraw command
 bot.command('withdraw', async (ctx) => {
-  const userId = ctx.from.id
-
-  try {
-    const { data: user } = await supabase
-      .from('users')
-      .select('balance')
-      .eq('telegram_id', userId.toString())
-      .single()
-
-    if (!user || user.balance < 100) {
-      await ctx.reply(
-        '⚠️ *Insufficient Balance*\n\n' +
-        `Your balance: ${user?.balance || 0} ETB\n` +
-        'Minimum withdrawal: 100 ETB',
-        { parse_mode: 'Markdown' }
-      )
-      return
-    }
-
-    await ctx.reply(
-      '💰 *Withdraw Funds*\n\n' +
-      `Available balance: ${user.balance} ETB\n\n` +
-      'Click the button below to request a withdrawal:',
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.webApp('💸 Withdraw Now', `${MINI_APP_URL}/withdraw`)]
-        ])
-      }
-    )
-  } catch (error) {
-    console.error('Error in withdraw command:', error)
-    await ctx.reply('Failed to process withdrawal request. Please try again.')
-  }
-})
-
-// Account/Profile command
-bot.command('account', async (ctx) => {
   await ctx.reply(
-    '👤 *Your Account*\n\n' +
-    'View your complete profile and statistics:',
+    '💰 *Withdraw Winnings*\n\n' +
+    'Cash out your winnings to your account!',
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.webApp('📊 View Profile', `${MINI_APP_URL}/account`)]
+        [Markup.button.webApp('💰 Withdraw', `${MINI_APP_URL}/withdraw`)]
       ])
     }
   )
 })
+
+// Help command
+bot.command('help', async (ctx) => {
+  await ctx.reply(
+    `📖 *BingoX Commands & Help*\n\n` +
+    `🎮 **Game Commands**\n` +
+    `/start - Register & get 5 ETB bonus\n` +
+    `/play - Join a game room\n` +
+    `/rooms - View all available rooms\n` +
+    `/levels - View game difficulty levels\n\n` +
+    `📊 **Account & Stats**\n` +
+    `/balance - Check your balance\n` +
+    `/account - View your profile\n` +
+    `/mystats - View your XP and statistics\n` +
+    `/leaderboard - View leaderboard rankings\n` +
+    `/stats - View detailed statistics\n` +
+    `/history - View game & transaction history\n\n` +
+    `💰 **Financial**\n` +
+    `/deposit - Add funds to your account\n` +
+    `/withdraw - Withdraw your winnings\n\n` +
+    `❓ **Support**\n` +
+    `/help - Show help & commands\n\n` +
+    `🎯 **How to Play:**\n` +
+    `1. Register with /start (3 ETB bonus!)\n` +
+    `2. Choose your difficulty level\n` +
+    `3. Join a game room\n` +
+    `4. Mark numbers as they're called\n` +
+    `5. Complete a line to win!\n` +
+    `6. Earn XP and level up!\n\n` +
+    `*Need Support?* Contact: @bingox_support`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+      ])
+    }
+  )
+})
+
+// Account command
+bot.command('account', async (ctx) => {
+  const userId = ctx.from?.id
+  if (!userId) return
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('❌ User not found. Please use /start to register first.')
+      return
+    }
+
+    const totalBalance = user.balance + (user.bonus_balance || 0)
+    const winRate = user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : '0'
+    
+    // Calculate level from XP
+    const level = Math.floor((user.xp || 0) / 100) + 1
+    const xpInCurrentLevel = (user.xp || 0) % 100
+    const xpForNextLevel = 100 - xpInCurrentLevel
+
+    await ctx.reply(
+      `👤 *Your Account Profile*\n\n` +
+      `🏷️ **${user.username}**\n` +
+      `🎯 Level ${level} ${getLevelBadge(level)}\n` +
+      `⚡ XP: ${user.xp || 0} (${xpForNextLevel} to next level)\n\n` +
+      `💰 **Balance**\n` +
+      `💵 Main: ${user.balance.toFixed(2)} ETB\n` +
+      `🎁 Bonus: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
+      `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
+      `🎮 **Game Stats**\n` +
+      `🎯 Games Played: ${user.games_played || 0}\n` +
+      `🏆 Games Won: ${user.games_won || 0}\n` +
+      `📈 Win Rate: ${winRate}%\n` +
+      `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB\n` +
+      `🔥 Daily Streak: ${user.daily_streak || 0} days`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('📊 Full Profile', `${MINI_APP_URL}/account`)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in account command:', error)
+    await ctx.reply('❌ Error loading account. Please try again.')
+  }
+})
+
+// Levels command
+bot.command('levels', async (ctx) => {
+  await ctx.reply(
+    `🎯 *Game Difficulty Levels*\n\n` +
+    `**Beginner** (Level 1-10)\n` +
+    `   • Entry: 5-20 ETB\n` +
+    `   • XP Bonus: +5 per game\n` +
+    `   • Perfect for new players\n\n` +
+    `**Intermediate** (Level 11-25)\n` +
+    `   • Entry: 25-50 ETB\n` +
+    `   • XP Bonus: +10 per game\n` +
+    `   • Balanced risk/reward\n\n` +
+    `**Advanced** (Level 26-50)\n` +
+    `   • Entry: 75-150 ETB\n` +
+    `   • XP Bonus: +15 per game\n` +
+    `   • Higher stakes, bigger wins\n\n` +
+    `**Expert** (Level 51-75)\n` +
+    `   • Entry: 200-500 ETB\n` +
+    `   • XP Bonus: +25 per game\n` +
+    `   • For experienced players\n\n` +
+    `**Legend** (Level 76+)\n` +
+    `   • Entry: 750+ ETB\n` +
+    `   • XP Bonus: +50 per game\n` +
+    `   • Ultimate challenge\n\n` +
+    `💡 *Tip: Higher levels give more XP!*`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+      ])
+    }
+  )
+})
+
+// MyStats command
+bot.command('mystats', async (ctx) => {
+  const userId = ctx.from?.id
+  if (!userId) return
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .single()
+
+    if (!user) {
+      await ctx.reply('❌ User not found. Please use /start to register first.')
+      return
+    }
+
+    const level = Math.floor((user.xp || 0) / 100) + 1
+    const xpInCurrentLevel = (user.xp || 0) % 100
+    const xpForNextLevel = 100 - xpInCurrentLevel
+    const winRate = user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : '0'
+
+    await ctx.reply(
+      `📊 *Your XP & Statistics*\n\n` +
+      `🎯 **Level Progress**\n` +
+      `🏷️ Current Level: ${level} ${getLevelBadge(level)}\n` +
+      `⚡ Total XP: ${user.xp || 0}\n` +
+      `📈 Progress: ${xpInCurrentLevel}/100 XP\n` +
+      `🎯 Next Level: ${xpForNextLevel} XP needed\n\n` +
+      `🎮 **Game Performance**\n` +
+      `🎯 Games Played: ${user.games_played || 0}\n` +
+      `🏆 Games Won: ${user.games_won || 0}\n` +
+      `💔 Games Lost: ${(user.games_played || 0) - (user.games_won || 0)}\n` +
+      `📊 Win Rate: ${winRate}%\n\n` +
+      `💰 **Earnings**\n` +
+      `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB\n` +
+      `🔥 Daily Streak: ${user.daily_streak || 0} days\n` +
+      `📅 Member Since: ${new Date(user.created_at).toLocaleDateString()}`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('📈 Detailed Stats', `${MINI_APP_URL}/account`)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in mystats command:', error)
+    await ctx.reply('❌ Error loading statistics. Please try again.')
+  }
+})
+
+// Stats command (general statistics)
+bot.command('stats', async (ctx) => {
+  try {
+    const { data: totalUsers } = await supabase
+      .from('users')
+      .select('id', { count: 'exact' })
+
+    const { data: totalGames } = await supabase
+      .from('games')
+      .select('id', { count: 'exact' })
+
+    const { data: activeGames } = await supabase
+      .from('games')
+      .select('id', { count: 'exact' })
+      .in('status', ['waiting', 'countdown', 'active'])
+
+    const { data: totalPrizePool } = await supabase
+      .from('games')
+      .select('prize_pool')
+      .eq('status', 'finished')
+
+    const totalPrizes = totalPrizePool?.reduce((sum, game) => sum + (game.prize_pool || 0), 0) || 0
+
+    await ctx.reply(
+      `📊 *BingoX Platform Statistics*\n\n` +
+      `👥 **Community**\n` +
+      `🎮 Total Players: ${totalUsers?.length || 0}\n` +
+      `🎯 Total Games: ${totalGames?.length || 0}\n` +
+      `⚡ Active Games: ${activeGames?.length || 0}\n\n` +
+      `💰 **Prize Pool**\n` +
+      `💸 Total Distributed: ${totalPrizes.toFixed(2)} ETB\n` +
+      `🏆 Average Prize: ${totalGames?.length ? (totalPrizes / totalGames.length).toFixed(2) : '0'} ETB\n\n` +
+      `🎯 *Join the action and win big!*`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.webApp('🏆 Leaderboard', `${MINI_APP_URL}/leaderboard`)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in stats command:', error)
+    await ctx.reply('❌ Error loading statistics. Please try again.')
+  }
+})
+
+// History command
+bot.command('history', async (ctx) => {
+  await ctx.reply(
+    `📜 *Your Game & Transaction History*\n\n` +
+    `View your complete history including:\n\n` +
+    `🎮 **Game History**\n` +
+    `• All games played\n` +
+    `• Win/loss records\n` +
+    `• Prize winnings\n` +
+    `• XP earned\n\n` +
+    `💰 **Transaction History**\n` +
+    `• Deposits & withdrawals\n` +
+    `• Bonus earnings\n` +
+    `• Game stakes\n` +
+    `• Balance changes`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.webApp('📜 View History', `${MINI_APP_URL}/history`)]
+      ])
+    }
+  )
+})
+
 
 // Rooms command
 bot.command('rooms', async (ctx) => {
@@ -901,25 +1152,24 @@ export async function startBot() {
   
   // Set bot commands for the menu
   await bot.telegram.setMyCommands([
-    { command: 'start', description: '🎮 Start the bot and register' },
-    { command: 'play', description: '🎯 Play bingo game' },
-    { command: 'levels', description: '🎯 View game difficulty levels' },
+    { command: 'start', description: '🎮 Register & get 5 ETB bonus' },
+    { command: 'play', description: '🎯 Join a game room' },
+    { command: 'rooms', description: '🏠 View all available rooms' },
     { command: 'balance', description: '💰 Check your balance' },
-    { command: 'leaderboard', description: '🏆 View leaderboard rankings' },
+    { command: 'account', description: '👤 View your profile' },
+    { command: 'levels', description: '🎯 View game difficulty levels' },
     { command: 'mystats', description: '📊 View your XP and statistics' },
-    { command: 'deposit', description: '💸 Deposit funds' },
-    { command: 'withdraw', description: '💵 Withdraw winnings' },
-    { command: 'account', description: '👤 View your account' },
-    { command: 'stats', description: '📊 View your statistics' },
-    { command: 'history', description: '📜 View game history' },
-    { command: 'rooms', description: '🏠 View available rooms' },
-    { command: 'help', description: '❓ Get help and info' }
+    { command: 'leaderboard', description: '🏆 View leaderboard rankings' },
+    { command: 'stats', description: '📈 View detailed statistics' },
+    { command: 'history', description: '📜 View game & transaction history' },
+    { command: 'deposit', description: '💸 Add funds to your account' },
+    { command: 'withdraw', description: '💵 Withdraw your winnings' },
+    { command: 'help', description: '❓ Show help & commands' }
   ])
 
   bot.launch()
   console.log('✅ Telegram bot started successfully')
   console.log('📱 Inline mode enabled')
-  console.log('🎮 All commands registered')
   console.log('🏆 Level system and leaderboard enabled')
 
   // Enable graceful stop

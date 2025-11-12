@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 import BottomNav from '@/app/components/BottomNav'
 import { LuGift, LuPlay, LuCheck, LuCalendar, LuZap, LuCoins } from 'react-icons/lu'
 
@@ -25,27 +26,26 @@ export default function BonusPage() {
   // Fetch admin settings
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data: settings } = await supabase
-        .from('admin_settings')
-        .select('setting_key, setting_value')
-        .in('setting_key', ['welcome_bonus', 'daily_streak_days'])
-
-      if (settings) {
-        settings.forEach(setting => {
-          if (setting.setting_key === 'welcome_bonus') {
-            setRegistrationBonus(parseFloat(setting.setting_value))
-          } else if (setting.setting_key === 'daily_streak_days') {
-            setStreakDaysRequired(parseInt(setting.setting_value))
-          }
-        })
+      try {
+        const welcomeBonus = await getConfig('welcome_bonus') || 3.00
+        const streakDays = await getConfig('daily_streak_days') || 5
+        
+        setRegistrationBonus(Number(welcomeBonus))
+        setStreakDaysRequired(Number(streakDays))
+      } catch (error) {
+        console.error('Error fetching bonus settings:', error)
+        // Use default values if fetch fails
+        setRegistrationBonus(3.00)
+        setStreakDaysRequired(5)
       }
     }
+
     fetchSettings()
   }, [])
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )

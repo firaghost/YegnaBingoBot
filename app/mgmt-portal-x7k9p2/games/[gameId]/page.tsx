@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import { useSocket } from '@/lib/hooks/useSocket'
 
 export default function AdminGameViewer() {
   const params = useParams()
@@ -16,48 +15,20 @@ export default function AdminGameViewer() {
   const [calledNumbers, setCalledNumbers] = useState<number[]>([])
   const [latestNumber, setLatestNumber] = useState<any>(null)
   
-  // Socket connection for real-time updates
-  const { socket, connected } = useSocket()
-
   useEffect(() => {
     if (gameId) {
       fetchGameData()
       
-      // Set up real-time listeners
-      if (socket) {
-        socket.emit('admin_join_game', { gameId })
-        
-        socket.on('number_called', (data) => {
-          if (data.gameId === gameId) {
-            setLatestNumber(data.number)
-            setCalledNumbers(prev => [...prev, data.number.number])
-          }
-        })
-
-        socket.on('game_state_update', (data) => {
-          if (data.gameId === gameId) {
-            setGame(prev => ({ ...prev, ...data }))
-          }
-        })
-
-        socket.on('player_marked', (data) => {
-          if (data.gameId === gameId) {
-            setPlayers(prev => prev.map(p => 
-              p.id === data.playerId 
-                ? { ...p, markedNumbers: data.markedNumbers }
-                : p
-            ))
-          }
-        })
-
-        return () => {
-          socket.off('number_called')
-          socket.off('game_state_update')
-          socket.off('player_marked')
-        }
-      }
+      // Set up polling for real-time updates
+      const interval = setInterval(() => {
+        fetchGameData()
+      }, 5000) // Poll every 5 seconds
+      
+      return () => clearInterval(interval)
     }
-  }, [gameId, socket])
+  }, [gameId])
+
+  // Remove socket functionality for now - using polling instead
 
   const fetchGameData = async () => {
     try {
@@ -137,8 +108,8 @@ export default function AdminGameViewer() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className={`w-3 h-3 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`}></div>
-              <span className="text-sm text-gray-300">{connected ? 'Live' : 'Disconnected'}</span>
+              <div className="w-3 h-3 rounded-full bg-blue-400"></div>
+              <span className="text-sm text-gray-300">Polling Updates</span>
             </div>
           </div>
         </div>

@@ -151,8 +151,6 @@ export async function setConfig(key: string, value: any, userId?: string): Promi
  */
 export async function getAllConfig(): Promise<Partial<AdminConfig>> {
   try {
-    console.log('Fetching all config from admin_config table...')
-    
     const { data, error } = await supabase
       .from('admin_config')
       .select('config_key, config_value')
@@ -160,38 +158,7 @@ export async function getAllConfig(): Promise<Partial<AdminConfig>> {
 
     if (error) {
       console.error('Error fetching from admin_config:', error)
-      
-      // Fallback to admin_settings table
-      console.log('Trying fallback to admin_settings table...')
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('admin_settings')
-        .select('setting_key, setting_value')
-
-      if (settingsError) {
-        console.error('Error fetching from admin_settings:', settingsError)
-        return {}
-      }
-
-      const config: any = {}
-      settingsData?.forEach((item) => {
-        // Convert snake_case to camelCase
-        const camelKey = item.setting_key.replace(/_([a-z])/g, (_: string, letter: string) => letter.toUpperCase())
-        
-        // Parse values
-        let value = item.setting_value
-        if (typeof value === 'string') {
-          try {
-            value = JSON.parse(value)
-          } catch {
-            // Keep as string if not valid JSON
-          }
-        }
-        
-        config[camelKey] = value
-      })
-
-      console.log('Loaded config from admin_settings:', config)
-      return config
+      return {}
     }
 
     const config: any = {}
@@ -213,7 +180,6 @@ export async function getAllConfig(): Promise<Partial<AdminConfig>> {
       config[camelKey] = value
     })
 
-    console.log('Loaded config from admin_config:', config)
     return config
   } catch (error) {
     console.error('Error in getAllConfig:', error)

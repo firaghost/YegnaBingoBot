@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../supabase'
+import { getConfig } from '../admin-config'
 
 export interface AuthUser {
   id: string
@@ -12,12 +13,11 @@ export interface AuthUser {
   games_played: number
   games_won: number
   total_winnings: number
-  referral_code: string
-  total_referrals: number
-  referral_earnings: number
   daily_streak: number
-  last_play_date: string
+  last_daily_claim: string | null
+  xp: number
   created_at: string
+  updated_at: string
 }
 
 export function useAuth() {
@@ -94,14 +94,8 @@ export function useAuth() {
         .maybeSingle()
 
       if (!existingUser) {
-        // Get registration bonus from admin settings
-        const { data: bonusSetting } = await supabase
-          .from('admin_settings')
-          .select('setting_value')
-          .eq('setting_key', 'welcome_bonus')
-          .single()
-
-        const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
+        // Get registration bonus from admin config
+        const registrationBonus = (await getConfig('welcome_bonus')) || 3.00
 
         // Create new user
         const { data: newUser, error } = await supabase

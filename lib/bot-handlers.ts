@@ -1,5 +1,6 @@
 import { Telegraf, Markup, Context } from 'telegraf'
 import { supabaseAdmin } from './supabase'
+import { getConfig } from './admin-config'
 
 const MINI_APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || 'https://yegnagame.vercel.app'
 
@@ -108,14 +109,8 @@ export function setupBotHandlers(bot: Telegraf) {
         return
       }
 
-      // Get registration bonus from admin settings
-      const { data: bonusSetting } = await supabase
-        .from('admin_settings')
-        .select('setting_value')
-        .eq('setting_key', 'welcome_bonus')
-        .maybeSingle()
-
-      const registrationBonus = parseFloat(bonusSetting?.setting_value || '3.00')
+      // Get registration bonus from admin config
+      const registrationBonus = (await getConfig('welcome_bonus')) || 3.00
 
       // Create new user with registration bonus
       const { error: insertError } = await supabase
