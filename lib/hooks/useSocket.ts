@@ -123,28 +123,60 @@ export function useSocket() {
     })
 
     socket.on('start_game', (data) => {
-      console.log('🎮 Game started, transitioning...')
+      console.log('🎮 Game started via start_game event')
       setIsInWaitingRoom(false)
-      // Auto-join the actual game
-      setTimeout(() => {
-        socket.emit('join_game', {
-          username: 'Player', // Will be replaced with actual username
-          roomId: data.roomId
-        })
-      }, 1000)
+      
+      // Initialize game state for the transition
+      setGameState({
+        id: data.roomId,
+        room_id: data.roomId,
+        status: 'active',
+        countdown_time: 0,
+        players: data.players?.map((p: any) => p.username) || [],
+        bots: [],
+        called_numbers: [],
+        latest_number: null,
+        stake: 10,
+        prize_pool: 100,
+        winner_id: null,
+        min_players: 2
+      })
+      
+      console.log('✅ Game state initialized via start_game event')
+      
+      // Trigger bingo card generation
+      window.dispatchEvent(new CustomEvent('gameTransition', { 
+        detail: { roomId: data.roomId } 
+      }))
     })
 
     socket.on('transition_to_game', (data) => {
       console.log('🎮 Transitioning to game mode:', data.message)
       setIsInWaitingRoom(false)
-      setGameState(prev => prev ? { ...prev, status: 'active' } : null)
-      // Auto-join the actual game
-      setTimeout(() => {
-        socket.emit('join_game', {
-          username: 'TestUser_677', // Use the actual username from logs
-          roomId: data.roomId
-        })
-      }, 1000)
+      
+      // Initialize game state for the transition
+      setGameState({
+        id: data.roomId,
+        room_id: data.roomId,
+        status: 'active',
+        countdown_time: 0,
+        players: [],
+        bots: [],
+        called_numbers: [],
+        latest_number: null,
+        stake: 10,
+        prize_pool: 100,
+        winner_id: null,
+        min_players: 2
+      })
+      
+      console.log('✅ Game state initialized, transitioning to game interface')
+      
+      // Trigger bingo card generation by emitting a custom event
+      // The game page will handle this
+      window.dispatchEvent(new CustomEvent('gameTransition', { 
+        detail: { roomId: data.roomId } 
+      }))
     })
 
     // In-Game Events

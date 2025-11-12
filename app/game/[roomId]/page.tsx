@@ -73,7 +73,7 @@ export default function GamePage() {
   // Smart room joining logic - waiting room or spectator mode
   useEffect(() => {
     if (!isAuthenticated || !user || !connected || !roomId) return
-    if (isInWaitingRoom || gameId || isSpectator) return // Already in a mode
+    if (isInWaitingRoom || gameId || isSpectator || gameState) return // Already in a mode or game active
 
     const smartJoinRoom = async () => {
       console.log('🎯 Smart joining room:', roomId)
@@ -111,7 +111,7 @@ export default function GamePage() {
     }
 
     smartJoinRoom()
-  }, [isAuthenticated, user, connected, roomId, isInWaitingRoom, gameId, isSpectator])
+  }, [isAuthenticated, user, connected, roomId, isInWaitingRoom, gameId, isSpectator, gameState])
 
   // Debug waiting room state and stop loading when connected
   useEffect(() => {
@@ -225,6 +225,47 @@ export default function GamePage() {
 
   // Track previous latest number for haptic feedback
   const prevLatestNumberRef = useRef<number | null>(null)
+
+  // Handle game transition and generate bingo card
+  useEffect(() => {
+    const handleGameTransition = (event: any) => {
+      console.log('🎯 Game transition event received, generating bingo card')
+      
+      // Generate bingo card
+      const newCard = generateBingoCard()
+      setBingoCard(newCard)
+      
+      // Initialize marked cells (5x5 grid, center is free space)
+      const initialMarked = Array(5).fill(null).map((_, row) => 
+        Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
+      )
+      setMarkedCells(initialMarked)
+      
+      console.log('✅ Bingo card generated and ready for play')
+    }
+
+    window.addEventListener('gameTransition', handleGameTransition)
+    return () => window.removeEventListener('gameTransition', handleGameTransition)
+  }, [])
+
+  // Generate bingo card when game becomes active (fallback)
+  useEffect(() => {
+    if (gameState?.status === 'active' && bingoCard.length === 0) {
+      console.log('🎯 Game is active but no bingo card - generating now')
+      
+      // Generate bingo card
+      const newCard = generateBingoCard()
+      setBingoCard(newCard)
+      
+      // Initialize marked cells (5x5 grid, center is free space)
+      const initialMarked = Array(5).fill(null).map((_, row) => 
+        Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
+      )
+      setMarkedCells(initialMarked)
+      
+      console.log('✅ Fallback bingo card generated')
+    }
+  }, [gameState?.status, bingoCard.length])
 
   // Handle game state updates from Socket.IO
   useEffect(() => {
@@ -870,6 +911,16 @@ export default function GamePage() {
 
 
 
+        {/* Debug Info (remove in production) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="bg-gray-100 p-2 rounded text-xs mb-4">
+            <div>gameStatus: {gameStatus}</div>
+            <div>isInWaitingRoom: {isInWaitingRoom.toString()}</div>
+            <div>bingoCard.length: {bingoCard.length}</div>
+            <div>gameState: {gameState ? 'exists' : 'null'}</div>
+          </div>
+        )}
+
         {/* Active Game */}
         {gameStatus === 'active' && (
           <div className="space-y-3 pb-4">
@@ -945,8 +996,15 @@ export default function GamePage() {
 
               {/* Bingo Grid - Optimized size */}
               <div className="grid grid-cols-5 gap-0 pt-2.5">
-                {bingoCard.map((row, ri) =>
-                  row.map((num, ci) => {
+                {bingoCard.length === 0 ? (
+                  // Loading state for bingo card
+                  <div className="col-span-5 text-center py-8">
+                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                    <p className="text-sm text-slate-600">Generating your bingo card...</p>
+                  </div>
+                ) : (
+                  bingoCard.map((row, ri) =>
+                    row.map((num, ci) => {
                     const isMarked = markedCells[ri][ci]
                     const isCalled = calledNumbers.includes(num) && num !== 0
                     const isFree = num === 0
@@ -975,6 +1033,7 @@ export default function GamePage() {
                       </button>
                     )
                   })
+                  )
                 )}
               </div>
             </div>
