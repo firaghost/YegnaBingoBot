@@ -68,6 +68,18 @@ async function startNumberCalling(gameId: string) {
         const randomIndex = Math.floor(Math.random() * availableNumbers.length)
         const calledNumber = availableNumbers[randomIndex]
         
+        // Get BINGO letter for the number
+        const getBingoLetter = (num: number) => {
+          if (num >= 1 && num <= 15) return 'B'
+          if (num >= 16 && num <= 30) return 'I'
+          if (num >= 31 && num <= 45) return 'N'
+          if (num >= 46 && num <= 60) return 'G'
+          if (num >= 61 && num <= 75) return 'O'
+          return 'N'
+        }
+        
+        const letter = getBingoLetter(calledNumber)
+        
         // Update game with new called number
         const updatedCalledNumbers = [...currentGame.called_numbers, calledNumber]
         
@@ -76,7 +88,8 @@ async function startNumberCalling(gameId: string) {
           .update({ 
             called_numbers: updatedCalledNumbers,
             last_number_called: calledNumber,
-            last_called_at: new Date().toISOString()
+            last_called_at: new Date().toISOString(),
+            latest_number: { letter, number: calledNumber }
           })
           .eq('id', gameId)
 
@@ -674,6 +687,31 @@ app.post('/api/game/start-calling', async (req, res) => {
   }
 })
 
+// Add API endpoint to stop number calling for a game
+app.post('/api/game/stop-calling', async (req, res) => {
+  try {
+    const { gameId } = req.body
+
+    if (!gameId) {
+      return res.status(400).json({ error: 'Missing gameId' })
+    }
+
+    console.log(`🛑 Stopping number calling for game ${gameId}`)
+    stopNumberCalling(gameId)
+
+    return res.json({
+      success: true,
+      message: `Stopped number calling for game ${gameId}`
+    })
+
+  } catch (error) {
+    console.error('Error stopping number calling:', error)
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
+  }
+})
+
 console.log('🚀 bingoX Production Server Starting...')
 console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`)
 console.log('🔗 API Routes Registered:')
@@ -681,6 +719,7 @@ console.log('   📡 GET  /api/test')
 console.log('   🎮 POST /api/game/join')
 console.log('   ⏳ POST /api/socket/start-waiting-period')
 console.log('   📢 POST /api/game/start-calling')
+console.log('   🛑 POST /api/game/stop-calling')
 
 // Temporary: Allow single-player games for testing (default enabled for now)
 // Disable single-player games in production

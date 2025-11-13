@@ -52,10 +52,11 @@ function verifyMarkedCells(
 export async function POST(request: NextRequest) {
   try {
     const { gameId, userId, card } = await request.json()
+    console.log(`Processing bingo claim for game ${gameId}, user ${userId}`)
 
     if (!gameId || !userId || !card) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: gameId, userId, card' },
         { status: 400 }
       )
     }
@@ -87,22 +88,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get player's card from database
-    const { data: playerCard, error: cardError } = await supabase
-      .from('player_cards')
-      .select('*')
-      .eq('game_id', gameId)
-      .eq('user_id', userId)
-      .single()
-
-    if (cardError || !playerCard) {
+    // Validate that the user is actually in this game
+    if (!game.players.includes(userId)) {
       return NextResponse.json(
-        { error: 'Player card not found' },
-        { status: 404 }
+        { error: 'Player not in this game' },
+        { status: 403 }
       )
     }
 
-    // Create marked cells array from the card
+    // Create marked cells array from the frontend card
     const markedCells: boolean[][] = []
     for (let i = 0; i < 5; i++) {
       markedCells[i] = []
@@ -203,9 +197,18 @@ export async function POST(request: NextRequest) {
     console.log(`💵 Gross Prize: ${game.prize_pool} ETB`)
     console.log(`💰 Net Prize (after ${commissionRate}% commission): ${netPrize} ETB`)
 
-    // TODO: Emit socket event to stop number calling and announce winner
-    // This would require socket server integration
-    console.log(`🛑 Game ${gameId} ended - number calling should stop`)
+    // Stop number calling by calling the Railway server
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      await fetch(`${baseUrl}/api/game/stop-calling`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      })
+      console.log(`🛑 Stopped number calling for game ${gameId}`)
+    } catch (error) {
+      console.error('Error stopping number calling:', error)
+    }
 
     return NextResponse.json({
       success: true,
