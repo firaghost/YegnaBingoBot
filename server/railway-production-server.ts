@@ -33,6 +33,18 @@ app.get('/api/test', (req, res) => {
   res.json({ 
     success: true, 
     message: 'API routes are working!',
+    version: '2.0-with-api-routes',
+    timestamp: new Date().toISOString()
+  })
+})
+
+// Add health check with version info
+app.get('/health', (req, res) => {
+  console.log('🏥 Health check called')
+  res.json({
+    status: 'healthy',
+    version: '2.0-with-api-routes',
+    features: ['socket.io', 'api-routes', 'game-join', 'waiting-period'],
     timestamp: new Date().toISOString()
   })
 })
