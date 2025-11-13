@@ -12,6 +12,8 @@ CHECK (status IN ('waiting', 'waiting_for_players', 'countdown', 'active', 'fini
 -- Add missing columns
 ALTER TABLE games ADD COLUMN IF NOT EXISTS waiting_started_at TIMESTAMPTZ;
 ALTER TABLE games ADD COLUMN IF NOT EXISTS countdown_started_at TIMESTAMPTZ;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS last_number_called INTEGER;
+ALTER TABLE games ADD COLUMN IF NOT EXISTS last_called_at TIMESTAMPTZ;
 
 -- Show result
-SELECT 'Status constraint fixed - waiting_for_players now allowed' as result;
+SELECT 'Status constraint fixed - waiting_for_players now allowed and number calling columns added' as result;

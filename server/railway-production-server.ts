@@ -11,6 +11,130 @@ import { gameStateManager } from '../lib/game-state-manager'
 const app = express()
 const httpServer = createServer(app)
 
+// Store active game intervals to manage number calling
+const gameIntervals = new Map<string, NodeJS.Timeout>()
+
+// Number calling function
+async function startNumberCalling(gameId: string) {
+  try {
+    const { supabaseAdmin } = await import('../lib/supabase')
+    const supabase = supabaseAdmin
+
+    // Get current game state
+    const { data: game } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single()
+
+    if (!game || game.status !== 'active') {
+      console.log(`❌ Cannot start number calling - game ${gameId} not active`)
+      return
+    }
+
+    console.log(`📢 Number calling started for game ${gameId}`)
+    
+    // Generate all possible bingo numbers (1-75)
+    const allNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
+    let availableNumbers = allNumbers.filter(num => !game.called_numbers.includes(num))
+    
+    const callInterval = setInterval(async () => {
+      try {
+        // Check if game is still active
+        const { data: currentGame } = await supabase
+          .from('games')
+          .select('status, called_numbers')
+          .eq('id', gameId)
+          .single()
+
+        if (!currentGame || currentGame.status !== 'active') {
+          console.log(`🛑 Stopping number calling - game ${gameId} no longer active`)
+          clearInterval(callInterval)
+          gameIntervals.delete(gameId)
+          return
+        }
+
+        // Update available numbers based on current state
+        availableNumbers = allNumbers.filter(num => !currentGame.called_numbers.includes(num))
+
+        if (availableNumbers.length === 0) {
+          console.log(`🏁 All numbers called for game ${gameId}`)
+          clearInterval(callInterval)
+          gameIntervals.delete(gameId)
+          return
+        }
+
+        // Call a random number
+        const randomIndex = Math.floor(Math.random() * availableNumbers.length)
+        const calledNumber = availableNumbers[randomIndex]
+        
+        // Update game with new called number
+        const updatedCalledNumbers = [...currentGame.called_numbers, calledNumber]
+        
+        await supabase
+          .from('games')
+          .update({ 
+            called_numbers: updatedCalledNumbers,
+            last_number_called: calledNumber,
+            last_called_at: new Date().toISOString()
+          })
+          .eq('id', gameId)
+
+        console.log(`📢 Game ${gameId}: Called number ${calledNumber} (${updatedCalledNumbers.length}/75)`)
+
+        // Remove called number from available numbers
+        availableNumbers = availableNumbers.filter(num => num !== calledNumber)
+
+      } catch (error) {
+        console.error(`❌ Error calling number for game ${gameId}:`, error)
+      }
+    }, 3000) // Call a number every 3 seconds
+
+    // Store interval for cleanup
+    gameIntervals.set(gameId, callInterval)
+
+  } catch (error) {
+    console.error(`❌ Error starting number calling for game ${gameId}:`, error)
+  }
+}
+
+// Function to stop number calling for a game
+function stopNumberCalling(gameId: string) {
+  const interval = gameIntervals.get(gameId)
+  if (interval) {
+    clearInterval(interval)
+    gameIntervals.delete(gameId)
+    console.log(`🛑 Stopped number calling for game ${gameId}`)
+  }
+}
+
+// Cleanup finished games and stop their number calling
+async function cleanupFinishedGames() {
+  try {
+    const { supabaseAdmin } = await import('../lib/supabase')
+    const supabase = supabaseAdmin
+
+    // Get all finished games that might still have active intervals
+    const { data: finishedGames } = await supabase
+      .from('games')
+      .select('id')
+      .in('status', ['finished', 'cancelled'])
+
+    if (finishedGames) {
+      finishedGames.forEach(game => {
+        stopNumberCalling(game.id)
+      })
+    }
+
+    console.log(`🧹 Cleaned up ${finishedGames?.length || 0} finished games`)
+  } catch (error) {
+    console.error('Error cleaning up finished games:', error)
+  }
+}
+
+// Run cleanup every 5 minutes
+setInterval(cleanupFinishedGames, 5 * 60 * 1000)
+
 // Middleware
 app.use(cors({
   origin: [
@@ -260,6 +384,10 @@ app.post('/api/game/join', async (req, res) => {
                     started_at: new Date().toISOString()
                   })
                   .eq('id', activeGame.id)
+
+                // Start number calling
+                console.log(`📢 Starting number calling for game ${activeGame.id}`)
+                startNumberCalling(activeGame.id)
               }
             }, 1000)
 
@@ -353,6 +481,10 @@ app.post('/api/game/join', async (req, res) => {
                   started_at: new Date().toISOString()
                 })
                 .eq('id', activeGame.id)
+              
+              // Start number calling for stuck game
+              console.log(`📢 Starting number calling for stuck game ${activeGame.id}`)
+              startNumberCalling(activeGame.id)
             }
           }, 1000)
         } catch (error) {
@@ -488,12 +620,67 @@ app.post('/api/socket/start-waiting-period', async (req, res) => {
   }
 })
 
+// Add API endpoint to manually start number calling for active games
+app.post('/api/game/start-calling', async (req, res) => {
+  try {
+    const { gameId } = req.body
+
+    if (!gameId) {
+      return res.status(400).json({ error: 'Missing gameId' })
+    }
+
+    const { supabaseAdmin } = await import('../lib/supabase')
+    const supabase = supabaseAdmin
+
+    // Check if game exists and is active
+    const { data: game } = await supabase
+      .from('games')
+      .select('*')
+      .eq('id', gameId)
+      .single()
+
+    if (!game) {
+      return res.status(404).json({ error: 'Game not found' })
+    }
+
+    if (game.status !== 'active') {
+      return res.status(400).json({ error: `Game is not active (status: ${game.status})` })
+    }
+
+    // Check if number calling is already running
+    if (gameIntervals.has(gameId)) {
+      return res.json({ 
+        success: true, 
+        message: 'Number calling already active',
+        calledNumbers: game.called_numbers?.length || 0
+      })
+    }
+
+    // Start number calling
+    console.log(`📢 Manually starting number calling for game ${gameId}`)
+    startNumberCalling(gameId)
+
+    return res.json({
+      success: true,
+      message: `Started number calling for game ${gameId}`,
+      calledNumbers: game.called_numbers?.length || 0
+    })
+
+  } catch (error) {
+    console.error('Error starting number calling:', error)
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
+  }
+})
+
 console.log('🚀 bingoX Production Server Starting...')
 console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`)
 console.log('🔗 API Routes Registered:')
 console.log('   📡 GET  /api/test')
 console.log('   🎮 POST /api/game/join')
 console.log('   ⏳ POST /api/socket/start-waiting-period')
+console.log('   📢 POST /api/game/start-calling')
 
 // Temporary: Allow single-player games for testing (default enabled for now)
 // Disable single-player games in production
