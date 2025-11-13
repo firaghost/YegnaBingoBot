@@ -29,20 +29,25 @@ const activeCountdowns = new Set<string>()
 // Store game start times for fairness validation
 const gameStartTimes = new Map<string, number>()
 
-// Validate number calling fairness
-function validateNumberCallFairness(gameId: string, callCount: number): boolean {
+// Store game intervals for fairness validation
+const gameIntervalSettings = new Map<string, number>() // gameId -> intervalMs
+
+// Validate number calling fairness with dynamic intervals
+function validateNumberCallFairness(gameId: string, callCount: number, intervalMs: number): boolean {
   const startTime = gameStartTimes.get(gameId)
   if (!startTime) {
     gameStartTimes.set(gameId, Date.now())
+    gameIntervalSettings.set(gameId, intervalMs)
     return true
   }
   
   const elapsed = Date.now() - startTime
-  const expectedCalls = Math.floor(elapsed / 5000) // 5 seconds per call
+  const expectedCalls = Math.floor(elapsed / intervalMs) // Dynamic interval per call
   const tolerance = 2 // Allow 2 calls variance
   
   const isValid = Math.abs(callCount - expectedCalls) <= tolerance
   if (!isValid) {
+    console.warn(`⚠️ Timing anomaly detected for game ${gameId}: Expected ~${expectedCalls} calls, got ${callCount} (${intervalMs}ms intervals)`)
   }
   
   return isValid
@@ -71,7 +76,28 @@ async function startNumberCalling(gameId: string) {
       return
     }
 
-    console.log(`📢 Number calling started for game ${gameId} (using cache)`)
+    // Get level settings for this game
+    const { supabaseAdmin } = await import('../lib/supabase')
+    const { data: room } = await supabaseAdmin
+      .from('rooms')
+      .select('game_level, default_level')
+      .eq('id', game.room_id)
+      .single()
+    
+    const gameLevel = room?.game_level || room?.default_level || 'medium'
+    
+    // Get level configuration
+    const { data: levelConfig } = await supabaseAdmin
+      .from('levels')
+      .select('call_interval, win_threshold, description')
+      .eq('name', gameLevel)
+      .single()
+    
+    const callIntervalMs = levelConfig?.call_interval || 2000 // Default to medium (2 seconds)
+    const winThreshold = levelConfig?.win_threshold || 5
+    
+    console.log(`📢 Number calling started for game ${gameId} (${gameLevel} level: ${callIntervalMs}ms intervals, ${winThreshold} win threshold)`)
+    console.log(`📝 Level description: ${levelConfig?.description || 'Standard game'}`)
 
     // Get current game state from cache
     const { called_numbers: alreadyCalled, last_number_called: lastCalledNumber, last_called_at: lastCalledAt } = game
@@ -139,8 +165,8 @@ async function startNumberCalling(gameId: string) {
         // Database will be synced automatically in batch (every 30s)
         // No need for immediate DB update - cache handles it!
 
-        // Validate fairness
-        const isFair = validateNumberCallFairness(gameId, callCount)
+        // Validate fairness with dynamic interval
+        const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
         console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
         
         // Note: Socket broadcast is handled automatically by gameStateCache.update()
@@ -150,7 +176,7 @@ async function startNumberCalling(gameId: string) {
         console.error(`❌ Error calling number for game ${gameId}:`, error)
         // Don't stop on single errors, but log them
       }
-    }, 5000) // Consistent 5-second intervals for fairness (slower = more fair)
+    }, callIntervalMs) // Dynamic interval based on game level (Easy: 1s, Medium: 2s, Hard: 3s)
 
     // Store interval for cleanup
     gameIntervals.set(gameId, callInterval)
@@ -175,6 +201,7 @@ function stopNumberCalling(gameId: string) {
   activeWaitingPeriods.delete(gameId)
   activeCountdowns.delete(gameId)
   gameStartTimes.delete(gameId) // Clean up timing data
+  gameIntervalSettings.delete(gameId) // Clean up interval settings
   
   // Force sync cache to database before cleanup
   gameStateCache.forceSyncToDatabase(gameId).then(() => {
