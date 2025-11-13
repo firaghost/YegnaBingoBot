@@ -19,7 +19,6 @@ interface CachedGameState {
   started_at: string | null
   ended_at: string | null
   created_at: string
-  updated_at: string
   // Performance tracking
   _cache_updated_at: number
   _needs_db_sync: boolean
@@ -72,8 +71,7 @@ class GameStateCache {
       ...state,
       id: gameId,
       _cache_updated_at: now,
-      _needs_db_sync: true,
-      updated_at: new Date().toISOString()
+      _needs_db_sync: true
     } as CachedGameState
     
     this.cache.set(gameId, newState)
@@ -110,8 +108,8 @@ class GameStateCache {
   private broadcastUpdate(gameId: string, state: CachedGameState): void {
     try {
       if (global.io) {
-        // Broadcast to game room
-        global.io.to(`game-${gameId}`).emit('game_state_update', {
+        // Broadcast to game room (try both formats for compatibility)
+        global.io.to(`game-${gameId}`).to(gameId).emit('game_state_update', {
           gameId: state.id,
           status: state.status,
           called_numbers: state.called_numbers,
@@ -125,7 +123,7 @@ class GameStateCache {
         
         // Also emit specific events for better handling
         if (state.latest_number) {
-          global.io.to(`game-${gameId}`).emit('number-called', {
+          global.io.to(`game-${gameId}`).to(gameId).emit('number-called', {
             gameId,
             number: state.latest_number.number,
             letter: state.latest_number.letter,
@@ -200,12 +198,12 @@ class GameStateCache {
           continue
         }
         
+        // Remove updated_at from changes as it may not exist in schema
+        const { updated_at, _cache_updated_at, _needs_db_sync, ...dbChanges } = changes as any
+        
         const { error } = await supabaseAdmin
           .from('games')
-          .update({
-            ...changes,
-            updated_at: new Date().toISOString()
-          })
+          .update(dbChanges)
           .eq('id', gameId)
         
         if (error) {
@@ -254,12 +252,13 @@ class GameStateCache {
     
     try {
       const { supabaseAdmin } = await import('../lib/supabase')
+      
+      // Remove internal cache fields
+      const { updated_at, _cache_updated_at, _needs_db_sync, ...dbChanges } = pending as any
+      
       const { error } = await supabaseAdmin
         .from('games')
-        .update({
-          ...pending,
-          updated_at: new Date().toISOString()
-        })
+        .update(dbChanges)
         .eq('id', gameId)
       
       if (error) {

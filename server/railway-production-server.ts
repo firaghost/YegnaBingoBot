@@ -849,6 +849,19 @@ const io = new SocketServer(httpServer, {
 // Make socket server globally available for number calling
 global.io = io
 
+// Add global socket event handlers for game room joining
+io.on('connection', (socket) => {
+  console.log(`🔌 Global: Client connected ${socket.id}`)
+  
+  // Handle join-game event (hyphenated format from frontend)
+  socket.on('join-game', ({ gameId, userId }: any) => {
+    console.log(`👤 Global: User ${userId} joining game room ${gameId}`)
+    socket.join(`game-${gameId}`)
+    socket.join(gameId) // Join both formats for compatibility
+    console.log(`✅ Global: User ${userId} joined rooms: game-${gameId} and ${gameId}`)
+  })
+})
+
 // Initialize socket servers with the shared Socket.IO instance
 const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
 const inGameSocketServer = new InGameSocketServer(io as any)

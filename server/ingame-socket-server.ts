@@ -69,12 +69,26 @@ export class InGameSocketServer {
     this.io.on('connection', (socket) => {
       console.log(`🔌 Client connected to game server: ${socket.id}`)
 
-      // Handle joining active game
+      // Handle joining active game (both formats for compatibility)
       socket.on('join_game', async (data) => {
         try {
           await this.handleJoinGame(socket, data)
         } catch (error) {
           console.error('Error handling join_game:', error)
+          socket.emit('game_error', { message: 'Failed to join game' })
+        }
+      })
+      
+      // @ts-ignore - Handle hyphenated format for compatibility
+      socket.on('join-game', async (data: any) => {
+        try {
+          // Convert hyphenated format to underscore format
+          await this.handleJoinGame(socket, { 
+            roomId: data.gameId, 
+            username: data.userId
+          })
+        } catch (error) {
+          console.error('Error handling join-game:', error)
           socket.emit('game_error', { message: 'Failed to join game' })
         }
       })
