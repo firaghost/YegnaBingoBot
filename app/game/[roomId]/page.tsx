@@ -129,8 +129,19 @@ export default function GamePage() {
         // Call the game join API directly for this specific room
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
         
+        // Test if API routes are working on Railway
+        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        try {
+          console.log('🧪 Testing API routes on:', apiBaseUrl)
+          const testResponse = await fetch(`${apiBaseUrl}/api/test`)
+          const testResult = await testResponse.json()
+          console.log('🧪 Test API result:', testResult)
+        } catch (testError) {
+          console.error('❌ Test API failed:', testError)
+        }
+
         console.log('🔥 About to call API with:', { roomId, userId: user.id })
-        const response = await fetch('/api/game/join', {
+        const response = await fetch(`${apiBaseUrl}/api/game/join`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -142,11 +153,24 @@ export default function GamePage() {
 
         let result
         try {
+          if (!response.ok) {
+            console.error('❌ API call failed:', response.status, response.statusText)
+            const errorText = await response.text()
+            console.error('❌ Error response:', errorText)
+            setLoading(false)
+            return
+          }
+          
           result = await response.json()
           console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
         } catch (parseError) {
           console.error('❌ Failed to parse API response:', parseError)
-          console.log('📡 Raw response text:', await response.text())
+          try {
+            const responseText = await response.text()
+            console.log('📡 Raw response text:', responseText)
+          } catch (textError) {
+            console.error('❌ Could not read response text:', textError)
+          }
           setLoading(false)
           return
         }

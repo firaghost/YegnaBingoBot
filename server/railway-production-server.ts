@@ -16,12 +16,26 @@ app.use(cors({
   origin: [
     process.env.FRONTEND_URL || "http://localhost:3000",
     "https://yegnagame.vercel.app",
+    "http://localhost:3000",
+    "https://localhost:3000",
     /\.vercel\.app$/,
     /localhost:\d+$/
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json())
+
+// Add test endpoint to verify API routes are working
+app.get('/api/test', (req, res) => {
+  console.log('🧪 TEST API CALLED - API routes are working!')
+  res.json({ 
+    success: true, 
+    message: 'API routes are working!',
+    timestamp: new Date().toISOString()
+  })
+})
 
 // Add game join API route directly to the socket server
 app.post('/api/game/join', async (req, res) => {
@@ -38,7 +52,7 @@ app.post('/api/game/join', async (req, res) => {
     }
 
     // Import the game join logic
-    const { supabaseAdmin } = await import('../lib/supabase.js')
+    const { supabaseAdmin } = await import('../lib/supabase')
     const supabase = supabaseAdmin
 
     // Get room data to use correct stake and settings
@@ -292,7 +306,7 @@ app.post('/api/socket/start-waiting-period', async (req, res) => {
 
     console.log(`⏳ Starting waiting period for game ${gameId}: ${waitingTime}s waiting + ${countdownTime}s countdown`)
 
-    const { supabaseAdmin } = await import('../lib/supabase.js')
+    const { supabaseAdmin } = await import('../lib/supabase')
     const supabase = supabaseAdmin
 
     // Start the 30-second waiting period
@@ -378,6 +392,10 @@ app.post('/api/socket/start-waiting-period', async (req, res) => {
 
 console.log('🚀 bingoX Production Server Starting...')
 console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`)
+console.log('🔗 API Routes Registered:')
+console.log('   📡 GET  /api/test')
+console.log('   🎮 POST /api/game/join')
+console.log('   ⏳ POST /api/socket/start-waiting-period')
 
 // Temporary: Allow single-player games for testing (default enabled for now)
 // Disable single-player games in production
