@@ -429,8 +429,16 @@ app.post('/api/game/join', async (req, res) => {
       })
     }
 
-    // Join existing game
-    console.log(`👥 Joining existing game: ${activeGame.id}, current players: ${activeGame.players?.length}`)
+    // Count all players in the room (including bots)
+    const { data: allPlayersInRoom } = await supabase
+      .from('games')
+      .select('user_id')
+      .eq('room_id', roomId)
+      .eq('status', 'waiting')
+    
+    const totalPlayersInRoom = allPlayersInRoom?.length || 0
+    
+    console.log(`👥 Joining existing game: ${activeGame.id}, total players in room: ${totalPlayersInRoom} (including bots)`)
     
     // CRITICAL: If game is already active, player should spectate instead
     if (activeGame.status === 'active') {
@@ -476,11 +484,20 @@ app.post('/api/game/join', async (req, res) => {
         })
       }
 
-      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
+      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Total players in room: ${totalPlayersInRoom}`)
 
-      // If we have 2+ players and game is still in waiting status, start 30-second waiting period (only once)
-      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting') && !activeWaitingPeriods.has(activeGame.id)) {
-        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
+      // Check if there are real players in the room (not just bots)
+      const { data: realPlayersInRoom } = await supabase
+        .from('games')
+        .select('user_id, users!inner(is_bot)')
+        .eq('room_id', roomId)
+        .eq('status', 'waiting')
+      
+      const realPlayerCount = realPlayersInRoom?.filter((p: any) => !p.users?.is_bot).length || 0
+      
+      // Only start game if there's at least 1 real player and 2+ total players
+      if (realPlayerCount >= 1 && totalPlayersInRoom >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting') && !activeWaitingPeriods.has(activeGame.id)) {
+        console.log(`⏳ Game ${activeGame.id} has ${realPlayerCount} real players and ${totalPlayersInRoom} total players, starting 30-second waiting period...`)
         
         // Mark this game as having an active waiting period
         activeWaitingPeriods.add(activeGame.id)

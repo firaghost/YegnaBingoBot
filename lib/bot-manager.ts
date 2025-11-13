@@ -39,19 +39,20 @@ export class BotManager {
     return BotManager.instance
   }
 
-  // Start monitoring for lonely players
+  // Start monitoring for dynamic bot system
   startMonitoring() {
     if (this.isRunning) return
     
     this.isRunning = true
-    console.log('🤖 Bot Manager: Starting monitoring (permanent bots mode)...')
+    console.log('🤖 Bot Manager: Starting dynamic bot system...')
+    console.log('🔄 Features: Random rotation, prize pool updates, real-player-only game starts')
     
-    // Check every 60 seconds to maintain bot presence
+    // Check every 2 minutes for bot rotation and maintenance
     this.checkInterval = setInterval(async () => {
       await this.maintainBotPresence()
-    }, 60000)
+    }, 120000) // 2 minutes
     
-    // Initial maintenance
+    // Initial setup
     this.maintainBotPresence()
   }
 

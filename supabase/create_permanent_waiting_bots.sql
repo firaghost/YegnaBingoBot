@@ -96,7 +96,8 @@ SET waiting_players = (
     SELECT COUNT(*) 
     FROM games 
     WHERE games.room_id = rooms.id AND games.status = 'waiting'
-);
+)
+WHERE id IS NOT NULL;
 
 -- 5. Create function to maintain permanent bot presence
 CREATE OR REPLACE FUNCTION maintain_bot_presence()
@@ -153,13 +154,14 @@ BEGIN
         END LOOP;
     END LOOP;
     
-    -- Update waiting_players counts
+    -- Update waiting_players counts for all rooms
     UPDATE rooms 
     SET waiting_players = (
         SELECT COUNT(*) 
         FROM games 
         WHERE games.room_id = rooms.id AND games.status = 'waiting'
-    );
+    )
+    WHERE id IS NOT NULL;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -85,21 +85,31 @@ export default function LobbyPage() {
       const enhancedRooms = await Promise.all(
         uniqueRooms.map(async (room) => {
           try {
-            // Get active games for this room to count waiting players
+            // Get active games for this room to count waiting players (including bots)
             const { data: activeGames } = await supabase
               .from('games')
-              .select('players, status')
+              .select('id, players, status, user_id')
               .eq('room_id', room.id)
               .in('status', ['waiting', 'countdown'])
               .order('created_at', { ascending: false })
-              .limit(1)
 
-            const waitingPlayers = activeGames?.[0]?.players?.length || 0
+            // Count total waiting players (both from players array and individual game records)
+            let waitingPlayers = 0
+            if (activeGames && activeGames.length > 0) {
+              // If we have games with players array, count those
+              const gameWithPlayers = activeGames.find(game => game.players && game.players.length > 0)
+              if (gameWithPlayers) {
+                waitingPlayers = gameWithPlayers.players.length
+              } else {
+                // Otherwise count individual game records (bot system)
+                waitingPlayers = activeGames.length
+              }
+            }
             
-            // Calculate dynamic prize pool based on waiting players
-            const basePrizePool = room.stake * room.max_players * 0.9 // Max potential prize
+            // Calculate dynamic prize pool based on waiting players (BEFORE commission)
+            const basePrizePool = room.stake * room.max_players // Max potential prize (full amount)
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers * 0.9 // 90% of current stakes
+              ? room.stake * waitingPlayers // Full amount before commission
               : 0 // Show 0 when no players waiting
 
             return {
@@ -179,20 +189,30 @@ export default function LobbyPage() {
     try {
       const { data: activeGames } = await supabase
         .from('games')
-        .select('players, status')
+        .select('id, players, status, user_id')
         .eq('room_id', roomId)
         .in('status', ['waiting', 'countdown'])
         .order('created_at', { ascending: false })
-        .limit(1)
 
-      const waitingPlayers = activeGames?.[0]?.players?.length || 0
+      // Count total waiting players (both from players array and individual game records)
+      let waitingPlayers = 0
+      if (activeGames && activeGames.length > 0) {
+        // If we have games with players array, count those
+        const gameWithPlayers = activeGames.find(game => game.players && game.players.length > 0)
+        if (gameWithPlayers) {
+          waitingPlayers = gameWithPlayers.players.length
+        } else {
+          // Otherwise count individual game records (bot system)
+          waitingPlayers = activeGames.length
+        }
+      }
 
       // Update the specific room in state
       setRooms(prevRooms => 
         prevRooms.map(room => {
           if (room.id === roomId) {
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers * 0.9
+              ? room.stake * waitingPlayers // Full amount before commission
               : 0
             
             return {
@@ -343,7 +363,7 @@ export default function LobbyPage() {
                         }
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                       <div className={`w-2 h-2 rounded-full ${
                         room.game_level === 'easy' ? 'bg-green-500' :
                         room.game_level === 'medium' ? 'bg-yellow-500' :

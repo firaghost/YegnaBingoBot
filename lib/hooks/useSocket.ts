@@ -415,12 +415,36 @@ export function useSocket() {
       console.error('❌ Error fetching game state:', error)
     } else if (game) {
       console.log('✅ Initial game state loaded:', game.status)
+      
+      // Get all players in this room (including bots) for accurate count
+      const { data: allPlayersInRoom } = await supabase
+        .from('games')
+        .select(`
+          id, 
+          user_id,
+          users!inner(username, is_bot)
+        `)
+        .eq('room_id', game.room_id)
+        .eq('status', 'waiting')
+      
+      // Create players array from all game records
+      const allPlayersData = allPlayersInRoom?.map((g: any) => ({
+        id: g.user_id,
+        username: g.users?.username || 'Unknown',
+        is_bot: g.users?.is_bot || false
+      })) || []
+      
+      // For compatibility, keep players as string array of usernames
+      const playerNames = allPlayersData.map(p => p.username)
+      
+      console.log(`🎮 Found ${allPlayersData.length} total players in room (${allPlayersData.filter(p => p.is_bot).length} bots, ${allPlayersData.filter(p => !p.is_bot).length} real)`)
+      
       setGameState({
         id: game.id,
         room_id: game.room_id,
         status: game.status,
         countdown_time: game.countdown_time || 10,
-        players: game.players || [],
+        players: playerNames, // Keep as string array for compatibility
         bots: game.bots || [],
         called_numbers: game.called_numbers || [],
         latest_number: game.latest_number || null,
