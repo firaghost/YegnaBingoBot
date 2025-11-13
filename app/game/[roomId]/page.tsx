@@ -42,10 +42,6 @@ export default function GamePage() {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showWinDialog, setShowWinDialog] = useState(false)
   const [showLoseDialog, setShowLoseDialog] = useState(false)
-  
-  // Bot player tracking states
-  const [totalPlayersInRoom, setTotalPlayersInRoom] = useState(0)
-  const [allRoomPlayers, setAllRoomPlayers] = useState<any[]>([])
   const [winAmount, setWinAmount] = useState(0)
   const [winnerName, setWinnerName] = useState('')
   const [findingNewGame, setFindingNewGame] = useState(false)
@@ -231,88 +227,6 @@ export default function GamePage() {
       return () => clearTimeout(timer)
     }
   }, [roomData?.prize_pool])
-
-  // Fetch total players in room (including bots) for accurate count
-  useEffect(() => {
-    const fetchTotalPlayers = async () => {
-      if (roomId) {
-        try {
-          console.log(`🔍 Fetching players for room: ${roomId}`)
-          
-          // First get all waiting games in this room
-          const { data: waitingGames, error: gamesError } = await supabase
-            .from('games')
-            .select('user_id')
-            .eq('room_id', roomId)
-            .eq('status', 'waiting')
-          
-          if (gamesError) {
-            console.error('❌ Error fetching games:', gamesError)
-            return
-          }
-          
-          if (!waitingGames || waitingGames.length === 0) {
-            console.log(`🎮 Room ${roomId}: No waiting games found`)
-            setTotalPlayersInRoom(0)
-            setAllRoomPlayers([])
-            return
-          }
-          
-          // Then get user details for those games
-          const userIds = waitingGames.map(g => g.user_id).filter(Boolean)
-          const { data: users, error: usersError } = await supabase
-            .from('users')
-            .select('id, username, is_bot')
-            .in('id', userIds)
-          
-          if (usersError) {
-            console.error('❌ Error fetching users:', usersError)
-            return
-          }
-          
-          // Combine the data
-          const allPlayersInRoom = waitingGames.map(game => {
-            const user = users?.find(u => u.id === game.user_id)
-            return {
-              user_id: game.user_id,
-              users: user ? {
-                username: user.username,
-                is_bot: user.is_bot
-              } : null
-            }
-          }).filter(p => p.users) // Only include games with valid users
-          
-          const totalCount = allPlayersInRoom.length
-          const botCount = allPlayersInRoom.filter((p: any) => p.users?.is_bot).length || 0
-          const realCount = allPlayersInRoom.filter((p: any) => !p.users?.is_bot).length || 0
-          
-          console.log(`🎮 Room ${roomId} players: ${totalCount} total (${botCount} bots, ${realCount} real)`)
-          console.log('👥 Player details:', allPlayersInRoom.map((p: any) => ({
-            username: p.users?.username,
-            isBot: p.users?.is_bot,
-            userId: p.user_id
-          })))
-          console.log('🔍 Current user ID:', user?.id)
-          console.log('🔍 User object:', user)
-          console.log('🔍 Is authenticated:', isAuthenticated)
-          console.log('🔍 Auth loading:', authLoading)
-          console.log('🔍 Waiting game IDs:', waitingGames.map(g => g.user_id))
-          
-          setTotalPlayersInRoom(totalCount)
-          setAllRoomPlayers(allPlayersInRoom || [])
-        } catch (error) {
-          console.error('❌ Exception fetching total players:', error)
-        }
-      }
-    }
-    
-    // Initial fetch
-    fetchTotalPlayers()
-    
-    // Refresh every 3 seconds to get updated counts
-    const interval = setInterval(fetchTotalPlayers, 3000)
-    return () => clearInterval(interval)
-  }, [roomId])
 
   // Handle game over for spectators - auto redirect to new game
   useEffect(() => {
@@ -788,39 +702,6 @@ export default function GamePage() {
     )
   }
 
-  // Show authentication loading state
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-xl text-slate-600">Authenticating...</p>
-        </div>
-      </div>
-    )
-  }
-
-  // Show authentication error if not authenticated and not loading
-  if (!isAuthenticated && !authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <XCircle className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
-          <p className="text-slate-600 mb-4">You need to be logged in to join games.</p>
-          <button 
-            onClick={() => window.location.href = '/'}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-          >
-            Go to Login
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   // If gameState hasn't loaded yet, show a brief loading state
   // BUT allow waiting room to be shown even without gameState
   if (!gameState && !isInWaitingRoom && !isSpectator && !gameId) {
@@ -845,26 +726,14 @@ export default function GamePage() {
     isInWaitingRoom,
     hasGameState: !!gameState,
     players,
-    totalPlayersInRoom,
-    allRoomPlayersCount: allRoomPlayers.length,
     gameId,
-    roomId,
     roomData: !!roomData
   })
   const stake = roomData?.stake || 10
-  // Calculate FULL prize pool (before commission) using total players including bots
+  // Calculate FULL prize pool (before commission)
   // Commission is deducted when winner receives the prize
-  const currentPlayers = totalPlayersInRoom > 0 ? totalPlayersInRoom : (gameState?.players?.length || 1)
+  const currentPlayers = gameState?.players?.length || 1
   const prizePool = currentPlayers * stake
-  
-  // Debug prize pool calculation
-  console.log('💰 Prize pool calculation:', {
-    totalPlayersInRoom,
-    gameStatePlayers: gameState?.players?.length || 0,
-    currentPlayers,
-    stake,
-    prizePool
-  })
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -918,7 +787,7 @@ export default function GamePage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{totalPlayersInRoom || gameState?.players?.length || 1}</div>
+                  <div className="text-2xl font-bold">{gameState?.players?.length || 1}</div>
                   <div className="text-white/80 text-sm">/ {roomData?.max_players || 8}</div>
                 </div>
               </div>
@@ -939,36 +808,45 @@ export default function GamePage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Users className="w-4 h-4" />
-                      <span>Players ({totalPlayersInRoom || gameState?.players?.length || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
+                      <span>Players ({gameState?.players?.length || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
                     </div>
                   </div>
 
                   {/* Simplified Players Display */}
-                  {(allRoomPlayers.length > 0) ? (
+                  {(gameState?.players && gameState.players.length > 0) ? (
                     <div className="flex flex-wrap gap-2 mb-3">
-                      {allRoomPlayers.map((player: any, index: number) => {
-                        const isCurrentUser = player.user_id === user?.id
-                        const isBot = player.users?.is_bot || false
-                        const username = player.users?.username || 'Unknown'
+                      {(() => {
+                        // Create a combined list of all players with proper indexing
+                        const allPlayers: Array<{username: string, isCurrentUser: boolean, playerNumber: number}> = []
                         
-                        return (
+                        // Add all players from gameState
+                        gameState.players.forEach((playerId: string, index: number) => {
+                          const isCurrentUser = playerId === user?.id
+                          allPlayers.push({
+                            username: getDisplayName(playerId, isCurrentUser),
+                            isCurrentUser: isCurrentUser,
+                            playerNumber: index + 1
+                          })
+                        })
+                        
+                        return allPlayers.map((player, index) => (
                           <div 
-                            key={player.user_id} 
+                            key={index} 
                             className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
-                              isCurrentUser 
+                              player.isCurrentUser 
                                 ? 'bg-green-100 text-green-800 border-2 border-green-300' 
                                 : 'bg-blue-100 text-blue-800'
                             }`}
                           >
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-xs ${
-                              isCurrentUser ? 'bg-green-600' : 'bg-blue-600'
+                              player.isCurrentUser ? 'bg-green-600' : 'bg-blue-600'
                             }`}>
-                              {getRandomEmoji(username)}
+                              {getRandomEmoji(player.username)}
                             </div>
-                            {username}{isCurrentUser ? ' (You)' : ''}
+                            {player.username}{player.isCurrentUser ? ' (You)' : ''}
                           </div>
-                        )
-                      })}
+                        ))
+                      })()}
                     </div>
                   ) : (
                     <div className="text-center py-4 text-slate-500">
@@ -1016,26 +894,12 @@ export default function GamePage() {
                         </div>
                       )}
                     </div>
-                  ) : (totalPlayersInRoom >= 2) ? (
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <Users className="w-4 h-4 text-green-600" />
-                        <span className="font-medium text-green-700">
-                          Ready to start! ({totalPlayersInRoom} players)
-                        </span>
-                      </div>
-                      {!user?.id && (
-                        <div className="text-xs text-orange-600 text-center mt-1">
-                          ⚠️ Authentication issue detected - please refresh page
-                        </div>
-                      )}
-                    </div>
-                  ) : (totalPlayersInRoom < 2) ? (
+                  ) : ((waitingRoomState?.currentPlayers || gameState?.players?.length || 0) < 2) ? (
                     <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-3">
                       <div className="flex items-center justify-center gap-2">
                         <Users className="w-4 h-4 text-yellow-600" />
                         <span className="font-medium text-yellow-700">
-                          Waiting for players... ({totalPlayersInRoom}/2)
+                          Waiting for players... ({waitingRoomState?.currentPlayers || gameState?.players?.length || 0}/2)
                         </span>
                       </div>
                     </div>
