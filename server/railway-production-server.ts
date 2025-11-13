@@ -766,6 +766,35 @@ app.post('/api/game/start-calling', async (req, res) => {
   }
 })
 
+// Add cache force sync endpoint for critical operations
+app.post('/api/cache/force-sync', async (req, res) => {
+  try {
+    const { gameId } = req.body
+
+    if (!gameId) {
+      return res.status(400).json({ error: 'Missing gameId' })
+    }
+
+    console.log(`🔄 Force syncing game ${gameId} to database...`)
+    const success = await gameStateCache.forceSyncToDatabase(gameId)
+
+    if (success) {
+      return res.json({
+        success: true,
+        message: `Game ${gameId} synced to database`
+      })
+    } else {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to sync game to database'
+      })
+    }
+  } catch (error) {
+    console.error('Error force syncing cache:', error)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // Add cache stats endpoint for monitoring
 app.get('/api/cache/stats', (req, res) => {
   try {
@@ -817,6 +846,7 @@ console.log('   🎮 POST /api/game/join')
 console.log('   ⏳ POST /api/socket/start-waiting-period')
 console.log('   📢 POST /api/game/start-calling')
 console.log('   🛑 POST /api/game/stop-calling')
+console.log('   🔄 POST /api/cache/force-sync')
 console.log('   📊 GET  /api/cache/stats')
 console.log('')
 console.log('⚡ Performance Features:')

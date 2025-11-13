@@ -61,7 +61,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get game data
+    // Force sync cache to database before validation (critical operation)
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      await fetch(`${baseUrl}/api/cache/force-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      })
+      console.log(`🔄 Forced cache sync for game ${gameId} before bingo validation`)
+    } catch (syncError) {
+      console.warn('Cache sync failed, continuing with database state:', syncError)
+    }
+
+    // Get game from database (should be fresh after sync)
     const { data: game, error: gameError } = await supabase
       .from('games')
       .select('*')
@@ -69,8 +82,15 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (gameError || !game) {
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Game not found' },
+        { status: 404 }
+      )
     }
+    
+    console.log(`🎯 Validating bingo claim for game ${gameId}`)
+    console.log(`📊 Called numbers count: ${game.called_numbers?.length || 0}`)
+    console.log(`📋 Called numbers: ${JSON.stringify(game.called_numbers)}`)
 
     // Only allow claims on active games
     if (game.status !== 'active') {
@@ -112,8 +132,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Log the card and marked cells for debugging
+    console.log(`🎴 Player card:`, JSON.stringify(card))
+    console.log(`✅ Marked cells:`, JSON.stringify(markedCells))
+
     // Verify marked cells are valid
-    if (!verifyMarkedCells(card, markedCells, game.called_numbers)) {
+    const isValid = verifyMarkedCells(card, markedCells, game.called_numbers)
+    console.log(`🔍 Marked cells verification: ${isValid ? 'VALID' : 'INVALID'}`)
+    
+    if (!isValid) {
       return NextResponse.json(
         { error: 'Invalid bingo claim - marked cells do not match called numbers' },
         { status: 400 }
@@ -121,7 +148,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if it's a valid bingo
-    if (!checkBingo(card, markedCells)) {
+    const hasBingo = checkBingo(card, markedCells)
+    console.log(`🎯 Bingo check result: ${hasBingo ? 'YES - VALID BINGO!' : 'NO - Not a bingo'}`)
+    
+    if (!hasBingo) {
+      // Log which patterns were checked
+      console.log(`❌ No bingo pattern found`)
+      console.log(`   Rows checked: ${markedCells.map((row, i) => `Row ${i}: ${row.every(c => c)}`).join(', ')}`)
+      console.log(`   Cols checked: ${[0,1,2,3,4].map(j => `Col ${j}: ${markedCells.every(row => row[j])}`).join(', ')}`)
+      
       return NextResponse.json(
         { error: 'Not a valid bingo' },
         { status: 400 }
