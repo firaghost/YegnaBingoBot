@@ -5,9 +5,10 @@ const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🎮 ===== GAME JOIN API CALLED =====')
+    const timestamp = new Date().toISOString()
+    console.log(`🎮 ===== GAME JOIN API CALLED [${timestamp}] =====`)
     const { roomId, userId } = await request.json()
-    console.log(`🎯 Join request: Room=${roomId}, User=${userId}`)
+    console.log(`🎯 Join request: Room=${roomId}, User=${userId} at ${timestamp}`)
 
     if (!roomId || !userId) {
       return NextResponse.json(

@@ -129,6 +129,7 @@ export default function GamePage() {
         // Call the game join API directly for this specific room
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
         
+        console.log('🔥 About to call API with:', { roomId, userId: user.id })
         const response = await fetch('/api/game/join', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -137,9 +138,18 @@ export default function GamePage() {
             userId: user.id
           })
         })
+        console.log('🔥 API call completed, status:', response.status)
 
-        const result = await response.json()
-        console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
+        let result
+        try {
+          result = await response.json()
+          console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
+        } catch (parseError) {
+          console.error('❌ Failed to parse API response:', parseError)
+          console.log('📡 Raw response text:', await response.text())
+          setLoading(false)
+          return
+        }
         
         if (response.ok && result.gameId) {
           console.log('✅ Game joined successfully:', result.gameId)
