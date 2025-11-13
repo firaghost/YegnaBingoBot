@@ -34,10 +34,19 @@ export async function POST(request: NextRequest) {
 
     const stake = room.stake
 
-    // Force cleanup this user from any stuck games first
+    // Only cleanup truly stuck games (older than 10 minutes)
     try {
-      await supabase.rpc('force_cleanup_user_from_games', { user_uuid: userId })
-      console.log(`🧹 Cleaned up user ${userId} from any previous games`)
+      const { data: stuckGames } = await supabase
+        .from('games')
+        .select('id')
+        .contains('players', [userId])
+        .in('status', ['waiting', 'waiting_for_players', 'countdown'])
+        .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString()) // 10 minutes ago
+      
+      if (stuckGames && stuckGames.length > 0) {
+        await supabase.rpc('force_cleanup_user_from_games', { user_uuid: userId })
+        console.log(`🧹 Cleaned up user ${userId} from ${stuckGames.length} stuck games`)
+      }
     } catch (cleanupError) {
       console.warn('Cleanup warning:', cleanupError)
       // Continue even if cleanup fails
@@ -164,27 +173,32 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have 2+ players, start 15-second waiting period for more players
+      // If we have 2+ players, start 30-second waiting period for more players
       if (updatedPlayers.length >= 2 && newStatus === 'waiting') {
-        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 15-second waiting period...`)
+        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
         
-        // Update status to countdown with 15-second waiting timer
+        // Update status to waiting_for_players with 30-second timer
         await supabase
           .from('games')
           .update({ 
-            status: 'countdown',
-            countdown_time: 15  // 15 seconds to wait for more players
+            status: 'waiting_for_players',
+            countdown_time: 30,  // 30 seconds to wait for more players
+            waiting_started_at: new Date().toISOString()
           })
           .eq('id', activeGame.id)
         
-        // Notify Socket.IO server to start the waiting period
+        // Notify API to start the waiting period
         try {
-          const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
-          await fetch(`${socketUrl}/trigger-game-start`, {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+          await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gameId: activeGame.id })
-          }).catch(err => console.error('Failed to trigger game start:', err))
+            body: JSON.stringify({ 
+              gameId: activeGame.id,
+              waitingTime: 30,
+              countdownTime: 10
+            })
+          }).catch(err => console.error('Failed to trigger waiting period:', err))
         } catch (error) {
           console.error('Error notifying socket server:', error)
         }

@@ -233,19 +233,11 @@ export default function GamePage() {
     }
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && gameId && user?.id) {
-        // User switched tabs or minimized - also cleanup
-        fetch('/api/game/leave', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: gameId,
-            userId: user.id
-          }),
-          keepalive: true
-        }).catch(() => {
-          // Ignore errors on cleanup
-        })
+      // Don't cleanup on visibility change - only on actual page unload
+      // This prevents removing players when they just switch tabs
+      if (document.visibilityState === 'visible' && gameId && user?.id) {
+        // Player came back - ensure they're still in the game
+        console.log('👀 Player returned to tab, checking game state')
       }
     }
 
@@ -696,7 +688,7 @@ export default function GamePage() {
       <div className="max-w-2xl mx-auto px-4 py-3">
 
         {/* Enhanced Waiting Room System */}
-        {(gameStatus === 'waiting' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
+        {(gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
           <div className="space-y-4 animate-in fade-in duration-500">
             
             {/* Invite Toast */}
@@ -862,17 +854,23 @@ export default function GamePage() {
                     <div className={`bg-gradient-to-r border rounded-lg p-3 ${
                       gameStatus === 'countdown' 
                         ? 'from-orange-50 to-yellow-50 border-orange-200' 
+                        : gameStatus === 'waiting_for_players'
+                        ? 'from-green-50 to-emerald-50 border-green-200'
                         : 'from-blue-50 to-indigo-50 border-blue-200'
                     }`}>
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className={`w-4 h-4 animate-spin ${
-                          gameStatus === 'countdown' ? 'text-orange-600' : 'text-blue-600'
+                          gameStatus === 'countdown' ? 'text-orange-600' : 
+                          gameStatus === 'waiting_for_players' ? 'text-green-600' : 'text-blue-600'
                         }`} />
                         <span className={`font-medium ${
-                          gameStatus === 'countdown' ? 'text-orange-700' : 'text-blue-700'
+                          gameStatus === 'countdown' ? 'text-orange-700' : 
+                          gameStatus === 'waiting_for_players' ? 'text-green-700' : 'text-blue-700'
                         }`}>
                           {gameStatus === 'countdown' 
                             ? `Starting in ${gameState?.countdown_time || 10}s...` 
+                            : gameStatus === 'waiting_for_players'
+                            ? `Waiting for more players... ${gameState?.countdown_time || 30}s`
                             : 'Waiting for players...'}
                         </span>
                       </div>
@@ -912,7 +910,24 @@ export default function GamePage() {
               {/* Secondary Actions */}
               <div className="grid grid-cols-1 gap-3">
                 <button 
-                  onClick={() => {
+                  onClick={async () => {
+                    // Explicitly leave the game when clicking back to lobby
+                    if (gameId && user?.id) {
+                      console.log('🚪 Player explicitly leaving game via Back to Lobby button')
+                      try {
+                        await fetch('/api/game/leave', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            gameId: gameId,
+                            userId: user.id
+                          })
+                        })
+                      } catch (error) {
+                        console.error('Error leaving game:', error)
+                      }
+                    }
+                    
                     if (isInWaitingRoom) {
                       leaveWaitingRoom()
                     }

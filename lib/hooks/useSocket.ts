@@ -8,7 +8,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 export interface GameState {
   id: string
   room_id: string
-  status: 'waiting' | 'countdown' | 'active' | 'finished'
+  status: 'waiting' | 'waiting_for_players' | 'countdown' | 'active' | 'finished'
   countdown_time: number
   players: string[]
   bots: string[]

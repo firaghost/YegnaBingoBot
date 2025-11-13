@@ -41,12 +41,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game not found' }, { status: 404 })
     }
 
-    // Only process if game is active or in countdown
-    if (!['waiting', 'countdown', 'active'].includes(game.status)) {
+    // Only process if game is in a state where players can leave
+    if (!['waiting', 'waiting_for_players', 'countdown', 'active'].includes(game.status)) {
       return NextResponse.json({ 
         message: 'Game already finished' 
       })
     }
+
+    console.log(`🚪 Player ${userId} leaving game ${gameId} (status: ${game.status}, players: ${game.players?.length})`)
 
     // Remove player from game
     const updatedPlayers = game.players.filter((id: string) => id !== userId)
@@ -72,16 +74,26 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // If player leaves during waiting and only 1 player remains, keep them waiting
-    if (remainingPlayers === 1 && game.status === 'waiting') {
+    // If player leaves during waiting/waiting_for_players and only 1 player remains, reset to waiting
+    if (remainingPlayers === 1 && ['waiting', 'waiting_for_players', 'countdown'].includes(game.status)) {
+      console.log(`⏪ Game ${gameId} reset to waiting - only 1 player remaining`)
+      
       // Clear any active countdown timer since we're back to 1 player
-      clearGameTimer(gameId)
+      try {
+        clearGameTimer(gameId)
+      } catch (error) {
+        console.warn('Could not clear game timer:', error)
+      }
       
       await supabase
         .from('games')
         .update({
+          status: 'waiting',
           players: updatedPlayers,
-          prize_pool: game.stake * remainingPlayers
+          prize_pool: game.stake * remainingPlayers,
+          countdown_time: 0,
+          waiting_started_at: null,
+          countdown_started_at: null
         })
         .eq('id', gameId)
 
