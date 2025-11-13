@@ -9,16 +9,18 @@ import { useRouter } from 'next/navigation'
 
 interface Transaction {
   id: string
-  type: 'stake' | 'win' | 'deposit' | 'withdrawal'
+  type: 'stake' | 'win' | 'deposit' | 'withdrawal' | 'bonus'
   amount: number
   game_id: string | null
   created_at: string
   status: string
-  games?: {
-    rooms: {
-      name: string
-    }
-  }
+  description: string
+  result: 'WIN' | 'LOSS' | 'NEUTRAL'
+  game_level: string | null
+  display_icon: string
+  display_amount: string
+  display_status: 'success' | 'loss' | 'neutral'
+  room_name: string | null
 }
 
 interface GameHistory {
@@ -55,19 +57,11 @@ export default function HistoryPage() {
 
     const fetchHistory = async () => {
       try {
-        // Fetch transactions
+        // Fetch transactions using enhanced view
         const { data: txData, error: txError } = await supabase
-          .from('transactions')
-          .select(`
-            *,
-            games (
-              rooms (
-                name
-              )
-            )
-          `)
+          .from('user_transaction_history')
+          .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
           .limit(50)
 
         if (txError) throw txError
@@ -190,23 +184,16 @@ export default function HistoryPage() {
                   {transactions.map(tx => (
                     <div key={tx.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold ${
-                          tx.type === 'win' ? 'bg-green-500' :
-                          tx.type === 'stake' ? 'bg-red-500' :
-                          tx.type === 'deposit' ? 'bg-blue-500' :
-                          'bg-orange-500'
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${
+                          tx.display_status === 'success' ? 'bg-green-500' :
+                          tx.display_status === 'loss' ? 'bg-red-500' :
+                          'bg-blue-500'
                         }`}>
-                          {tx.type === 'win' ? '🎉' :
-                           tx.type === 'stake' ? '🎮' :
-                           tx.type === 'deposit' ? '💰' :
-                           '💸'}
+                          {tx.display_icon.split(' ')[0]}
                         </div>
                         <div>
                           <p className="font-semibold text-gray-800">
-                            {tx.type === 'deposit' || tx.type === 'withdrawal' 
-                              ? tx.type.charAt(0).toUpperCase() + tx.type.slice(1)
-                              : tx.games?.rooms?.name || 'Game'
-                            }
+                            {tx.room_name || tx.description}
                           </p>
                           <div className="flex items-center gap-2">
                             <p className="text-sm text-gray-500">

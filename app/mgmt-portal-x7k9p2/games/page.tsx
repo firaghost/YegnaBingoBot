@@ -135,7 +135,9 @@ export default function AdminGamesPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Prize Pool:</span>
-                        <span className="font-bold text-green-400">{formatCurrency(game.prize_pool || 0)}</span>
+                        <span className="font-bold text-green-400">
+                          {game.prize_pool > 0 ? formatCurrency(game.prize_pool) : 'Dynamic'}
+                        </span>
                       </div>
                       {game.winner_id && (
                         <div className="flex justify-between">

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { getConfig } from '../lib/admin-config'
 
 const BOT_TOKEN = process.env.BOT_TOKEN!
-const MINI_APP_URL = process.env.MINI_APP_URL || 'http://localhost:3000'
+const MINI_APP_URL = process.env.MINI_APP_URL || 'https://yegnagame.vercel.app'
 
 const bot = new Telegraf(BOT_TOKEN)
 
@@ -635,6 +635,26 @@ bot.action('help', async (ctx) => {
       ])
     }
   )
+})
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+
+// Handle bot errors
+bot.catch((err, ctx) => {
+  console.error('❌ Bot error:', err)
+  console.error('Context:', ctx.update)
+})
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason)
+})
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error)
 })
 
 // ============================================

@@ -17,7 +17,6 @@ export default function AdminRoomsPage() {
     max_players: '',
     description: '',
     color: 'from-blue-500 to-blue-700',
-    prize_pool: '',
     default_level: 'medium'
   })
 
@@ -68,7 +67,6 @@ export default function AdminRoomsPage() {
       max_players: '',
       description: '',
       color: 'from-blue-500 to-blue-700',
-      prize_pool: '',
       default_level: 'medium'
     })
     setShowCreateModal(true)
@@ -83,30 +81,29 @@ export default function AdminRoomsPage() {
       max_players: room.max_players.toString(),
       description: room.description || '',
       color: room.color || 'from-blue-500 to-blue-700',
-      prize_pool: room.prize_pool.toString(),
       default_level: room.default_level || 'medium'
     })
     setShowCreateModal(true)
   }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     try {
       const roomData = {
-        id: formData.id || formData.name.toLowerCase().replace(/\s+/g, '-'),
         name: formData.name,
         stake: parseFloat(formData.stake),
         max_players: parseInt(formData.max_players),
         description: formData.description,
         color: formData.color,
-        prize_pool: parseFloat(formData.prize_pool),
+        prize_pool: 0, // Set to 0 - will be calculated dynamically
         default_level: formData.default_level,
+        game_level: formData.default_level, // Also set game_level
         status: 'active',
         current_players: 0
       }
 
       if (editingRoom) {
+
         const { error } = await supabase
           .from('rooms')
           .update(roomData)
@@ -229,11 +226,15 @@ export default function AdminRoomsPage() {
                     <span className="font-bold text-blue-400">{room.current_players || 0}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Default Level:</span>
+                    <span className="text-gray-400">Game Level:</span>
                     <span className="font-bold text-white">
-                      {room.default_level === 'easy' ? '🟢 Easy' : 
-                       room.default_level === 'hard' ? '🔴 Hard' : '🟡 Medium'}
+                      {(room.game_level || room.default_level) === 'easy' ? '🟢 Easy' : 
+                       (room.game_level || room.default_level) === 'hard' ? '🔴 Hard' : '🟡 Medium'}
                     </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Prize Pool:</span>
+                    <span className="font-bold text-blue-400">Dynamic</span>
                   </div>
                 </div>
 
@@ -341,17 +342,17 @@ export default function AdminRoomsPage() {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-gray-300 mb-2">Prize Pool (ETB)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.prize_pool}
-                  onChange={(e) => setFormData({...formData, prize_pool: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
-                  placeholder="500.00"
-                  required
-                />
+              <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-blue-400">💡</span>
+                  <label className="text-blue-300 font-medium">Prize Pool</label>
+                </div>
+                <p className="text-blue-200 text-sm">
+                  Prize pools are now <strong>calculated dynamically</strong> based on waiting players:
+                </p>
+                <p className="text-blue-100 text-xs mt-1">
+                  Prize = (Entry Fee × Waiting Players × 90%)
+                </p>
               </div>
               <div>
                 <label className="block text-gray-300 mb-2">Description</label>

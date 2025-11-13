@@ -193,57 +193,77 @@ function stopNumberCalling(gameId: string) {
     clearInterval(interval)
     gameIntervals.delete(gameId)
     console.log(`🛑 Stopped number calling for game ${gameId}`)
-  } else {
-    console.log(`⚠️ No active interval found for game ${gameId}`)
+    
+    // Also clean up waiting period and countdown tracking
+    activeWaitingPeriods.delete(gameId)
+    activeCountdowns.delete(gameId)
+    gameStartTimes.delete(gameId) // Clean up timing data
+    gameIntervalSettings.delete(gameId) // Clean up interval settings
+    
+    // Force sync cache to database before cleanup
+    gameStateCache.forceSyncToDatabase(gameId).then(() => {
+      console.log(`✅ Final cache sync completed for game ${gameId}`)
+    }).catch(err => {
+      console.error(`❌ Final cache sync failed for game ${gameId}:`, err)
+    })
+    
+    console.log(`🧹 Cleaned up all tracking for game ${gameId}`)
   }
-  
-  // Also clean up waiting period and countdown tracking
-  activeWaitingPeriods.delete(gameId)
-  activeCountdowns.delete(gameId)
-  gameStartTimes.delete(gameId) // Clean up timing data
-  gameIntervalSettings.delete(gameId) // Clean up interval settings
-  
-  // Force sync cache to database before cleanup
-  gameStateCache.forceSyncToDatabase(gameId).then(() => {
-    console.log(`✅ Final cache sync completed for game ${gameId}`)
-  }).catch(err => {
-    console.error(`❌ Final cache sync failed for game ${gameId}:`, err)
-  })
-  
-  console.log(`🧹 Cleaned up all tracking for game ${gameId}`)
+  // Removed the "No active interval found" warning to reduce spam
 }
 
 // Cleanup finished games and stop their number calling
 async function cleanupFinishedGames() {
   try {
+    // Only cleanup if there are active intervals to avoid spam
+    if (gameIntervals.size === 0) {
+      return // No active games, skip cleanup
+    }
+
     const { supabaseAdmin } = await import('../lib/supabase')
     const supabase = supabaseAdmin
 
-    // Get all finished games that might still have active intervals
+    // Only get finished games that have active intervals
+    const activeGameIds = Array.from(gameIntervals.keys())
+    if (activeGameIds.length === 0) {
+      return
+    }
+
     const { data: finishedGames } = await supabase
       .from('games')
       .select('id')
       .in('status', ['finished', 'cancelled'])
+      .in('id', activeGameIds) // Only check games that actually have active intervals
 
-    if (finishedGames) {
+    let cleanedCount = 0
+    if (finishedGames && finishedGames.length > 0) {
       finishedGames.forEach(game => {
-        stopNumberCalling(game.id)
+        if (gameIntervals.has(game.id)) {
+          stopNumberCalling(game.id)
+          cleanedCount++
+        }
       })
     }
 
-    console.log(`🧹 Cleaned up ${finishedGames?.length || 0} finished games`)
+    if (cleanedCount > 0) {
+      console.log(`🧹 Cleaned up ${cleanedCount} finished games with active intervals`)
+    }
   } catch (error) {
     console.error('Error cleaning up finished games:', error)
   }
 }
 
-// Run cleanup every 5 minutes
-setInterval(cleanupFinishedGames, 5 * 60 * 1000)
+// Run cleanup every 10 minutes (reduced frequency)
+setInterval(cleanupFinishedGames, 10 * 60 * 1000)
 
-// Run cache cleanup every 2 minutes
+// Run cache cleanup every 5 minutes (reduced frequency)
 setInterval(() => {
-  gameStateCache.cleanup()
-}, 2 * 60 * 1000)
+  // Only run cache cleanup if there are active games or cached data
+  const stats = gameStateCache.getStats()
+  if (gameIntervals.size > 0 || stats.cached_games > 0) {
+    gameStateCache.cleanup()
+  }
+}, 5 * 60 * 1000)
 
 // Middleware
 app.use(cors({
@@ -279,6 +299,21 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     version: '2.0-with-api-routes',
     features: ['socket.io', 'api-routes', 'game-join', 'waiting-period'],
+    timestamp: new Date().toISOString()
+  })
+})
+
+// Add server status endpoint
+app.get('/status', (req, res) => {
+  const cacheStats = gameStateCache.getStats()
+  res.json({
+    status: 'running',
+    active_games: gameIntervals.size,
+    active_waiting_periods: activeWaitingPeriods.size,
+    active_countdowns: activeCountdowns.size,
+    cache_stats: cacheStats,
+    memory_usage: process.memoryUsage(),
+    uptime: process.uptime(),
     timestamp: new Date().toISOString()
   })
 })

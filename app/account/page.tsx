@@ -56,12 +56,15 @@ interface Transaction {
   amount: number
   game_id: string | null
   status: string
-  description: string
   created_at: string
-  games?: {
-    rooms: {
-      name: string
-    }
+  description?: string
+  metadata?: {
+    display_text?: string
+    description?: string
+    result?: 'WIN' | 'LOSS' | 'DEPOSIT' | 'WITHDRAWAL' | 'BONUS'
+    amount_display?: string
+    status_color?: string
+    game_level?: string
   }
 }
 
@@ -489,9 +492,16 @@ export default function AccountPage() {
             <div className="space-y-2">
               {transactions.slice(0, 5).map((tx) => {
                 const getTransactionLabel = () => {
+                  // Use the enhanced metadata if available
+                  if (tx.metadata?.display_text) {
+                    return tx.metadata.display_text.replace(/[🏆💔💸🎁]/g, '').trim()
+                  }
+                  
+                  // Fallback to improved logic
                   switch (tx.type) {
-                    case 'stake': return 'Game Entry'
-                    case 'win': return 'Game Win'
+                    case 'stake': 
+                      return tx.amount < 0 ? 'Game Loss' : 'Game Entry'
+                    case 'win': return 'Bingo Game Win'
                     case 'deposit': return 'Deposit'
                     case 'withdrawal': return 'Withdrawal'
                     case 'bonus': return 'Bonus'
@@ -503,13 +513,28 @@ export default function AccountPage() {
 
                 return (
                   <div key={tx.id} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900">
-                        {tx.description || getTransactionLabel()}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {new Date(tx.created_at).toLocaleDateString()}
-                      </p>
+                    <div className="flex items-center gap-3 flex-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs ${
+                        tx.metadata?.result === 'WIN' ? 'bg-green-100 text-green-600' :
+                        tx.metadata?.result === 'LOSS' ? 'bg-red-100 text-red-600' :
+                        tx.type === 'win' ? 'bg-green-100 text-green-600' :
+                        tx.type === 'deposit' ? 'bg-blue-100 text-blue-600' :
+                        tx.type === 'bonus' ? 'bg-yellow-100 text-yellow-600' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {tx.metadata?.result === 'WIN' || tx.type === 'win' ? '🏆' :
+                         tx.metadata?.result === 'LOSS' || tx.type === 'stake' ? '💔' :
+                         tx.type === 'deposit' ? '💸' :
+                         tx.type === 'bonus' ? '🎁' : '📝'}
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">
+                          {tx.metadata?.description || tx.description || getTransactionLabel()}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {new Date(tx.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className={`text-sm font-semibold ${

@@ -14,10 +14,13 @@ interface Room {
   stake: number
   max_players: number
   current_players: number
+  waiting_players: number
   status: 'active' | 'waiting'
   description: string
   color: string
   prize_pool: number
+  base_prize_pool: number
+  game_level: string
 }
 
 export default function LobbyPage() {
@@ -53,12 +56,52 @@ export default function LobbyPage() {
 
       if (error) throw error
       
-      // Remove duplicates by ID
+      // Remove duplicates by ID and enhance with waiting players info
       const uniqueRooms = (data || []).filter((room, index, self) => 
         index === self.findIndex(r => r.id === room.id)
       )
+
+      // Get waiting players for each room
+      const enhancedRooms = await Promise.all(
+        uniqueRooms.map(async (room) => {
+          try {
+            // Get active games for this room to count waiting players
+            const { data: activeGames } = await supabase
+              .from('games')
+              .select('players, status')
+              .eq('room_id', room.id)
+              .in('status', ['waiting', 'countdown'])
+              .order('created_at', { ascending: false })
+              .limit(1)
+
+            const waitingPlayers = activeGames?.[0]?.players?.length || 0
+            
+            // Calculate dynamic prize pool based on waiting players
+            const basePrizePool = room.stake * room.max_players * 0.9 // Max potential prize
+            const dynamicPrizePool = waitingPlayers > 0 
+              ? room.stake * waitingPlayers * 0.9 // 90% of current stakes
+              : 0 // Show 0 when no players waiting
+
+            return {
+              ...room,
+              waiting_players: waitingPlayers,
+              base_prize_pool: basePrizePool,
+              prize_pool: Math.round(dynamicPrizePool * 100) / 100, // Round to 2 decimals
+              game_level: room.game_level || room.default_level || 'medium'
+            }
+          } catch (err) {
+            console.error(`Error fetching data for room ${room.id}:`, err)
+            return {
+              ...room,
+              waiting_players: 0,
+              base_prize_pool: room.prize_pool || room.stake * room.max_players * 0.9,
+              game_level: room.game_level || room.default_level || 'medium'
+            }
+          }
+        })
+      )
       
-      setRooms(uniqueRooms)
+      setRooms(enhancedRooms)
     } catch (error) {
       console.error('Error fetching rooms:', error)
     } finally {
@@ -172,7 +215,7 @@ export default function LobbyPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="grid grid-cols-2 gap-4 mb-3">
                     <div className="text-center sm:text-left">
                       <div className="text-slate-500 text-xs mb-1">Entry Fee</div>
                       <div className="font-bold text-slate-900 text-sm sm:text-base">{formatCurrency(room.stake)}</div>
@@ -180,6 +223,29 @@ export default function LobbyPage() {
                     <div className="text-center sm:text-right">
                       <div className="text-slate-500 text-xs mb-1">Prize Pool</div>
                       <div className="font-bold text-emerald-600 text-sm sm:text-base">{formatCurrency(room.prize_pool)}</div>
+                    </div>
+                  </div>
+
+                  {/* Waiting Players & Game Level Info */}
+                  <div className="flex items-center justify-between mb-4 p-2 bg-slate-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <LuUsers className="w-4 h-4 text-slate-500" />
+                      <span className="text-xs text-slate-600">
+                        {room.waiting_players > 0 
+                          ? `${room.waiting_players} waiting` 
+                          : 'No players waiting'
+                        }
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className={`w-2 h-2 rounded-full ${
+                        room.game_level === 'easy' ? 'bg-green-500' :
+                        room.game_level === 'medium' ? 'bg-yellow-500' :
+                        'bg-red-500'
+                      }`}></div>
+                      <span className="text-xs font-medium text-slate-700 capitalize">
+                        {room.game_level || 'Medium'}
+                      </span>
                     </div>
                   </div>
 
@@ -206,7 +272,12 @@ export default function LobbyPage() {
                           className={`w-full ${roomStyle.bg} hover:opacity-90 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
                         >
                           <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span>Join Game</span>
+                          <span>
+                            {room.waiting_players > 0 
+                              ? `Join ${room.waiting_players} Player${room.waiting_players > 1 ? 's' : ''}` 
+                              : 'Join Game'
+                            }
+                          </span>
                         </button>
                       </Link>
                     )
