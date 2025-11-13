@@ -27,11 +27,10 @@ console.log('🚀 bingoX Production Server Starting...')
 console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || "http://localhost:3000"}`)
 
 // Temporary: Allow single-player games for testing (default enabled for now)
-process.env.ALLOW_SINGLE_PLAYER = process.env.ALLOW_SINGLE_PLAYER || 'true'
-const ALLOW_SINGLE_PLAYER = process.env.ALLOW_SINGLE_PLAYER === 'true'
-if (ALLOW_SINGLE_PLAYER) {
-  console.log('🧪 TESTING MODE: Single-player games enabled')
-}
+// Disable single-player games in production
+process.env.ALLOW_SINGLE_PLAYER = 'false'
+const ALLOW_SINGLE_PLAYER = false
+console.log('🎮 PRODUCTION MODE: Multi-player games only')
 
 // Create a single Socket.IO instance
 const io = new SocketServer(httpServer, {

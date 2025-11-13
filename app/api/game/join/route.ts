@@ -5,7 +5,9 @@ const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('🎮 ===== GAME JOIN API CALLED =====')
     const { roomId, userId } = await request.json()
+    console.log(`🎯 Join request: Room=${roomId}, User=${userId}`)
 
     if (!roomId || !userId) {
       return NextResponse.json(
@@ -173,12 +175,12 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have 2+ players, start 30-second waiting period for more players
-      if (updatedPlayers.length >= 2 && newStatus === 'waiting') {
+      // If we have 2+ players and game is still in waiting status, start 30-second waiting period
+      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting')) {
         console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
         
         // Update status to waiting_for_players with 30-second timer
-        await supabase
+        const { error: updateError } = await supabase
           .from('games')
           .update({ 
             status: 'waiting_for_players',
@@ -187,10 +189,18 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', activeGame.id)
         
+        if (updateError) {
+          console.error('❌ Failed to update game status to waiting_for_players:', updateError)
+        } else {
+          console.log('✅ Game status updated to waiting_for_players')
+        }
+        
         // Notify API to start the waiting period
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-          await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
+          console.log(`🔔 Calling waiting period API: ${baseUrl}/api/socket/start-waiting-period`)
+          
+          const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -198,16 +208,32 @@ export async function POST(request: NextRequest) {
               waitingTime: 30,
               countdownTime: 10
             })
-          }).catch(err => console.error('Failed to trigger waiting period:', err))
+          })
+          
+          if (!response.ok) {
+            console.error('❌ Waiting period API failed:', response.status, response.statusText)
+            const errorText = await response.text()
+            console.error('❌ Error details:', errorText)
+          } else {
+            const result = await response.json()
+            console.log('✅ Waiting period started successfully:', result)
+          }
         } catch (error) {
-          console.error('Error notifying socket server:', error)
+          console.error('❌ Error calling waiting period API:', error)
         }
       }
+
+      // Get the latest game state after all updates
+      const { data: finalGameState } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', activeGame.id)
+        .single()
 
       return NextResponse.json({
         success: true,
         gameId: activeGame.id,
-        game: updatedGame,
+        game: finalGameState || updatedGame,
         action: 'joined'
       })
     }
@@ -219,23 +245,31 @@ export async function POST(request: NextRequest) {
     if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
       console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)
       
+      // Update status to waiting_for_players
       await supabase
         .from('games')
         .update({ 
-          status: 'countdown',
-          countdown_time: 15  // 15 seconds waiting period
+          status: 'waiting_for_players',
+          countdown_time: 30,
+          waiting_started_at: new Date().toISOString()
         })
         .eq('id', activeGame.id)
       
+      // Start the waiting period
       try {
-        const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001'
-        await fetch(`${socketUrl}/trigger-game-start`, {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
+        await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId: activeGame.id })
-        }).catch(err => console.error('Failed to trigger game start:', err))
+          body: JSON.stringify({ 
+            gameId: activeGame.id,
+            waitingTime: 30,
+            countdownTime: 10
+          })
+        })
+        console.log('✅ Started waiting period for stuck game')
       } catch (error) {
-        console.error('Error notifying socket server:', error)
+        console.error('❌ Error starting waiting period for stuck game:', error)
       }
     }
     
