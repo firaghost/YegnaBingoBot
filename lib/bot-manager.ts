@@ -44,15 +44,15 @@ export class BotManager {
     if (this.isRunning) return
     
     this.isRunning = true
-    console.log('🤖 Bot Manager: Starting monitoring for lonely players...')
+    console.log('🤖 Bot Manager: Starting monitoring (permanent bots mode)...')
     
-    // Check every 10 seconds for players waiting
+    // Check every 60 seconds to maintain bot presence
     this.checkInterval = setInterval(async () => {
-      await this.checkForLonelyPlayers()
-    }, 10000)
+      await this.maintainBotPresence()
+    }, 60000)
     
-    // Initial check
-    this.checkForLonelyPlayers()
+    // Initial maintenance
+    this.maintainBotPresence()
   }
 
   stopMonitoring() {
@@ -64,36 +64,86 @@ export class BotManager {
     console.log('🤖 Bot Manager: Stopped monitoring')
   }
 
+  // Maintain permanent bot presence in rooms
+  private async maintainBotPresence() {
+    try {
+      console.log('🤖 Maintaining bot presence in rooms...')
+      
+      // Call the database function to maintain bot presence
+      const { error } = await supabase.rpc('maintain_bot_presence')
+      
+      if (error) {
+        console.error('Error maintaining bot presence:', error)
+      } else {
+        console.log('🤖 Bot presence maintained successfully')
+      }
+    } catch (error) {
+      console.error('Error in maintainBotPresence:', error)
+    }
+  }
+
   // Check for players waiting and send bots to join them
   private async checkForLonelyPlayers() {
     try {
-      // Get rooms with players waiting (1-3 players, not full games)
-      const { data: waitingRooms, error: roomsError } = await supabase
-        .from('rooms')
-        .select('*')
-        .gte('waiting_players', 1)
-        .lt('waiting_players', 4) // Don't join rooms that are almost full
+      // First try to get rooms with waiting_players column
+      let waitingRooms: any[] = []
+      
+      try {
+        const { data, error } = await supabase
+          .from('rooms')
+          .select('*')
+          .gte('waiting_players', 1)
+          .lt('waiting_players', 4) // Don't join rooms that are almost full
 
-      if (roomsError) {
-        console.error('Error fetching waiting rooms:', roomsError)
-        return
+        if (error) throw error
+        waitingRooms = data || []
+      } catch (columnError: any) {
+        // If waiting_players column doesn't exist, fall back to manual counting
+        if (columnError.code === '42703') {
+          console.log('🤖 waiting_players column not found, using manual count...')
+          
+          // Get all rooms and manually count waiting games
+          const { data: allRooms, error: roomsError } = await supabase
+            .from('rooms')
+            .select('*')
+
+          if (roomsError) throw roomsError
+
+          // For each room, count waiting games
+          for (const room of allRooms || []) {
+            const { data: waitingGames, error: gamesError } = await supabase
+              .from('games')
+              .select('id')
+              .eq('room_id', room.id)
+              .eq('status', 'waiting')
+
+            if (!gamesError && waitingGames && waitingGames.length > 0 && waitingGames.length < 4) {
+              waitingRooms.push({
+                ...room,
+                waiting_players: waitingGames.length
+              })
+            }
+          }
+        } else {
+          throw columnError
+        }
       }
 
-      if (!waitingRooms || waitingRooms.length === 0) {
+      if (waitingRooms.length === 0) {
         return // No waiting players
       }
 
       console.log(`🤖 Found ${waitingRooms.length} rooms with waiting players, sending bots...`)
 
-      // For each waiting room, try to add 1-3 bots randomly
+      // For each waiting room, try to add 1-2 bots randomly
       for (const room of waitingRooms) {
-        const botsToAdd = Math.floor(Math.random() * 3) + 1 // 1-3 bots
-        console.log(`🤖 Adding ${botsToAdd} bots to room ${room.name}`)
+        const botsToAdd = Math.floor(Math.random() * 2) + 1 // 1-2 bots
+        console.log(`🤖 Adding ${botsToAdd} bots to room ${room.name} (${room.waiting_players || 'unknown'} waiting)`)
         
         for (let i = 0; i < botsToAdd; i++) {
           await this.addBotToRoom(room)
           // Small delay between bot additions
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          await new Promise(resolve => setTimeout(resolve, 2000))
         }
       }
     } catch (error) {
@@ -158,23 +208,25 @@ export class BotManager {
   // Get or create a user account for the bot
   private async getOrCreateBotUser(bot: BotPlayer) {
     try {
-      // Check if bot user already exists
+      // Check if bot user already exists by bot_id first
       const { data: existingUser, error: userError } = await supabase
         .from('users')
         .select('*')
-        .eq('username', bot.username)
+        .eq('bot_id', bot.id)
         .single()
 
       if (existingUser) {
         return existingUser
       }
 
-      // Create new user for the bot
+      // Try to create new user for the bot with unique telegram_id
+      const uniqueTelegramId = `bot_${bot.id}_${Date.now()}`
+      
       const { data: newUser, error: createError } = await supabase
         .from('users')
         .insert({
           username: bot.username,
-          telegram_id: `bot_${bot.id}`,
+          telegram_id: uniqueTelegramId,
           balance: 1000000, // Give bots a large balance
           is_bot: true,
           bot_id: bot.id
@@ -183,6 +235,20 @@ export class BotManager {
         .single()
 
       if (createError) {
+        // If still duplicate, try to find existing user by username
+        if (createError.code === '23505') {
+          const { data: fallbackUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', bot.username)
+            .eq('is_bot', true)
+            .single()
+          
+          if (fallbackUser) {
+            return fallbackUser
+          }
+        }
+        
         console.error('Error creating bot user:', createError)
         return null
       }

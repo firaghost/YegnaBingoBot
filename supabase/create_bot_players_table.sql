@@ -71,17 +71,37 @@ CREATE INDEX IF NOT EXISTS idx_bot_sessions_status ON bot_game_sessions(status);
 ALTER TABLE bot_players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bot_game_sessions ENABLE ROW LEVEL SECURITY;
 
--- Create policies for bot_players
-CREATE POLICY "Allow read bot_players" ON bot_players FOR SELECT USING (true);
-CREATE POLICY "Allow insert bot_players" ON bot_players FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow update bot_players" ON bot_players FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Allow delete bot_players" ON bot_players FOR DELETE USING (true);
+-- Create policies for bot_players (with IF NOT EXISTS equivalent)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_players' AND policyname = 'Allow read bot_players') THEN
+        CREATE POLICY "Allow read bot_players" ON bot_players FOR SELECT USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_players' AND policyname = 'Allow insert bot_players') THEN
+        CREATE POLICY "Allow insert bot_players" ON bot_players FOR INSERT WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_players' AND policyname = 'Allow update bot_players') THEN
+        CREATE POLICY "Allow update bot_players" ON bot_players FOR UPDATE USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_players' AND policyname = 'Allow delete bot_players') THEN
+        CREATE POLICY "Allow delete bot_players" ON bot_players FOR DELETE USING (true);
+    END IF;
+END $$;
 
--- Create policies for bot_game_sessions
-CREATE POLICY "Allow read bot_game_sessions" ON bot_game_sessions FOR SELECT USING (true);
-CREATE POLICY "Allow insert bot_game_sessions" ON bot_game_sessions FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow update bot_game_sessions" ON bot_game_sessions FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Allow delete bot_game_sessions" ON bot_game_sessions FOR DELETE USING (true);
+-- Create policies for bot_game_sessions (with IF NOT EXISTS equivalent)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_game_sessions' AND policyname = 'Allow read bot_game_sessions') THEN
+        CREATE POLICY "Allow read bot_game_sessions" ON bot_game_sessions FOR SELECT USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_game_sessions' AND policyname = 'Allow insert bot_game_sessions') THEN
+        CREATE POLICY "Allow insert bot_game_sessions" ON bot_game_sessions FOR INSERT WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_game_sessions' AND policyname = 'Allow update bot_game_sessions') THEN
+        CREATE POLICY "Allow update bot_game_sessions" ON bot_game_sessions FOR UPDATE USING (true) WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'bot_game_sessions' AND policyname = 'Allow delete bot_game_sessions') THEN
+        CREATE POLICY "Allow delete bot_game_sessions" ON bot_game_sessions FOR DELETE USING (true);
+    END IF;
+END $$;
 
 -- Insert sample bot players
 INSERT INTO bot_players (name, username, win_rate, personality, skill_level, preferred_rooms) VALUES
@@ -100,67 +120,77 @@ INSERT INTO bot_players (name, username, win_rate, personality, skill_level, pre
 ON CONFLICT (username) DO NOTHING;
 
 -- Create function to update bot statistics
-CREATE OR REPLACE FUNCTION update_bot_stats(
-  bot_id_param UUID,
-  won_param BOOLEAN,
-  winnings_param DECIMAL DEFAULT 0
-)
-RETURNS void AS $$
-BEGIN
-  UPDATE bot_players 
-  SET 
-    games_played = games_played + 1,
-    games_won = CASE WHEN won_param THEN games_won + 1 ELSE games_won END,
-    total_winnings = total_winnings + COALESCE(winnings_param, 0),
-    updated_at = NOW()
-  WHERE id = bot_id_param;
-END;
-$$ LANGUAGE plpgsql;
+DO $$ BEGIN
+    CREATE OR REPLACE FUNCTION update_bot_stats(
+      bot_id_param UUID,
+      won_param BOOLEAN,
+      winnings_param DECIMAL DEFAULT 0
+    )
+    RETURNS void AS $func$
+    BEGIN
+      UPDATE bot_players 
+      SET 
+        games_played = games_played + 1,
+        games_won = CASE WHEN won_param THEN games_won + 1 ELSE games_won END,
+        total_winnings = total_winnings + COALESCE(winnings_param, 0),
+        updated_at = NOW()
+      WHERE id = bot_id_param;
+    END;
+    $func$ LANGUAGE plpgsql;
+EXCEPTION WHEN duplicate_function THEN
+    -- Function already exists, skip
+    NULL;
+END $$;
 
 -- Create function to get available bots for a room
-CREATE OR REPLACE FUNCTION get_available_bots_for_room(
-  room_id_param UUID,
-  skill_level_param TEXT DEFAULT NULL,
-  limit_param INTEGER DEFAULT 5
-)
-RETURNS TABLE (
-  id UUID,
-  name TEXT,
-  username TEXT,
-  win_rate INTEGER,
-  personality TEXT,
-  skill_level TEXT
-) AS $$
-BEGIN
-  RETURN QUERY
-  SELECT 
-    bp.id,
-    bp.name,
-    bp.username,
-    bp.win_rate,
-    bp.personality,
-    bp.skill_level
-  FROM bot_players bp
-  WHERE bp.is_enabled = true
-    AND bp.auto_join_enabled = true
-    AND (skill_level_param IS NULL OR bp.skill_level = skill_level_param)
-    AND (
-      bp.preferred_rooms IS NULL 
-      OR bp.preferred_rooms = '{}' 
-      OR room_id_param::TEXT = ANY(bp.preferred_rooms)
+DO $$ BEGIN
+    CREATE OR REPLACE FUNCTION get_available_bots_for_room(
+      room_id_param UUID,
+      skill_level_param TEXT DEFAULT NULL,
+      limit_param INTEGER DEFAULT 5
     )
-    -- Check if bot is not already in too many games
-    AND (
-      SELECT COUNT(*) 
-      FROM bot_game_sessions bgs 
-      WHERE bgs.bot_id = bp.id AND bgs.status = 'active'
-    ) < bp.max_concurrent_games
-  ORDER BY 
-    -- Prioritize bots with fewer active games
-    RANDOM()
-  LIMIT limit_param;
-END;
-$$ LANGUAGE plpgsql;
+    RETURNS TABLE (
+      id UUID,
+      name TEXT,
+      username TEXT,
+      win_rate INTEGER,
+      personality TEXT,
+      skill_level TEXT
+    ) AS $func$
+    BEGIN
+      RETURN QUERY
+      SELECT 
+        bp.id,
+        bp.name,
+        bp.username,
+        bp.win_rate,
+        bp.personality,
+        bp.skill_level
+      FROM bot_players bp
+      WHERE bp.is_enabled = true
+        AND bp.auto_join_enabled = true
+        AND (skill_level_param IS NULL OR bp.skill_level = skill_level_param)
+        AND (
+          bp.preferred_rooms IS NULL 
+          OR bp.preferred_rooms = '{}' 
+          OR room_id_param::TEXT = ANY(bp.preferred_rooms)
+        )
+        -- Check if bot is not already in too many games
+        AND (
+          SELECT COUNT(*) 
+          FROM bot_game_sessions bgs 
+          WHERE bgs.bot_id = bp.id AND bgs.status = 'active'
+        ) < bp.max_concurrent_games
+      ORDER BY 
+        -- Prioritize bots with fewer active games
+        RANDOM()
+      LIMIT limit_param;
+    END;
+    $func$ LANGUAGE plpgsql;
+EXCEPTION WHEN duplicate_function THEN
+    -- Function already exists, skip
+    NULL;
+END $$;
 
 -- Add is_bot and bot_id columns to users table if they don't exist
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN DEFAULT false;
