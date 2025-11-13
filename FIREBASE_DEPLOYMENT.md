@@ -38,24 +38,24 @@ firebase login
 **Option A: Via Firebase Console**
 1. Go to https://console.firebase.google.com
 2. Click "Add project"
-3. Name it: `yegna-bingo-bot`
+3. Name it: `BingoX-bingo-bot`
 4. Follow the setup wizard
 
 **Option B: Via CLI**
 ```bash
-firebase projects:create yegna-bingo-bot
+firebase projects:create BingoX-bingo-bot
 ```
 
 ### 4. Initialize Firebase in Your Project
 
 ```bash
-cd d:\Projects\YegnaBingoBot
+cd d:\Projects\BingoXBot
 firebase init
 
 # Select:
 # ✓ Hosting: Configure files for Firebase Hosting
 # 
-# Choose your Firebase project: yegna-bingo-bot
+# Choose your Firebase project: BingoX-bingo-bot
 # 
 # What do you want to use as your public directory? (public) 
 # → Press Enter (we'll configure manually)
@@ -86,10 +86,10 @@ gcloud services enable run.googleapis.com
 gcloud auth login
 
 # Set your project
-gcloud config set project yegna-bingo-bot
+gcloud config set project BingoX-bingo-bot
 
 # Deploy
-gcloud run deploy yegna-bingo-socket \
+gcloud run deploy BingoX-bingo-socket \
   --source . \
   --platform managed \
   --region us-central1 \
@@ -102,17 +102,17 @@ gcloud run deploy yegna-bingo-socket \
 
 ```bash
 # Build Docker image
-docker build -t yegna-bingo-socket .
+docker build -t BingoX-bingo-socket .
 
 # Tag for Google Container Registry
-docker tag yegna-bingo-socket gcr.io/yegna-bingo-bot/socket-server
+docker tag BingoX-bingo-socket gcr.io/BingoX-bingo-bot/socket-server
 
 # Push to GCR
-docker push gcr.io/yegna-bingo-bot/socket-server
+docker push gcr.io/BingoX-bingo-bot/socket-server
 
 # Deploy to Cloud Run
-gcloud run deploy yegna-bingo-socket \
-  --image gcr.io/yegna-bingo-bot/socket-server \
+gcloud run deploy BingoX-bingo-socket \
+  --image gcr.io/BingoX-bingo-bot/socket-server \
   --platform managed \
   --region us-central1 \
   --allow-unauthenticated \
@@ -123,7 +123,7 @@ gcloud run deploy yegna-bingo-socket \
 
 **Via gcloud CLI:**
 ```bash
-gcloud run services update yegna-bingo-socket \
+gcloud run services update BingoX-bingo-socket \
   --set-env-vars SUPABASE_URL=https://your-project.supabase.co \
   --set-env-vars SUPABASE_SERVICE_KEY=your-service-key \
   --set-env-vars NEXT_PUBLIC_APP_URL=https://your-app.vercel.app \
@@ -132,7 +132,7 @@ gcloud run services update yegna-bingo-socket \
 
 **Via Cloud Console:**
 1. Go to https://console.cloud.google.com/run
-2. Click on `yegna-bingo-socket`
+2. Click on `BingoX-bingo-socket`
 3. Click "Edit & Deploy New Revision"
 4. Scroll to "Variables & Secrets"
 5. Add environment variables:
@@ -145,7 +145,7 @@ gcloud run services update yegna-bingo-socket \
 
 After deployment, you'll get a URL like:
 ```
-https://yegna-bingo-socket-xxxxx-uc.a.run.app
+https://BingoX-bingo-socket-xxxxx-uc.a.run.app
 ```
 
 Copy this URL!
@@ -156,7 +156,7 @@ Copy this URL!
 ```bash
 # Go to Vercel Dashboard → Your Project → Settings → Environment Variables
 # Add:
-NEXT_PUBLIC_SOCKET_URL=https://yegna-bingo-socket-xxxxx-uc.a.run.app
+NEXT_PUBLIC_SOCKET_URL=https://BingoX-bingo-socket-xxxxx-uc.a.run.app
 ```
 
 **Or via Vercel CLI:**
@@ -173,7 +173,7 @@ const io = new Server(httpServer, {
   cors: {
     origin: [
       process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      'https://yegna-bingo-bot.vercel.app',
+      'https://BingoX-bingo-bot.vercel.app',
       'https://your-production-domain.com'
     ],
     methods: ['GET', 'POST'],
@@ -184,7 +184,7 @@ const io = new Server(httpServer, {
 
 Redeploy:
 ```bash
-gcloud run deploy yegna-bingo-socket --source .
+gcloud run deploy BingoX-bingo-socket --source .
 ```
 
 ## Testing Your Deployment
@@ -192,7 +192,7 @@ gcloud run deploy yegna-bingo-socket --source .
 ### 1. Test Health Endpoint
 
 ```bash
-curl https://yegna-bingo-socket-xxxxx-uc.a.run.app/health
+curl https://BingoX-bingo-socket-xxxxx-uc.a.run.app/health
 ```
 
 Should return:
@@ -217,7 +217,7 @@ Open browser console on your app:
 1. Join a game with 2 players
 2. Check Cloud Run logs:
    ```bash
-   gcloud run logs read yegna-bingo-socket --region us-central1
+   gcloud run logs read BingoX-bingo-socket --region us-central1
    ```
 3. Should see:
    ```
@@ -233,15 +233,15 @@ Open browser console on your app:
 **Via gcloud:**
 ```bash
 # Stream logs
-gcloud run logs tail yegna-bingo-socket --region us-central1
+gcloud run logs tail BingoX-bingo-socket --region us-central1
 
 # View recent logs
-gcloud run logs read yegna-bingo-socket --region us-central1 --limit 50
+gcloud run logs read BingoX-bingo-socket --region us-central1 --limit 50
 ```
 
 **Via Console:**
 1. Go to https://console.cloud.google.com/run
-2. Click on `yegna-bingo-socket`
+2. Click on `BingoX-bingo-socket`
 3. Click "Logs" tab
 
 ### Monitor Metrics
@@ -274,7 +274,7 @@ gcloud run logs read yegna-bingo-socket --region us-central1 --limit 50
 - Set max instances to 1-2
 
 ```bash
-gcloud run services update yegna-bingo-socket \
+gcloud run services update BingoX-bingo-socket \
   --min-instances 0 \
   --max-instances 2 \
   --memory 256Mi \
@@ -294,7 +294,7 @@ docker run -p 3001:3001 test-socket
 
 **Check logs:**
 ```bash
-gcloud run logs read yegna-bingo-socket --region us-central1
+gcloud run logs read BingoX-bingo-socket --region us-central1
 ```
 
 ### Socket.IO not connecting?
@@ -307,7 +307,7 @@ gcloud run logs read yegna-bingo-socket --region us-central1
 
 1. **Check environment variables:**
    ```bash
-   gcloud run services describe yegna-bingo-socket --region us-central1
+   gcloud run services describe BingoX-bingo-socket --region us-central1
    ```
 2. **Check Supabase connection:** Verify `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`
 3. **Check logs:** Look for errors in Cloud Run logs
@@ -318,7 +318,7 @@ Cloud Run may "sleep" when idle. To keep it warm:
 
 ```bash
 # Set min instances to 1 (costs ~$5/month)
-gcloud run services update yegna-bingo-socket \
+gcloud run services update BingoX-bingo-socket \
   --min-instances 1 \
   --region us-central1
 ```
@@ -328,7 +328,7 @@ Or use a cron job to ping it every 5 minutes (free):
 # Create Cloud Scheduler job
 gcloud scheduler jobs create http keep-socket-warm \
   --schedule="*/5 * * * *" \
-  --uri="https://yegna-bingo-socket-xxxxx-uc.a.run.app/health" \
+  --uri="https://BingoX-bingo-socket-xxxxx-uc.a.run.app/health" \
   --http-method=GET
 ```
 
@@ -338,16 +338,16 @@ gcloud scheduler jobs create http keep-socket-warm \
 ```bash
 # Make changes to code
 # Then redeploy
-gcloud run deploy yegna-bingo-socket --source . --region us-central1
+gcloud run deploy BingoX-bingo-socket --source . --region us-central1
 ```
 
 ### With Docker:
 ```bash
-docker build -t yegna-bingo-socket .
-docker tag yegna-bingo-socket gcr.io/yegna-bingo-bot/socket-server
-docker push gcr.io/yegna-bingo-bot/socket-server
-gcloud run deploy yegna-bingo-socket \
-  --image gcr.io/yegna-bingo-bot/socket-server \
+docker build -t BingoX-bingo-socket .
+docker tag BingoX-bingo-socket gcr.io/BingoX-bingo-bot/socket-server
+docker push gcr.io/BingoX-bingo-bot/socket-server
+gcloud run deploy BingoX-bingo-socket \
+  --image gcr.io/BingoX-bingo-bot/socket-server \
   --region us-central1
 ```
 

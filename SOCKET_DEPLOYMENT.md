@@ -70,7 +70,7 @@ Railway is free for hobby projects and supports WebSocket connections.
    - Click "New +" → "Web Service"
    - Connect your repository
    - Configure:
-     - Name: `yegna-bingo-socket`
+     - Name: `BingoX-bingo-socket`
      - Build Command: `npm install`
      - Start Command: `npm run start:socket`
 
@@ -82,10 +82,10 @@ Railway is free for hobby projects and supports WebSocket connections.
    ```
 
 4. **Get Your Render URL**
-   - After deployment: `https://yegna-bingo-socket.onrender.com`
+   - After deployment: `https://BingoX-bingo-socket.onrender.com`
 
 5. **Update Vercel**:
-   - Add `NEXT_PUBLIC_SOCKET_URL=https://yegna-bingo-socket.onrender.com`
+   - Add `NEXT_PUBLIC_SOCKET_URL=https://BingoX-bingo-socket.onrender.com`
 
 ---
 

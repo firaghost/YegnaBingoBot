@@ -1,8 +1,8 @@
-# 🚀 Bingo Royale - Setup Instructions
+# 🚀 BingoX - Setup Instructions
 
 ## ✅ What's Been Implemented
 
-Your Bingo Royale bot is **100% production-ready** with real functionality (no simulations):
+Your BingoX bot is **100% production-ready** with real functionality (no simulations):
 
 ### 🎯 Features
 - ✅ Real Telegram authentication
@@ -110,7 +110,7 @@ Type `@YourBotName` followed by:
 
 ## 📱 Pages
 
-All pages match Bingo Royale design exactly:
+All pages match BingoX design exactly:
 
 1. **/** - Landing page with sparkles
 2. **/lobby** - Game rooms (real data)

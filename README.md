@@ -1,4 +1,4 @@
-# 🎮 Yegna Bingo - Telegram Bingo Bot
+# 🎮 BingoX Bingo - Telegram Bingo Bot
 
 A complete Telegram-based Bingo game system with auto-game features, real-time monitoring, and separate Super Admin dashboard for 50/50 partnership management.
 
@@ -54,8 +54,8 @@ A complete Telegram-based Bingo game system with auto-game features, real-time m
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/YegnaBingoBot.git
-cd YegnaBingoBot
+git clone https://github.com/yourusername/BingoXBot.git
+cd BingoXBot
 
 # Install dependencies for all projects
 npm install
@@ -105,14 +105,14 @@ TELEGRAM_BOT_TOKEN=your_bot_token
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=YegnaBingoBot
+NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=BingoXBot
 ```
 
 **Dashboard:**
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-NEXT_PUBLIC_BOT_URL=https://yegna-bingo-bot.vercel.app
+NEXT_PUBLIC_BOT_URL=https://BingoX-bingo-bot.vercel.app
 NEXT_PUBLIC_SUPER_ADMIN_USERNAME=superadmin
 NEXT_PUBLIC_SUPER_ADMIN_PASSWORD=YourStrongPassword123!
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -131,7 +131,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 
 ### Project Structure
 ```
-YegnaBingoBot/
+BingoXBot/
 ├── api/                    # Vercel serverless functions
 │   ├── webhook.js         # Telegram bot webhook
 │   ├── start-game.js      # Auto-start game endpoint

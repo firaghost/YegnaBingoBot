@@ -27,7 +27,7 @@ export function setupBotHandlers(bot: Telegraf) {
       if (!existingUser) {
         // New user - Show registration button
         await ctx.reply(
-          `🎰 *Welcome to Bingo Royale!*\n\n` +
+          `🎰 *Welcome to BingoX!*\n\n` +
           `Hello ${firstName}! 👋\n\n` +
           `To get started, please register by clicking the button below.\n` +
           `You'll receive *3 ETB bonus* just for joining!\n\n` +
@@ -162,7 +162,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.answerCbQuery('✅ Registration successful!')
       await ctx.editMessageText(
         `🎉 *Registration Successful!*\n\n` +
-        `Welcome to Bingo Royale, ${firstName}! 🎰\n\n` +
+        `Welcome to BingoX, ${firstName}! 🎰\n\n` +
         `🎁 You've received ${registrationBonus.toFixed(2)} ETB bonus!\n\n` +
         `✨ *Your Account:*\n` +
         `💰 Balance: 0.00 ETB\n` +
@@ -351,7 +351,7 @@ export function setupBotHandlers(bot: Telegraf) {
   // Help command
   bot.command('help', async (ctx) => {
     await ctx.reply(
-      `📖 *Bingo Royale - Help & Commands*\n\n` +
+      `📖 *BingoX - Help & Commands*\n\n` +
       `*Game Commands:*\n` +
       `/start - Register and start playing\n` +
       `/play - Open the game\n` +
@@ -380,7 +380,7 @@ export function setupBotHandlers(bot: Telegraf) {
   bot.action('help', async (ctx) => {
     await ctx.answerCbQuery()
     await ctx.editMessageText(
-      `📖 *Bingo Royale - Help*\n\n` +
+      `📖 *BingoX - Help*\n\n` +
       `*How to Play:*\n` +
       `1️⃣ Register with /start\n` +
       `2️⃣ Deposit funds or use your bonus\n` +

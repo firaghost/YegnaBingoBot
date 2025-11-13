@@ -6,7 +6,7 @@ const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, amount, paymentMethod, transactionRef, proofUrl } = await request.json()
+    const { userId, amount, paymentMethod, bankId, bankInfo, transactionRef, proofUrl } = await request.json()
 
     if (!userId || !amount || amount <= 0) {
       return NextResponse.json(
@@ -43,7 +43,9 @@ export async function POST(request: NextRequest) {
         amount: amount,
         status: 'pending',
         metadata: {
-          payment_method: paymentMethod || 'bank_transfer',
+          payment_method: paymentMethod || 'Bank Transfer',
+          bank_id: bankId,
+          bank_info: bankInfo,
           transaction_reference: transactionRef,
           proof_url: proofUrl || null
         }

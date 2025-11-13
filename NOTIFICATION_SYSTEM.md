@@ -195,7 +195,7 @@ BOT_URL=https://your-bot-domain.com  # For production
 1. **Deploy Bot:**
 ```bash
 cd bot
-pm2 restart yegna-bingo-bot
+pm2 restart BingoX-bingo-bot
 ```
 
 2. **Deploy Mini App:**

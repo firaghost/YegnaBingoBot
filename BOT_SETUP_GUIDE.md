@@ -40,7 +40,7 @@ help - Show help & commands
 5. Paste:
 
 ```
-🎰 Bingo Royale - Win Real Prizes!
+🎰 BingoX - Win Real Prizes!
 
 Play exciting bingo games and win ETB prizes!
 
@@ -63,7 +63,7 @@ Start playing now with /start
 5. Paste:
 
 ```
-🎰 Play Bingo Royale and win real ETB prizes! Get 1000 ETB bonus on signup.
+🎰 Play BingoX and win real ETB prizes! Get 1000 ETB bonus on signup.
 ```
 
 ### 5. Set Bot Profile Picture (Optional)

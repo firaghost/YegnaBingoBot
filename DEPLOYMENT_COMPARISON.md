@@ -222,7 +222,7 @@ Do you need it free?
 ```bash
 # Install gcloud CLI
 # Then:
-gcloud run deploy yegna-bingo-socket \
+gcloud run deploy BingoX-bingo-socket \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
@@ -230,7 +230,7 @@ gcloud run deploy yegna-bingo-socket \
 ```
 
 Done! Your Socket.IO server is live at:
-`https://yegna-bingo-socket-xxxxx.run.app`
+`https://BingoX-bingo-socket-xxxxx.run.app`
 
 ---
 

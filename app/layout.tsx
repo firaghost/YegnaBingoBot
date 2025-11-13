@@ -2,8 +2,8 @@ import './globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Bingo Royale - Yegna Bingo',
-  description: 'Welcome to Bingo Royale!',
+  title: 'BingoX - BingoX Bingo',
+  description: 'Welcome to BingoX!',
   icons: {
     icon: '/favicon.ico',
   },

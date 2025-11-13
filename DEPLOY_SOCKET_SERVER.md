@@ -17,7 +17,7 @@ Clients now simply listen to Socket.IO `game-state` events!
 
 ```bash
 # Navigate to project root
-cd d:\Projects\YegnaBingoBot
+cd d:\Projects\BingoXBot
 
 # Install dependencies (if not already installed)
 npm install
@@ -69,7 +69,7 @@ ts-node server/index.ts
 2. Click "New +" → "Web Service"
 3. Connect your GitHub repo
 4. Configure:
-   - **Name:** yegna-bingo-socket
+   - **Name:** BingoX-bingo-socket
    - **Environment:** Node
    - **Build Command:** `npm install`
    - **Start Command:** `node server/index.ts` or `npm run start:socket`
@@ -135,7 +135,7 @@ node_modules
 firebase deploy --only hosting
 
 # Or deploy to Cloud Run directly
-gcloud run deploy yegna-bingo-socket \
+gcloud run deploy BingoX-bingo-socket \
   --source . \
   --platform managed \
   --region us-central1 \
@@ -146,7 +146,7 @@ gcloud run deploy yegna-bingo-socket \
 **Step 6: Get Your Socket URL**
 After deployment, you'll get a URL like:
 ```
-https://yegna-bingo-socket-xxxxx.run.app
+https://BingoX-bingo-socket-xxxxx.run.app
 ```
 
 Use this as your `NEXT_PUBLIC_SOCKET_URL` in Vercel!
@@ -162,7 +162,7 @@ Use this as your `NEXT_PUBLIC_SOCKET_URL` in Vercel!
 # Install Heroku CLI
 # Then:
 heroku login
-heroku create yegna-bingo-socket
+heroku create BingoX-bingo-socket
 git push heroku main
 
 # Set environment variables
@@ -178,8 +178,8 @@ heroku config:set SOCKET_PORT=3001
 ssh user@your-server-ip
 
 # Clone repo
-git clone https://github.com/yourusername/YegnaBingoBot.git
-cd YegnaBingoBot
+git clone https://github.com/yourusername/BingoXBot.git
+cd BingoXBot
 
 # Install dependencies
 npm install

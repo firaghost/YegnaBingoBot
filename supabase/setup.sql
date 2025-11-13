@@ -1,5 +1,5 @@
 -- ============================================
--- BINGO ROYALE - COMPLETE DATABASE SETUP
+-- BingoX - COMPLETE DATABASE SETUP
 -- Run this script in Supabase SQL Editor
 -- ============================================
 

@@ -24,7 +24,7 @@ Firebase Cloud Functions won't work because they timeout after 60 seconds. Railw
 
 1. Click **"New Project"**
 2. Select **"Deploy from GitHub repo"**
-3. Choose your repository: **`YegnaBingoBot`**
+3. Choose your repository: **`BingoXBot`**
 4. Railway will automatically detect your `railway.json` configuration
 
 ### 3. Configure Environment Variables
@@ -59,14 +59,14 @@ NEXT_PUBLIC_APP_URL=https://yegnagame.vercel.app
 1. Go to **"Settings"** tab
 2. Scroll to **"Networking"** section
 3. Click **"Generate Domain"**
-4. Copy the URL (e.g., `https://yegnabingobot-production.up.railway.app`)
+4. Copy the URL (e.g., `https://BingoXbot-production.up.railway.app`)
 
 ### 6. Update Vercel Environment Variables
 
 1. Go to **Vercel Dashboard** → Your Project → **Settings** → **Environment Variables**
 2. Add or update:
    ```
-   NEXT_PUBLIC_SOCKET_URL=https://yegnabingobot-production.up.railway.app
+   NEXT_PUBLIC_SOCKET_URL=https://BingoXbot-production.up.railway.app
    ```
 3. **Redeploy** your Vercel app (Deployments → Click "..." → Redeploy)
 
@@ -89,7 +89,7 @@ NEXT_PUBLIC_APP_URL=https://yegnagame.vercel.app
 
 Open your Vercel app and check browser console:
 ```
-Socket.IO connected to: https://yegnabingobot-production.up.railway.app
+Socket.IO connected to: https://BingoXbot-production.up.railway.app
 ```
 
 ---

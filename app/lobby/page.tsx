@@ -29,20 +29,40 @@ export default function LobbyPage() {
   const [loading, setLoading] = useState(true)
   const [showInsufficientBalance, setShowInsufficientBalance] = useState(false)
   const [insufficientBalanceMessage, setInsufficientBalanceMessage] = useState('')
+  const [isUpdating, setIsUpdating] = useState(false)
 
   useEffect(() => {
     fetchRooms()
     
-    // Subscribe to room updates
-    const subscription = supabase
-      .channel('rooms')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => {
-        fetchRooms()
+    // Subscribe to real-time updates
+    const roomsChannel = supabase
+      .channel('lobby-updates')
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'rooms' 
+      }, (payload) => {
+        console.log('🏠 Room update:', payload)
+        handleRoomUpdate(payload)
+      })
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'games' 
+      }, (payload) => {
+        console.log('🎮 Game update:', payload)
+        handleGameUpdate(payload)
       })
       .subscribe()
 
+    // Refresh room data every 30 seconds as fallback
+    const intervalId = setInterval(() => {
+      fetchRooms()
+    }, 30000)
+
     return () => {
-      subscription.unsubscribe()
+      roomsChannel.unsubscribe()
+      clearInterval(intervalId)
     }
   }, [])
 
@@ -109,6 +129,86 @@ export default function LobbyPage() {
     }
   }
 
+  // Handle real-time room updates
+  const handleRoomUpdate = async (payload: any) => {
+    const { eventType, new: newRoom, old: oldRoom } = payload
+    
+    setIsUpdating(true)
+    
+    if (eventType === 'UPDATE' && newRoom) {
+      // Update specific room in state
+      setRooms(prevRooms => 
+        prevRooms.map(room => 
+          room.id === newRoom.id 
+            ? { ...room, ...newRoom, game_level: newRoom.game_level || newRoom.default_level || 'medium' }
+            : room
+        )
+      )
+    } else if (eventType === 'INSERT' && newRoom && newRoom.status === 'active') {
+      // Add new room
+      const enhancedRoom = {
+        ...newRoom,
+        waiting_players: 0,
+        base_prize_pool: newRoom.stake * newRoom.max_players * 0.9,
+        prize_pool: 0,
+        game_level: newRoom.game_level || newRoom.default_level || 'medium'
+      }
+      setRooms(prevRooms => [...prevRooms, enhancedRoom].sort((a, b) => a.stake - b.stake))
+    } else if (eventType === 'DELETE' && oldRoom) {
+      // Remove room
+      setRooms(prevRooms => prevRooms.filter(room => room.id !== oldRoom.id))
+    }
+    
+    setTimeout(() => setIsUpdating(false), 1000)
+  }
+
+  // Handle real-time game updates (affects waiting players)
+  const handleGameUpdate = async (payload: any) => {
+    const { eventType, new: newGame, old: oldGame } = payload
+    
+    // Only update if it's a game status change that affects waiting players
+    if (newGame?.room_id && ['waiting', 'countdown', 'active', 'finished'].includes(newGame.status)) {
+      await updateRoomWaitingPlayers(newGame.room_id)
+    } else if (oldGame?.room_id && eventType === 'DELETE') {
+      await updateRoomWaitingPlayers(oldGame.room_id)
+    }
+  }
+
+  // Update waiting players for a specific room
+  const updateRoomWaitingPlayers = async (roomId: string) => {
+    try {
+      const { data: activeGames } = await supabase
+        .from('games')
+        .select('players, status')
+        .eq('room_id', roomId)
+        .in('status', ['waiting', 'countdown'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      const waitingPlayers = activeGames?.[0]?.players?.length || 0
+
+      // Update the specific room in state
+      setRooms(prevRooms => 
+        prevRooms.map(room => {
+          if (room.id === roomId) {
+            const dynamicPrizePool = waitingPlayers > 0 
+              ? room.stake * waitingPlayers * 0.9
+              : 0
+            
+            return {
+              ...room,
+              waiting_players: waitingPlayers,
+              prize_pool: Math.round(dynamicPrizePool * 100) / 100
+            }
+          }
+          return room
+        })
+      )
+    } catch (error) {
+      console.error('Error updating waiting players:', error)
+    }
+  }
+
   const handleInsufficientBalance = (stake: number) => {
     const currentBalance = user ? user.balance + (user.bonus_balance || 0) : 0
     setInsufficientBalanceMessage(
@@ -141,6 +241,12 @@ export default function LobbyPage() {
           <div className="flex items-center gap-2">
             <LuZap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
             <h1 className="text-lg sm:text-xl font-bold text-slate-900">BingoX</h1>
+            {isUpdating && (
+              <div className="flex items-center gap-1 text-xs text-blue-600">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="hidden sm:inline">Live</span>
+              </div>
+            )}
           </div>
           {user && (
             <div className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg">
@@ -192,7 +298,7 @@ export default function LobbyPage() {
               const IconComponent = roomStyle.icon
               
               return (
-                <div key={room.id} className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-slate-300 transition-colors shadow-sm hover:shadow-md">
+                <div key={room.id} className={`bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-slate-300 transition-all duration-300 shadow-sm hover:shadow-md ${isUpdating ? 'ring-2 ring-blue-200 ring-opacity-50' : ''}`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${

@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Force sync cache to database before validation (critical operation)
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
       await fetch(`${baseUrl}/api/cache/force-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,7 +268,7 @@ export async function POST(request: NextRequest) {
 
     // Stop number calling by calling the Railway server
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
       await fetch(`${baseUrl}/api/game/stop-calling`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

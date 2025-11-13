@@ -95,7 +95,7 @@ export default function AdminLoginPage() {
           <div className="text-center mb-8">
             <div className="text-7xl mb-4">🔐</div>
             <h1 className="text-4xl font-bold text-white mb-2">Admin Access</h1>
-            <p className="text-gray-300">Bingo Royale Dashboard</p>
+            <p className="text-gray-300">BingoX Dashboard</p>
           </div>
 
           {error && (

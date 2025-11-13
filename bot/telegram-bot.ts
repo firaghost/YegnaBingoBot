@@ -40,7 +40,7 @@ bot.command('start', async (ctx) => {
     if (!existingUser) {
       // New user - Show registration button
       await ctx.reply(
-        `🎰 *Welcome to Bingo Royale!*\n\n` +
+        `🎰 *Welcome to BingoX!*\n\n` +
         `Hello ${firstName}! 👋\n\n` +
         `To get started, please register by clicking the button below.\n` +
         `You'll receive *3 ETB bonus* just for joining!\n\n` +
@@ -548,7 +548,7 @@ bot.action('register', async (ctx) => {
     await ctx.answerCbQuery('✅ Registration successful!')
     await ctx.editMessageText(
       `🎉 *Registration Successful!*\n\n` +
-      `Welcome to Bingo Royale, ${firstName}! 🎰\n\n` +
+      `Welcome to BingoX, ${firstName}! 🎰\n\n` +
       `🎁 You've received ${registrationBonus.toFixed(2)} ETB bonus!\n\n` +
       `✨ *Your Account:*\n` +
       `💰 Balance: 0.00 ETB\n` +

@@ -285,10 +285,10 @@ export default function AdminDeposits() {
                         <span className="font-bold text-green-400">{formatCurrency(deposit.amount)}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-gray-300">{deposit.payment_method || 'Bank Transfer'}</span>
+                        <span className="text-gray-300">{deposit.metadata?.payment_method || deposit.payment_method || 'Bank Transfer'}</span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="text-gray-300 text-sm">{deposit.transaction_reference || 'N/A'}</span>
+                        <span className="text-gray-300 text-sm">{deposit.metadata?.transaction_reference || deposit.transaction_reference || 'N/A'}</span>
                       </td>
                       <td className="px-6 py-4">
                         {deposit.proof_url ? (
@@ -376,11 +376,11 @@ export default function AdminDeposits() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Method:</span>
-                      <span className="text-gray-300 text-sm">{deposit.payment_method || 'Bank Transfer'}</span>
+                      <span className="text-gray-300 text-sm">{deposit.metadata?.payment_method || deposit.payment_method || 'Bank Transfer'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Reference:</span>
-                      <span className="text-gray-300 text-sm">{deposit.transaction_reference || 'N/A'}</span>
+                      <span className="text-gray-300 text-sm">{deposit.metadata?.transaction_reference || deposit.transaction_reference || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400 text-sm">Date:</span>

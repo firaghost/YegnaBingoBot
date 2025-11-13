@@ -1,4 +1,4 @@
-# 🤖 Telegram Bot Commands - Bingo Royale
+# 🤖 Telegram Bot Commands - BingoX
 
 ## Add these commands to your bot via @BotFather
 
@@ -136,7 +136,7 @@ npm run dev  # Starts both server and bot
 
 **For New Users:**
 ```
-🎰 Welcome to Bingo Royale!
+🎰 Welcome to BingoX!
 
 Hello [username]! 👋
 
@@ -157,7 +157,7 @@ Tap the button below to start playing!
 
 **For Returning Users:**
 ```
-🎰 Welcome back to Bingo Royale!
+🎰 Welcome back to BingoX!
 
 Hello [username]! 👋
 

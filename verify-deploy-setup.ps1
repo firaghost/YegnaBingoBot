@@ -71,7 +71,7 @@ Write-Host "2. See VERCEL_AUTO_DEPLOY_SETUP.md for detailed instructions"
 Write-Host "3. Test with: git push origin main"
 Write-Host ""
 Write-Host "Projects to configure in Vercel Dashboard:" -ForegroundColor Cyan
-Write-Host "  • yegna-bingo-bot-api (Root: api/)" -ForegroundColor White
-Write-Host "  • yegna-bingo-miniapp (Root: miniapp/)" -ForegroundColor White
-Write-Host "  • yegna-bingo-dashboard (Root: dashboard/)" -ForegroundColor White
+Write-Host "  • BingoX-bingo-bot-api (Root: api/)" -ForegroundColor White
+Write-Host "  • BingoX-bingo-miniapp (Root: miniapp/)" -ForegroundColor White
+Write-Host "  • BingoX-bingo-dashboard (Root: dashboard/)" -ForegroundColor White
 Write-Host ""

@@ -91,7 +91,7 @@ export default function LoginPage() {
         <div className="bg-white rounded-3xl shadow-2xl p-10">
           <div className="text-center mb-8">
             <div className="text-7xl mb-4">🎰</div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">Bingo Royale</h1>
+            <h1 className="text-4xl font-bold text-gray-800 mb-2">BingoX</h1>
             <p className="text-gray-600">
               {isFromTelegram 
                 ? "Complete your registration to start playing!" 

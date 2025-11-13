@@ -1,15 +1,26 @@
 "use client"
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { LuArrowLeft, LuCoins, LuUpload, LuCheck, LuX } from 'react-icons/lu'
 
+interface BankAccount {
+  id: string
+  bank_name: string
+  account_number: string
+  account_holder: string
+  branch?: string
+  swift_code?: string
+}
+
 export default function DepositPage() {
   const { user } = useAuth()
   const [amount, setAmount] = useState('')
+  const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null)
+  const [banks, setBanks] = useState<BankAccount[]>([])
   const [transactionRef, setTransactionRef] = useState('')
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [proofPreview, setProofPreview] = useState<string | null>(null)
@@ -18,6 +29,29 @@ export default function DepositPage() {
   const [error, setError] = useState('')
 
   const quickAmounts = [50, 100, 500]
+
+  // Fetch available banks
+  useEffect(() => {
+    const fetchBanks = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('bank_accounts')
+          .select('*')
+          .eq('is_active', true)
+          .order('bank_name', { ascending: true })
+
+        if (error) throw error
+        setBanks(data || [])
+        
+        // Don't auto-select - let user choose from dropdown
+      } catch (error) {
+        console.error('Error fetching banks:', error)
+        setError('Failed to load bank information')
+      }
+    }
+
+    fetchBanks()
+  }, [])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -38,7 +72,10 @@ export default function DepositPage() {
       return
     }
 
-    // No minimum deposit restriction
+    if (!selectedBank) {
+      setError('Please select a bank account')
+      return
+    }
 
     // Transaction reference is REQUIRED
     if (!transactionRef || transactionRef.trim() === '') {
@@ -85,7 +122,15 @@ export default function DepositPage() {
         body: JSON.stringify({
           userId: user.id,
           amount: parseFloat(amount),
-          paymentMethod: 'bank_transfer',
+          paymentMethod: selectedBank.bank_name,
+          bankId: selectedBank.id,
+          bankInfo: {
+            bank_name: selectedBank.bank_name,
+            account_number: selectedBank.account_number,
+            account_holder: selectedBank.account_holder,
+            branch: selectedBank.branch,
+            swift_code: selectedBank.swift_code
+          },
           transactionRef: transactionRef || null,
           proofUrl: proofUrl
         })
@@ -143,53 +188,109 @@ export default function DepositPage() {
                 <p className="text-sm text-red-700">{error}</p>
               </div>
             )}
-            {/* Quick Amount Buttons */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200">
-              <label className="block text-sm font-medium text-slate-900 mb-3">
-                Quick Select Amount
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {quickAmounts.map((amt) => (
-                  <button
-                    key={amt}
-                    onClick={() => setAmount(amt.toString())}
-                    className={`py-2.5 px-4 rounded-lg font-medium transition-all text-sm ${
-                      amount === amt.toString()
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {amt} ETB
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Amount & Bank Selection - Combined */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Amount Section */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                    Amount
+                  </label>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {quickAmounts.map((amt) => (
+                      <button
+                        key={amt}
+                        onClick={() => setAmount(amt.toString())}
+                        className={`py-2 px-3 rounded-lg font-medium transition-all text-xs ${
+                          amount === amt.toString()
+                            ? 'bg-emerald-500 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {amt} ETB
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="Custom amount"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-100"
+                      min="0"
+                      step="10"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                      <span className="text-slate-500 text-xs">ETB</span>
+                    </div>
+                  </div>
+                </div>
 
-            {/* Custom Amount Input */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200">
-              <label className="block text-sm font-medium text-slate-900 mb-3">
-                Or Enter Custom Amount
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="Enter amount"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-                  min="0"
-                  step="10"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">
-                  ETB
-                </span>
+                {/* Bank Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-900 mb-2">
+                    Bank Account
+                  </label>
+                  {banks.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500">
+                      <LuCoins className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+                      <p className="text-xs">No banks configured</p>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select
+                        value={selectedBank?.id || ''}
+                        onChange={(e) => {
+                          const bank = banks.find(b => b.id === e.target.value)
+                          setSelectedBank(bank || null)
+                        }}
+                        className="w-full px-3 py-2 pr-8 text-sm border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-100 bg-white appearance-none"
+                        required
+                      >
+                        <option value="">Choose bank...</option>
+                        {banks.map((bank) => (
+                          <option key={bank.id} value={bank.id}>
+                            {bank.bank_name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Bank Details - Compact */}
+                  {selectedBank && (
+                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Account:</span>
+                          <span className="font-mono text-blue-900">{selectedBank.account_number}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Name:</span>
+                          <span className="text-blue-900">{selectedBank.account_holder}</span>
+                        </div>
+                        {selectedBank.branch && (
+                          <div className="flex justify-between">
+                            <span className="text-blue-700">Branch:</span>
+                            <span className="text-blue-900">{selectedBank.branch}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-slate-500 mt-2">No minimum deposit required</p>
             </div>
 
             {/* Transaction Reference */}
-            <div className="bg-white rounded-xl p-5 border border-slate-200">
-              <label className="block text-sm font-medium text-slate-900 mb-3">
+            <div className="bg-white rounded-xl p-4 border border-slate-200">
+              <label className="block text-sm font-medium text-slate-900 mb-2">
                 Transaction Reference <span className="text-red-500">*</span>
               </label>
               <input
@@ -197,36 +298,18 @@ export default function DepositPage() {
                 value={transactionRef}
                 onChange={(e) => setTransactionRef(e.target.value)}
                 placeholder="Enter FTP number or transaction reference"
-                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-100"
                 required
               />
-              <p className="text-xs text-slate-500 mt-2">
+              <p className="text-xs text-slate-500 mt-1">
                 Required: Enter the FTP number from your bank transfer
               </p>
             </div>
-            {/* Bank Details */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
-              <h3 className="font-semibold text-slate-900 mb-3 text-sm">Bank Transfer Details</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Bank:</span>
-                  <span className="font-medium text-slate-900">Commercial Bank of Ethiopia</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Account Name:</span>
-                  <span className="font-medium text-slate-900">BingoX</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Account Number:</span>
-                  <span className="font-medium text-slate-900">1000123456789</span>
-                </div>
-              </div>
-            </div>
-
+            
             {/* Submit Button */}
             <button
               onClick={handleDeposit}
-              disabled={!amount || parseFloat(amount) <= 0 || loading}
+              disabled={!amount || parseFloat(amount) <= 0 || !selectedBank || loading}
               className="w-full bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (

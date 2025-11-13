@@ -133,7 +133,7 @@ export default function GamePage() {
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
         
         // Test if API routes are working on Railway
-        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
         
         // Remove test API calls - they're working now
 

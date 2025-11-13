@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
         
         // Notify API to start the waiting period
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
           console.log(`🔔 Calling waiting period API: ${baseUrl}/api/socket/start-waiting-period`)
           
           const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
@@ -258,7 +258,7 @@ export async function POST(request: NextRequest) {
       
       // Start the waiting period
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
         await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
