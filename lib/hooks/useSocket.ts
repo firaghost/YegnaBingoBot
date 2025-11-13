@@ -208,6 +208,20 @@ export function useSocket() {
       }))
     })
 
+    // New unified game state update (from cache system)
+    socket.on('game_state_update', (data) => {
+      console.log('⚡ Fast game state update:', data)
+      setGameState(prev => prev ? {
+        ...prev,
+        status: data.status,
+        called_numbers: data.called_numbers || prev.called_numbers,
+        latest_number: data.latest_number || prev.latest_number,
+        countdown_time: data.countdown_time ?? prev.countdown_time,
+        prize_pool: data.prize_pool ?? prev.prize_pool,
+        winner_id: data.winner_id ?? prev.winner_id
+      } : null)
+    })
+
     socket.on('number_called', (data) => {
       console.log('📢 Number called:', data.letter + data.number)
       setGameState(prev => prev ? {

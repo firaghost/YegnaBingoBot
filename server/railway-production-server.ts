@@ -12,6 +12,7 @@ import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
+import { gameStateCache } from './game-state-cache'
 
 const app = express()
 const httpServer = createServer(app)
@@ -42,35 +43,35 @@ function validateNumberCallFairness(gameId: string, callCount: number): boolean 
   
   const isValid = Math.abs(callCount - expectedCalls) <= tolerance
   if (!isValid) {
-    console.warn(`⚠️ Game ${gameId} timing anomaly: Expected ~${expectedCalls} calls, got ${callCount}`)
   }
   
   return isValid
 }
 
-// Number calling function - Fair and consistent
+// Number calling function - Fair and consistent with caching
 async function startNumberCalling(gameId: string) {
   try {
-    const { supabaseAdmin } = await import('../lib/supabase')
-    const supabase = supabaseAdmin
-
-    // Get current game state
-    const { data: game } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', gameId)
-      .single()
+    // Try to get from cache first
+    let game = gameStateCache.get(gameId)
+    
+    // If not in cache, load from database
+    if (!game) {
+      console.log(`📥 Loading game ${gameId} into cache...`)
+      game = await gameStateCache.loadFromDatabase(gameId)
+    }
 
     if (!game || game.status !== 'active') {
       console.log(`❌ Cannot start number calling - game ${gameId} not active`)
       return
     }
 
-    console.log(`📢 Number calling started for game ${gameId}`)
-    
+    console.log(`📢 Number calling started for game ${gameId} (using cache)`)
+
+    // Get current game state from cache
+    const { called_numbers: alreadyCalled, last_number_called: lastCalledNumber, last_called_at: lastCalledAt } = game
+
     // Generate shuffled sequence of all numbers for fairness
     const allNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
-    const alreadyCalled = game.called_numbers || []
     let availableNumbers = allNumbers.filter(num => !alreadyCalled.includes(num))
     
     // Shuffle the available numbers for true randomness
@@ -94,17 +95,14 @@ async function startNumberCalling(gameId: string) {
     
     const callInterval = setInterval(async () => {
       try {
-        // Check if game is still active (quick check)
-        const { data: currentGame } = await supabase
-          .from('games')
-          .select('status, winner_id')
-          .eq('id', gameId)
-          .single()
+        // Check if game is still active (from cache - instant)
+        const currentGame = gameStateCache.get(gameId)
 
         if (!currentGame || currentGame.status !== 'active' || currentGame.winner_id) {
           console.log(`🛑 Stopping number calling - game ${gameId} ended (status: ${currentGame?.status}, winner: ${currentGame?.winner_id})`)
           clearInterval(callInterval)
           gameIntervals.delete(gameId)
+          gameStateCache.remove(gameId) // Clean up cache
           return
         }
 
@@ -122,50 +120,25 @@ async function startNumberCalling(gameId: string) {
         callCount++
         numberIndex++
         
-        // Atomic update with optimistic locking
-        const { data: updatedGame, error: updateError } = await supabase
-          .from('games')
-          .update({ 
-            called_numbers: [...alreadyCalled, ...availableNumbers.slice(0, numberIndex)],
-            last_number_called: calledNumber,
-            last_called_at: new Date().toISOString(),
-            latest_number: { letter, number: calledNumber }
-          })
-          .eq('id', gameId)
-          .eq('status', 'active') // Only update if still active
-          .is('winner_id', null) // Only update if no winner yet
-          .select('called_numbers')
-          .single()
-
-        if (updateError) {
-          console.log(`⚠️ Failed to update game ${gameId} - likely game ended: ${updateError.message}`)
-          clearInterval(callInterval)
-          gameIntervals.delete(gameId)
-          return
-        }
+        const newCalledNumbers = [...alreadyCalled, ...availableNumbers.slice(0, numberIndex)]
+        
+        // Update cache immediately (instant broadcast to all players)
+        gameStateCache.update(gameId, {
+          called_numbers: newCalledNumbers,
+          last_number_called: calledNumber,
+          last_called_at: new Date().toISOString(),
+          latest_number: { letter, number: calledNumber }
+        }, { immediate: true, priority: 'high' })
+        
+        // Database will be synced automatically in batch (every 30s)
+        // No need for immediate DB update - cache handles it!
 
         // Validate fairness
         const isFair = validateNumberCallFairness(gameId, callCount)
         console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
-
-        // Emit socket event for real-time updates to ensure fairness
-        // This ensures all players get the number at exactly the same time
-        try {
-          // Emit to all players in the game room
-          if (global.io) {
-            global.io.to(`game-${gameId}`).emit('number-called', {
-              gameId,
-              number: calledNumber,
-              letter,
-              display: `${letter}${calledNumber}`,
-              totalCalled: callCount,
-              timestamp: new Date().toISOString()
-            })
-            console.log(`📡 Broadcasted ${letter}${calledNumber} to all players in game ${gameId}`)
-          }
-        } catch (socketError) {
-          console.warn('Socket emission failed:', socketError)
-        }
+        
+        // Note: Socket broadcast is handled automatically by gameStateCache.update()
+        // No need for duplicate emission here!
 
       } catch (error) {
         console.error(`❌ Error calling number for game ${gameId}:`, error)
@@ -222,6 +195,11 @@ async function cleanupFinishedGames() {
 
 // Run cleanup every 5 minutes
 setInterval(cleanupFinishedGames, 5 * 60 * 1000)
+
+// Run cache cleanup every 2 minutes
+setInterval(() => {
+  gameStateCache.cleanup()
+}, 2 * 60 * 1000)
 
 // Middleware
 app.use(cors({
@@ -788,6 +766,24 @@ app.post('/api/game/start-calling', async (req, res) => {
   }
 })
 
+// Add cache stats endpoint for monitoring
+app.get('/api/cache/stats', (req, res) => {
+  try {
+    const stats = gameStateCache.getStats()
+    return res.json({
+      success: true,
+      cache: stats,
+      active_games: gameIntervals.size,
+      waiting_periods: activeWaitingPeriods.size,
+      countdowns: activeCountdowns.size,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error('Error getting cache stats:', error)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+})
+
 // Add API endpoint to stop number calling for a game
 app.post('/api/game/stop-calling', async (req, res) => {
   try {
@@ -821,6 +817,13 @@ console.log('   🎮 POST /api/game/join')
 console.log('   ⏳ POST /api/socket/start-waiting-period')
 console.log('   📢 POST /api/game/start-calling')
 console.log('   🛑 POST /api/game/stop-calling')
+console.log('   📊 GET  /api/cache/stats')
+console.log('')
+console.log('⚡ Performance Features:')
+console.log('   🚀 In-memory game state cache enabled')
+console.log('   📦 Batch database sync (every 30s)')
+console.log('   📡 Instant Socket.IO broadcasting')
+console.log('   🧹 Automatic cache cleanup (every 2min)')
 
 // Temporary: Allow single-player games for testing (default enabled for now)
 // Disable single-player games in production
