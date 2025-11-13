@@ -3,6 +3,11 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
+
+// Global socket server declaration
+declare global {
+  var io: SocketServer | undefined
+}
 import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
@@ -14,7 +19,36 @@ const httpServer = createServer(app)
 // Store active game intervals to manage number calling
 const gameIntervals = new Map<string, NodeJS.Timeout>()
 
-// Number calling function
+// Store active waiting periods to prevent duplicates
+const activeWaitingPeriods = new Set<string>()
+
+// Store active countdowns to prevent duplicates
+const activeCountdowns = new Set<string>()
+
+// Store game start times for fairness validation
+const gameStartTimes = new Map<string, number>()
+
+// Validate number calling fairness
+function validateNumberCallFairness(gameId: string, callCount: number): boolean {
+  const startTime = gameStartTimes.get(gameId)
+  if (!startTime) {
+    gameStartTimes.set(gameId, Date.now())
+    return true
+  }
+  
+  const elapsed = Date.now() - startTime
+  const expectedCalls = Math.floor(elapsed / 5000) // 5 seconds per call
+  const tolerance = 2 // Allow 2 calls variance
+  
+  const isValid = Math.abs(callCount - expectedCalls) <= tolerance
+  if (!isValid) {
+    console.warn(`⚠️ Game ${gameId} timing anomaly: Expected ~${expectedCalls} calls, got ${callCount}`)
+  }
+  
+  return isValid
+}
+
+// Number calling function - Fair and consistent
 async function startNumberCalling(gameId: string) {
   try {
     const { supabaseAdmin } = await import('../lib/supabase')
@@ -34,74 +68,110 @@ async function startNumberCalling(gameId: string) {
 
     console.log(`📢 Number calling started for game ${gameId}`)
     
-    // Generate all possible bingo numbers (1-75)
+    // Generate shuffled sequence of all numbers for fairness
     const allNumbers = Array.from({ length: 75 }, (_, i) => i + 1)
-    let availableNumbers = allNumbers.filter(num => !game.called_numbers.includes(num))
+    const alreadyCalled = game.called_numbers || []
+    let availableNumbers = allNumbers.filter(num => !alreadyCalled.includes(num))
+    
+    // Shuffle the available numbers for true randomness
+    for (let i = availableNumbers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [availableNumbers[i], availableNumbers[j]] = [availableNumbers[j], availableNumbers[i]]
+    }
+    
+    let numberIndex = 0
+    let callCount = alreadyCalled.length
+    
+    // Get BINGO letter for the number
+    const getBingoLetter = (num: number) => {
+      if (num >= 1 && num <= 15) return 'B'
+      if (num >= 16 && num <= 30) return 'I'
+      if (num >= 31 && num <= 45) return 'N'
+      if (num >= 46 && num <= 60) return 'G'
+      if (num >= 61 && num <= 75) return 'O'
+      return 'N'
+    }
     
     const callInterval = setInterval(async () => {
       try {
-        // Check if game is still active
+        // Check if game is still active (quick check)
         const { data: currentGame } = await supabase
           .from('games')
-          .select('status, called_numbers')
+          .select('status, winner_id')
           .eq('id', gameId)
           .single()
 
-        if (!currentGame || currentGame.status !== 'active') {
-          console.log(`🛑 Stopping number calling - game ${gameId} no longer active`)
+        if (!currentGame || currentGame.status !== 'active' || currentGame.winner_id) {
+          console.log(`🛑 Stopping number calling - game ${gameId} ended (status: ${currentGame?.status}, winner: ${currentGame?.winner_id})`)
           clearInterval(callInterval)
           gameIntervals.delete(gameId)
           return
         }
 
-        // Update available numbers based on current state
-        availableNumbers = allNumbers.filter(num => !currentGame.called_numbers.includes(num))
-
-        if (availableNumbers.length === 0) {
-          console.log(`🏁 All numbers called for game ${gameId}`)
+        // Check if we have numbers left to call
+        if (numberIndex >= availableNumbers.length) {
+          console.log(`🏁 All available numbers called for game ${gameId}`)
           clearInterval(callInterval)
           gameIntervals.delete(gameId)
           return
         }
 
-        // Call a random number
-        const randomIndex = Math.floor(Math.random() * availableNumbers.length)
-        const calledNumber = availableNumbers[randomIndex]
-        
-        // Get BINGO letter for the number
-        const getBingoLetter = (num: number) => {
-          if (num >= 1 && num <= 15) return 'B'
-          if (num >= 16 && num <= 30) return 'I'
-          if (num >= 31 && num <= 45) return 'N'
-          if (num >= 46 && num <= 60) return 'G'
-          if (num >= 61 && num <= 75) return 'O'
-          return 'N'
-        }
-        
+        // Get the next number in sequence (fair distribution)
+        const calledNumber = availableNumbers[numberIndex]
         const letter = getBingoLetter(calledNumber)
+        callCount++
+        numberIndex++
         
-        // Update game with new called number
-        const updatedCalledNumbers = [...currentGame.called_numbers, calledNumber]
-        
-        await supabase
+        // Atomic update with optimistic locking
+        const { data: updatedGame, error: updateError } = await supabase
           .from('games')
           .update({ 
-            called_numbers: updatedCalledNumbers,
+            called_numbers: [...alreadyCalled, ...availableNumbers.slice(0, numberIndex)],
             last_number_called: calledNumber,
             last_called_at: new Date().toISOString(),
             latest_number: { letter, number: calledNumber }
           })
           .eq('id', gameId)
+          .eq('status', 'active') // Only update if still active
+          .is('winner_id', null) // Only update if no winner yet
+          .select('called_numbers')
+          .single()
 
-        console.log(`📢 Game ${gameId}: Called number ${calledNumber} (${updatedCalledNumbers.length}/75)`)
+        if (updateError) {
+          console.log(`⚠️ Failed to update game ${gameId} - likely game ended: ${updateError.message}`)
+          clearInterval(callInterval)
+          gameIntervals.delete(gameId)
+          return
+        }
 
-        // Remove called number from available numbers
-        availableNumbers = availableNumbers.filter(num => num !== calledNumber)
+        // Validate fairness
+        const isFair = validateNumberCallFairness(gameId, callCount)
+        console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
+
+        // Emit socket event for real-time updates to ensure fairness
+        // This ensures all players get the number at exactly the same time
+        try {
+          // Emit to all players in the game room
+          if (global.io) {
+            global.io.to(`game-${gameId}`).emit('number-called', {
+              gameId,
+              number: calledNumber,
+              letter,
+              display: `${letter}${calledNumber}`,
+              totalCalled: callCount,
+              timestamp: new Date().toISOString()
+            })
+            console.log(`📡 Broadcasted ${letter}${calledNumber} to all players in game ${gameId}`)
+          }
+        } catch (socketError) {
+          console.warn('Socket emission failed:', socketError)
+        }
 
       } catch (error) {
         console.error(`❌ Error calling number for game ${gameId}:`, error)
+        // Don't stop on single errors, but log them
       }
-    }, 3000) // Call a number every 3 seconds
+    }, 5000) // Consistent 5-second intervals for fairness (slower = more fair)
 
     // Store interval for cleanup
     gameIntervals.set(gameId, callInterval)
@@ -119,6 +189,11 @@ function stopNumberCalling(gameId: string) {
     gameIntervals.delete(gameId)
     console.log(`🛑 Stopped number calling for game ${gameId}`)
   }
+  
+  // Also clean up waiting period and countdown tracking
+  activeWaitingPeriods.delete(gameId)
+  activeCountdowns.delete(gameId)
+  gameStartTimes.delete(gameId) // Clean up timing data
 }
 
 // Cleanup finished games and stop their number calling
@@ -333,9 +408,12 @@ app.post('/api/game/join', async (req, res) => {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have 2+ players and game is still in waiting status, start 30-second waiting period
-      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting')) {
+      // If we have 2+ players and game is still in waiting status, start 30-second waiting period (only once)
+      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting') && !activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
+        
+        // Mark this game as having an active waiting period
+        activeWaitingPeriods.add(activeGame.id)
         
         // Update status to waiting_for_players with 30-second timer
         const { error: updateError } = await supabase
@@ -349,6 +427,11 @@ app.post('/api/game/join', async (req, res) => {
         
         if (updateError) {
           console.error('❌ Failed to update game status to waiting_for_players:', updateError)
+          activeWaitingPeriods.delete(activeGame.id) // Remove from set on error
+          return res.status(500).json({
+            error: 'Failed to start waiting period',
+            details: updateError.message
+          })
         } else {
           console.log('✅ Game status updated to waiting_for_players')
         }
@@ -359,6 +442,15 @@ app.post('/api/game/join', async (req, res) => {
         // Start the 30-second waiting period
         setTimeout(async () => {
           try {
+            // Check if countdown is already active for this game
+            if (activeCountdowns.has(activeGame.id)) {
+              console.log(`⚠️ Countdown already active for game ${activeGame.id}, skipping`)
+              return
+            }
+            
+            // Mark countdown as active
+            activeCountdowns.add(activeGame.id)
+            
             // After 30 seconds, start the 10-second countdown
             console.log(`🔥 Starting 10-second countdown for game ${activeGame.id}`)
             
@@ -387,6 +479,7 @@ app.post('/api/game/join', async (req, res) => {
               } else {
                 // Countdown finished, start the game
                 clearInterval(countdownInterval)
+                activeCountdowns.delete(activeGame.id) // Remove from active countdowns
                 console.log(`🎮 Starting game ${activeGame.id}`)
                 
                 await supabase
@@ -398,14 +491,19 @@ app.post('/api/game/join', async (req, res) => {
                   })
                   .eq('id', activeGame.id)
 
-                // Start number calling
-                console.log(`📢 Starting number calling for game ${activeGame.id}`)
-                startNumberCalling(activeGame.id)
+                // Start number calling (with duplicate protection)
+                if (!gameIntervals.has(activeGame.id)) {
+                  console.log(`📢 Starting number calling for game ${activeGame.id}`)
+                  startNumberCalling(activeGame.id)
+                } else {
+                  console.log(`⚠️ Number calling already active for game ${activeGame.id}`)
+                }
               }
             }, 1000)
 
           } catch (error) {
             console.error('Error in countdown phase:', error)
+            activeCountdowns.delete(activeGame.id) // Remove from active countdowns on error
           }
         }, 30000) // 30 seconds
 
@@ -423,10 +521,13 @@ app.post('/api/game/join', async (req, res) => {
             console.log(`⏳ Game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
           } else {
             clearInterval(waitingInterval)
+            activeWaitingPeriods.delete(activeGame.id) // Remove from active waiting periods
           }
         }, 1000)
         
         console.log('✅ Waiting period started successfully')
+      } else if (updatedPlayers.length >= 2 && activeWaitingPeriods.has(activeGame.id)) {
+        console.log(`⚠️ Game ${activeGame.id} already has active waiting period, player ${userId} joined existing process`)
       }
 
       // Get the latest game state after all updates
@@ -742,7 +843,10 @@ const io = new SocketServer(httpServer, {
   transports: ['websocket', 'polling']
 })
 
-// Initialize both socket servers with the shared Socket.IO instance
+// Make socket server globally available for number calling
+global.io = io
+
+// Initialize socket servers with the shared Socket.IO instance
 const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
 const inGameSocketServer = new InGameSocketServer(io as any)
 
