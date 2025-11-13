@@ -73,6 +73,18 @@ export function generateBingoCard(): number[][] {
 
 // Check Bingo Win
 export function checkBingoWin(marked: boolean[][]): boolean {
+  // Safety check: ensure marked array exists and has proper structure
+  if (!marked || !Array.isArray(marked) || marked.length !== 5) {
+    return false
+  }
+
+  // Ensure all rows exist and have proper length
+  for (let i = 0; i < 5; i++) {
+    if (!marked[i] || !Array.isArray(marked[i]) || marked[i].length !== 5) {
+      return false
+    }
+  }
+
   // Check rows
   for (let row = 0; row < 5; row++) {
     if (marked[row].every(cell => cell)) return true

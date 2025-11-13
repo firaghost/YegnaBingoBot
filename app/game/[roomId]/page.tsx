@@ -35,7 +35,10 @@ export default function GamePage() {
   const [gameId, setGameId] = useState<string | null>(null)
   const [roomData, setRoomData] = useState<any>(null)
   const [bingoCard, setBingoCard] = useState<number[][]>([])
-  const [markedCells, setMarkedCells] = useState<boolean[][]>([])
+  const [markedCells, setMarkedCells] = useState<boolean[][]>(
+    // Initialize with empty 5x5 grid to prevent undefined errors
+    Array(5).fill(null).map(() => Array(5).fill(false))
+  )
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showWinDialog, setShowWinDialog] = useState(false)
   const [showLoseDialog, setShowLoseDialog] = useState(false)
@@ -437,16 +440,16 @@ export default function GamePage() {
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router])
 
-  // REMOVED: Auto-mark feature - Players must manually mark numbers
-
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
-    if (!gameState || gameState.status !== 'active') return
     if (!user) return
+    
+    // Safety check for markedCells
+    if (!markedCells.length || !markedCells[row]) return
     
     const num = bingoCard[row][col]
     if (num === 0) return // Free space (always marked)
-    if (!gameState.called_numbers.includes(num)) return // Not called yet
+    if (!gameState?.called_numbers.includes(num)) return // Not called yet
     if (markedCells[row][col]) return // Already marked - don't allow unmarking
     
     console.log(`🎯 Marking cell [${row},${col}] with number ${num}`)
@@ -509,6 +512,13 @@ export default function GamePage() {
     }
     
     if (!gameId || !user) return
+
+    // Check if markedCells is properly initialized
+    if (!markedCells.length) {
+      setBingoError('Game not ready yet. Please wait...')
+      setTimeout(() => setBingoError(null), 3000)
+      return
+    }
 
     // Check if user actually has a bingo
     if (!checkBingoWin(markedCells)) {
@@ -1186,7 +1196,7 @@ export default function GamePage() {
                 ) : (
                   bingoCard.map((row, ri) =>
                     row.map((num, ci) => {
-                    const isMarked = markedCells[ri][ci]
+                    const isMarked = markedCells[ri] && markedCells[ri][ci]
                     const isCalled = calledNumbers.includes(num) && num !== 0
                     const isFree = num === 0
 
@@ -1229,9 +1239,9 @@ export default function GamePage() {
             {/* BINGO Button - Beautiful */}
             <button
               onClick={handleBingoClick}
-              disabled={!checkBingoWin(markedCells) || claimingBingo}
+              disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
               className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
-                checkBingoWin(markedCells) && !claimingBingo
+                markedCells.length && checkBingoWin(markedCells) && !claimingBingo
                   ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
                   : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
               }`}
