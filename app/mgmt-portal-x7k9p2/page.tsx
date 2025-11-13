@@ -405,6 +405,18 @@ export default function AdminDashboard() {
             </div>
           </Link>
 
+          <Link href="/mgmt-portal-x7k9p2/bots" className="bg-cyan-600 hover:bg-cyan-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-lg">🤖</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">Bot Players</h3>
+                <p className="text-cyan-100 text-xs opacity-80">Manage AI opponents</p>
+              </div>
+            </div>
+          </Link>
+
           <Link href="/mgmt-portal-x7k9p2/settings" className="bg-gray-600 hover:bg-gray-700 rounded-lg p-4 text-white transition-all group">
             <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
               <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">

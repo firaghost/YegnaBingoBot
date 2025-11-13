@@ -13,6 +13,7 @@ import InGameSocketServer from './ingame-socket-server'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
 import { gameStateCache } from './game-state-cache'
+import { botManager } from '../lib/bot-manager'
 
 const app = express()
 const httpServer = createServer(app)
@@ -1304,7 +1305,18 @@ httpServer.listen(PORT, () => {
   console.log('   👁️ Spectator Mode')
   console.log('   🔄 Reconnect Handling (30s grace)')
   console.log('   📢 Real-time Number Calling')
+  console.log('   🤖 AI Bot Players')
   console.log('')
+  
+  // Start Bot Manager
+  console.log('🤖 Starting Bot Manager...')
+  try {
+    botManager.startMonitoring()
+    console.log('✅ Bot Manager started successfully!')
+  } catch (error) {
+    console.error('❌ Failed to start Bot Manager:', error)
+  }
+  
   console.log('✅ Ready for multiplayer BingoX games!')
   console.log('')
 })
@@ -1313,10 +1325,12 @@ httpServer.listen(PORT, () => {
 const gracefulShutdown = () => {
   console.log('🛑 Shutting down gracefully...')
   
-  // Cleanup game states
+  // Cleanup game states and bot manager
   try {
     inGameSocketServer.cleanup()
     gameStateManager.cleanupAllGames()
+    botManager.stopMonitoring()
+    console.log('🤖 Bot Manager stopped')
   } catch (error) {
     console.error('Error during cleanup:', error)
   }
