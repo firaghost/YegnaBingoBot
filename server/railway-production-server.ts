@@ -51,6 +51,12 @@ function validateNumberCallFairness(gameId: string, callCount: number): boolean 
 // Number calling function - Fair and consistent with caching
 async function startNumberCalling(gameId: string) {
   try {
+    // CRITICAL: Check if number calling already active for this game
+    if (gameIntervals.has(gameId)) {
+      console.log(`⚠️ Number calling already active for game ${gameId}, preventing duplicate`)
+      return
+    }
+    
     // Try to get from cache first
     let game = gameStateCache.get(gameId)
     
@@ -161,12 +167,23 @@ function stopNumberCalling(gameId: string) {
     clearInterval(interval)
     gameIntervals.delete(gameId)
     console.log(`🛑 Stopped number calling for game ${gameId}`)
+  } else {
+    console.log(`⚠️ No active interval found for game ${gameId}`)
   }
   
   // Also clean up waiting period and countdown tracking
   activeWaitingPeriods.delete(gameId)
   activeCountdowns.delete(gameId)
   gameStartTimes.delete(gameId) // Clean up timing data
+  
+  // Force sync cache to database before cleanup
+  gameStateCache.forceSyncToDatabase(gameId).then(() => {
+    console.log(`✅ Final cache sync completed for game ${gameId}`)
+  }).catch(err => {
+    console.error(`❌ Final cache sync failed for game ${gameId}:`, err)
+  })
+  
+  console.log(`🧹 Cleaned up all tracking for game ${gameId}`)
 }
 
 // Cleanup finished games and stop their number calling
@@ -526,79 +543,106 @@ app.post('/api/game/join', async (req, res) => {
     // Player already in game - check if stuck
     console.log(`🔄 Player ${userId} already in game ${activeGame.id}, rejoining`)
     
+    // CRITICAL FIX: Check if waiting period or countdown is already active
+    // This prevents duplicate timers that cause hallucination
     if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
-      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)
-      
-      await supabase
-        .from('games')
-        .update({ 
-          status: 'waiting_for_players',
-          countdown_time: 30,
-          waiting_started_at: new Date().toISOString()
-        })
-        .eq('id', activeGame.id)
-      
-      // Start waiting period directly for stuck game
-      console.log('🔔 Starting waiting period for stuck game')
-      
-      setTimeout(async () => {
-        try {
-          console.log(`🔥 Starting countdown for stuck game ${activeGame.id}`)
-          await supabase
-            .from('games')
-            .update({ 
-              status: 'countdown',
-              countdown_time: 10,
-              countdown_started_at: new Date().toISOString()
-            })
-            .eq('id', activeGame.id)
-
-          let timeLeft = 10
-          const countdownInterval = setInterval(async () => {
-            timeLeft--
-            if (timeLeft > 0) {
-              await supabase
-                .from('games')
-                .update({ countdown_time: timeLeft })
-                .eq('id', activeGame.id)
-              console.log(`⏰ Stuck game ${activeGame.id} countdown: ${timeLeft}s`)
-            } else {
-              clearInterval(countdownInterval)
-              console.log(`🎮 Starting stuck game ${activeGame.id}`)
-              await supabase
-                .from('games')
-                .update({ 
-                  status: 'active',
-                  countdown_time: 0,
-                  started_at: new Date().toISOString()
-                })
-                .eq('id', activeGame.id)
-              
-              // Start number calling for stuck game
-              console.log(`📢 Starting number calling for stuck game ${activeGame.id}`)
-              startNumberCalling(activeGame.id)
+      // Check if this game already has an active waiting period
+      if (activeWaitingPeriods.has(activeGame.id)) {
+        console.log(`⚠️ Game ${activeGame.id} already has active waiting period, skipping duplicate`)
+      } else {
+        console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)
+        
+        // Mark as having active waiting period
+        activeWaitingPeriods.add(activeGame.id)
+        
+        await supabase
+          .from('games')
+          .update({ 
+            status: 'waiting_for_players',
+            countdown_time: 30,
+            waiting_started_at: new Date().toISOString()
+          })
+          .eq('id', activeGame.id)
+        
+        // Start waiting period directly for stuck game
+        console.log('🔔 Starting waiting period for stuck game')
+        
+        setTimeout(async () => {
+          try {
+            // Check if countdown is already active
+            if (activeCountdowns.has(activeGame.id)) {
+              console.log(`⚠️ Countdown already active for game ${activeGame.id}, skipping`)
+              return
             }
-          }, 1000)
-        } catch (error) {
-          console.error('Error in stuck game countdown:', error)
-        }
-      }, 30000)
+            
+            // Mark countdown as active
+            activeCountdowns.add(activeGame.id)
+            
+            console.log(`🔥 Starting countdown for stuck game ${activeGame.id}`)
+            await supabase
+              .from('games')
+              .update({ 
+                status: 'countdown',
+                countdown_time: 10,
+                countdown_started_at: new Date().toISOString()
+              })
+              .eq('id', activeGame.id)
 
-      let waitingTimeLeft = 30
-      const waitingInterval = setInterval(async () => {
-        waitingTimeLeft--
-        if (waitingTimeLeft > 0) {
-          await supabase
-            .from('games')
-            .update({ countdown_time: waitingTimeLeft })
-            .eq('id', activeGame.id)
-          console.log(`⏳ Stuck game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
-        } else {
-          clearInterval(waitingInterval)
-        }
-      }, 1000)
-      
-      console.log('✅ Started waiting period for stuck game')
+            let timeLeft = 10
+            const countdownInterval = setInterval(async () => {
+              timeLeft--
+              if (timeLeft > 0) {
+                await supabase
+                  .from('games')
+                  .update({ countdown_time: timeLeft })
+                  .eq('id', activeGame.id)
+                console.log(`⏰ Stuck game ${activeGame.id} countdown: ${timeLeft}s`)
+              } else {
+                clearInterval(countdownInterval)
+                activeCountdowns.delete(activeGame.id)
+                
+                console.log(`🎮 Starting stuck game ${activeGame.id}`)
+                await supabase
+                  .from('games')
+                  .update({ 
+                    status: 'active',
+                    countdown_time: 0,
+                    started_at: new Date().toISOString()
+                  })
+                  .eq('id', activeGame.id)
+                
+                // CRITICAL: Check if number calling already started
+                if (gameIntervals.has(activeGame.id)) {
+                  console.log(`⚠️ Number calling already active for game ${activeGame.id}, skipping duplicate`)
+                } else {
+                  console.log(`📢 Starting number calling for stuck game ${activeGame.id}`)
+                  startNumberCalling(activeGame.id)
+                }
+              }
+            }, 1000)
+          } catch (error) {
+            console.error('Error in stuck game countdown:', error)
+            activeCountdowns.delete(activeGame.id)
+          }
+        }, 30000)
+
+        let waitingTimeLeft = 30
+        const waitingInterval = setInterval(async () => {
+          waitingTimeLeft--
+          if (waitingTimeLeft > 0) {
+            await supabase
+              .from('games')
+              .update({ countdown_time: waitingTimeLeft })
+              .eq('id', activeGame.id)
+            console.log(`⏳ Stuck game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
+          } else {
+            clearInterval(waitingInterval)
+            activeWaitingPeriods.delete(activeGame.id)
+          }
+        }, 1000)
+        
+        console.log('✅ Started waiting period for stuck game')
+      }
     }
     
     return res.json({
