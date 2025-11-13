@@ -216,32 +216,76 @@ app.post('/api/game/join', async (req, res) => {
           console.log('✅ Game status updated to waiting_for_players')
         }
         
-        // Notify API to start the waiting period
-        try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
-          console.log(`🔔 Calling waiting period API: ${baseUrl}/api/socket/start-waiting-period`)
-          
-          const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              gameId: activeGame.id,
-              waitingTime: 30,
-              countdownTime: 10
-            })
-          })
-          
-          if (!response.ok) {
-            console.error('❌ Waiting period API failed:', response.status, response.statusText)
-            const errorText = await response.text()
-            console.error('❌ Error details:', errorText)
-          } else {
-            const result = await response.json()
-            console.log('✅ Waiting period started successfully:', result)
+        // Start the waiting period directly
+        console.log(`🔔 Starting waiting period directly for game ${activeGame.id}`)
+        
+        // Start the 30-second waiting period
+        setTimeout(async () => {
+          try {
+            // After 30 seconds, start the 10-second countdown
+            console.log(`🔥 Starting 10-second countdown for game ${activeGame.id}`)
+            
+            await supabase
+              .from('games')
+              .update({ 
+                status: 'countdown',
+                countdown_time: 10,
+                countdown_started_at: new Date().toISOString()
+              })
+              .eq('id', activeGame.id)
+
+            // Start the actual countdown
+            let timeLeft = 10
+            const countdownInterval = setInterval(async () => {
+              timeLeft--
+              
+              if (timeLeft > 0) {
+                // Update countdown time
+                await supabase
+                  .from('games')
+                  .update({ countdown_time: timeLeft })
+                  .eq('id', activeGame.id)
+                
+                console.log(`⏰ Game ${activeGame.id} countdown: ${timeLeft}s`)
+              } else {
+                // Countdown finished, start the game
+                clearInterval(countdownInterval)
+                console.log(`🎮 Starting game ${activeGame.id}`)
+                
+                await supabase
+                  .from('games')
+                  .update({ 
+                    status: 'active',
+                    countdown_time: 0,
+                    started_at: new Date().toISOString()
+                  })
+                  .eq('id', activeGame.id)
+              }
+            }, 1000)
+
+          } catch (error) {
+            console.error('Error in countdown phase:', error)
           }
-        } catch (error) {
-          console.error('❌ Error calling waiting period API:', error)
-        }
+        }, 30000) // 30 seconds
+
+        // Update countdown time every second during waiting period
+        let waitingTimeLeft = 30
+        const waitingInterval = setInterval(async () => {
+          waitingTimeLeft--
+          
+          if (waitingTimeLeft > 0) {
+            await supabase
+              .from('games')
+              .update({ countdown_time: waitingTimeLeft })
+              .eq('id', activeGame.id)
+            
+            console.log(`⏳ Game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
+          } else {
+            clearInterval(waitingInterval)
+          }
+        }, 1000)
+        
+        console.log('✅ Waiting period started successfully')
       }
 
       // Get the latest game state after all updates
@@ -274,21 +318,63 @@ app.post('/api/game/join', async (req, res) => {
         })
         .eq('id', activeGame.id)
       
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://yegnabingobot-production.up.railway.app'
-        await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            gameId: activeGame.id,
-            waitingTime: 30,
-            countdownTime: 10
-          })
-        })
-        console.log('✅ Started waiting period for stuck game')
-      } catch (error) {
-        console.error('❌ Error starting waiting period for stuck game:', error)
-      }
+      // Start waiting period directly for stuck game
+      console.log('🔔 Starting waiting period for stuck game')
+      
+      setTimeout(async () => {
+        try {
+          console.log(`🔥 Starting countdown for stuck game ${activeGame.id}`)
+          await supabase
+            .from('games')
+            .update({ 
+              status: 'countdown',
+              countdown_time: 10,
+              countdown_started_at: new Date().toISOString()
+            })
+            .eq('id', activeGame.id)
+
+          let timeLeft = 10
+          const countdownInterval = setInterval(async () => {
+            timeLeft--
+            if (timeLeft > 0) {
+              await supabase
+                .from('games')
+                .update({ countdown_time: timeLeft })
+                .eq('id', activeGame.id)
+              console.log(`⏰ Stuck game ${activeGame.id} countdown: ${timeLeft}s`)
+            } else {
+              clearInterval(countdownInterval)
+              console.log(`🎮 Starting stuck game ${activeGame.id}`)
+              await supabase
+                .from('games')
+                .update({ 
+                  status: 'active',
+                  countdown_time: 0,
+                  started_at: new Date().toISOString()
+                })
+                .eq('id', activeGame.id)
+            }
+          }, 1000)
+        } catch (error) {
+          console.error('Error in stuck game countdown:', error)
+        }
+      }, 30000)
+
+      let waitingTimeLeft = 30
+      const waitingInterval = setInterval(async () => {
+        waitingTimeLeft--
+        if (waitingTimeLeft > 0) {
+          await supabase
+            .from('games')
+            .update({ countdown_time: waitingTimeLeft })
+            .eq('id', activeGame.id)
+          console.log(`⏳ Stuck game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
+        } else {
+          clearInterval(waitingInterval)
+        }
+      }, 1000)
+      
+      console.log('✅ Started waiting period for stuck game')
     }
     
     return res.json({

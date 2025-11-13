@@ -132,24 +132,7 @@ export default function GamePage() {
         // Test if API routes are working on Railway
         const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
         
-        // First check health endpoint to see current version
-        try {
-          console.log('🏥 Checking server health/version on:', apiBaseUrl)
-          const healthResponse = await fetch(`${apiBaseUrl}/health`)
-          const healthResult = await healthResponse.json()
-          console.log('🏥 Server health:', healthResult)
-        } catch (healthError) {
-          console.error('❌ Health check failed:', healthError)
-        }
-        
-        try {
-          console.log('🧪 Testing API routes on:', apiBaseUrl)
-          const testResponse = await fetch(`${apiBaseUrl}/api/test`)
-          const testResult = await testResponse.json()
-          console.log('🧪 Test API result:', testResult)
-        } catch (testError) {
-          console.error('❌ Test API failed:', testError)
-        }
+        // Remove test API calls - they're working now
 
         console.log('🔥 About to call API with:', { roomId, userId: user.id })
         const response = await fetch(`${apiBaseUrl}/api/game/join`, {
