@@ -8,6 +8,8 @@ export interface AuthUser {
   id: string
   telegram_id: string
   username: string
+  first_name?: string
+  display_name?: string
   balance: number
   bonus_balance: number
   games_played: number
@@ -16,6 +18,8 @@ export interface AuthUser {
   daily_streak: number
   last_daily_claim: string | null
   xp: number
+  level_progress?: string
+  total_wins?: number
   created_at: string
   updated_at: string
 }

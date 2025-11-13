@@ -7,22 +7,45 @@ import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { getConfig } from '@/lib/admin-config'
 
-// Helper function to get level badge
-function getLevelBadge(level: number): string {
-  if (level <= 10) return 'Beginner'
-  if (level <= 25) return 'Intermediate'
-  if (level <= 50) return 'Advanced'
-  if (level <= 75) return 'Expert'
-  return 'Legend'
-}
+// Helper function to get level info from XP (using database system)
+function getLevelInfo(xp: number = 0, level_progress?: string) {
+  // Use database level_progress if available, otherwise calculate from XP
+  const levelName = level_progress || (() => {
+    if (xp >= 1000) return 'Legend'
+    if (xp >= 600) return 'Master'
+    if (xp >= 300) return 'Expert'
+    if (xp >= 100) return 'Skilled'
+    return 'Beginner'
+  })()
 
-// Helper function to get level color
-function getLevelColor(level: number): string {
-  if (level <= 10) return 'from-green-500 to-green-600'
-  if (level <= 25) return 'from-yellow-500 to-yellow-600'
-  if (level <= 50) return 'from-orange-500 to-orange-600'
-  if (level <= 75) return 'from-red-500 to-red-600'
-  return 'from-purple-500 to-purple-600'
+  // Calculate numeric level for display
+  const numericLevel = Math.floor(xp / 100) + 1
+  
+  // Get color based on level name
+  const getColorByName = (name: string) => {
+    switch (name) {
+      case 'Legend': return 'from-purple-500 to-purple-600'
+      case 'Master': return 'from-red-500 to-red-600'
+      case 'Expert': return 'from-orange-500 to-orange-600'
+      case 'Skilled': return 'from-blue-500 to-blue-600'
+      case 'Beginner': return 'from-green-500 to-green-600'
+      default: return 'from-gray-500 to-gray-600'
+    }
+  }
+
+  return {
+    name: levelName,
+    numericLevel,
+    color: getColorByName(levelName),
+    xp,
+    nextLevelXp: (() => {
+      if (levelName === 'Legend') return null
+      if (levelName === 'Master') return 1000
+      if (levelName === 'Expert') return 600
+      if (levelName === 'Skilled') return 300
+      return 100
+    })()
+  }
 }
 import BottomNav from '@/app/components/BottomNav'
 import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck } from 'react-icons/lu'
@@ -381,14 +404,13 @@ export default function AccountPage() {
                 <div className="flex items-center gap-4 text-sm text-slate-500">
                   <span>Telegram ID: {user.telegram_id}</span>
                   {(() => {
-                    const level = Math.floor((user.xp || 0) / 100) + 1
-                    const xpInCurrentLevel = (user.xp || 0) % 100
+                    const levelInfo = getLevelInfo(user.xp || 0, user.level_progress)
                     return (
                       <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${getLevelColor(level)} text-white`}>
-                          Level {level} • {getLevelBadge(level)}
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${levelInfo.color} text-white`}>
+                          Level {levelInfo.numericLevel} • {levelInfo.name}
                         </span>
-                        <span className="text-xs text-slate-600">{user.xp || 0} XP</span>
+                        <span className="text-xs text-slate-600">{levelInfo.xp} XP</span>
                       </div>
                     )
                   })()}

@@ -369,6 +369,18 @@ app.post('/api/game/join', async (req, res) => {
     // Join existing game
     console.log(`👥 Joining existing game: ${activeGame.id}, current players: ${activeGame.players?.length}`)
     
+    // CRITICAL: If game is already active, player should spectate instead
+    if (activeGame.status === 'active') {
+      console.log(`⚠️ Game ${activeGame.id} is already active, user ${userId} should join as spectator`)
+      return res.json({
+        success: true,
+        gameId: activeGame.id,
+        game: activeGame,
+        action: 'spectate',
+        message: 'Game already in progress. Joining as spectator.'
+      })
+    }
+    
     if (!activeGame.players.includes(userId)) {
       console.log(`➕ Adding new player ${userId} to game ${activeGame.id}`)
       const updatedPlayers = [...activeGame.players, userId]
@@ -923,6 +935,9 @@ const io = new SocketServer(httpServer, {
 // Make socket server globally available for number calling
 global.io = io
 
+// Track active players per game
+const activePlayers = new Map<string, Set<string>>() // gameId -> Set of socketIds
+
 // Add global socket event handlers for game room joining
 io.on('connection', (socket) => {
   console.log(`🔌 Global: Client connected ${socket.id}`)
@@ -932,7 +947,57 @@ io.on('connection', (socket) => {
     console.log(`👤 Global: User ${userId} joining game room ${gameId}`)
     socket.join(`game-${gameId}`)
     socket.join(gameId) // Join both formats for compatibility
+    
+    // Track this player as active in the game
+    if (!activePlayers.has(gameId)) {
+      activePlayers.set(gameId, new Set())
+    }
+    activePlayers.get(gameId)!.add(socket.id)
+    
     console.log(`✅ Global: User ${userId} joined rooms: game-${gameId} and ${gameId}`)
+    console.log(`👥 Active players in game ${gameId}: ${activePlayers.get(gameId)?.size || 0}`)
+  })
+  
+  // Handle player disconnect
+  socket.on('disconnect', async (reason) => {
+    console.log(`🔌 Player disconnected: ${socket.id}, reason: ${reason}`)
+    
+    // Check all games to see if this player was in any
+    activePlayers.forEach(async (players, gameId) => {
+      if (players.has(socket.id)) {
+        players.delete(socket.id)
+        console.log(`👋 Player ${socket.id} left game ${gameId}. Remaining: ${players.size}`)
+        
+        // If no players left in an active game, stop it
+        if (players.size === 0 && gameIntervals.has(gameId)) {
+          console.log(`⚠️ All players left game ${gameId}, stopping game...`)
+          
+          try {
+            const { supabaseAdmin } = await import('../lib/supabase')
+            
+            // Mark game as finished with no winner
+            await supabaseAdmin
+              .from('games')
+              .update({
+                status: 'finished',
+                ended_at: new Date().toISOString(),
+                winner_id: null
+              })
+              .eq('id', gameId)
+            
+            // Stop number calling
+            stopNumberCalling(gameId)
+            
+            // Clean up tracking
+            activePlayers.delete(gameId)
+            
+            console.log(`✅ Game ${gameId} stopped due to all players leaving`)
+          } catch (error) {
+            console.error(`❌ Error stopping abandoned game ${gameId}:`, error)
+          }
+        }
+      }
+    })
   })
 })
 

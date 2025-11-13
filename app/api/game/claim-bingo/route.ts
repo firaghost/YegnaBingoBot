@@ -228,6 +228,41 @@ export async function POST(request: NextRequest) {
       winnings: netPrize
     })
 
+    // Update player XP and level system
+    try {
+      // Get room level to determine XP reward
+      const { data: room } = await supabase
+        .from('rooms')
+        .select('game_level, default_level')
+        .eq('id', game.room_id)
+        .single()
+      
+      const gameLevel = room?.game_level || room?.default_level || 'medium'
+      
+      // Get XP reward for this level
+      const { data: levelData } = await supabase
+        .from('levels')
+        .select('xp_reward')
+        .eq('name', gameLevel)
+        .single()
+      
+      const xpReward = levelData?.xp_reward || 25 // Default to medium level XP
+      
+      // Update player stats with XP
+      const { error: xpError } = await supabase.rpc('update_player_stats', {
+        p_user_id: userId,
+        p_xp: xpReward
+      })
+      
+      if (xpError) {
+        console.error('Error updating XP:', xpError)
+      } else {
+        console.log(`🎯 Player ${userId} gained ${xpReward} XP for winning ${gameLevel} level game`)
+      }
+    } catch (xpError) {
+      console.error('Error in XP system:', xpError)
+    }
+
     console.log(`🎉 User ${userId} won game ${gameId}`)
     console.log(`💵 Gross Prize: ${game.prize_pool} ETB`)
     console.log(`💰 Net Prize (after ${commissionRate}% commission): ${netPrize} ETB`)

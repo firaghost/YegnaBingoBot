@@ -176,10 +176,17 @@ export default function GamePage() {
           console.log('✅ Game joined successfully:', result.gameId)
           setGameId(result.gameId)
           
-          // Join the game via socket
-          console.log('🔌 Joining game via socket...')
-          await joinGame(result.gameId, user.id)
-          console.log('🔌 Socket join completed')
+          // Check if user should spectate
+          if (result.action === 'spectate') {
+            console.log('👁️ Game already active, joining as spectator...')
+            await spectateGame(result.gameId, user.username || user.id)
+            console.log('👁️ Spectator join completed')
+          } else {
+            // Join the game via socket as player
+            console.log('🔌 Joining game via socket...')
+            await joinGame(result.gameId, user.id)
+            console.log('🔌 Socket join completed')
+          }
         } else {
           console.error('❌ Failed to join game. Response:', response.status, result)
           console.error('❌ Full error details:', result)
@@ -625,8 +632,12 @@ export default function GamePage() {
   }
 
   const generateInviteLink = () => {
-    const inviteUrl = `https://t.me/BingoXOfficialBot?start=join_room_${roomId}`
-    navigator.clipboard.writeText(inviteUrl).then(() => {
+    // Generate web app link that opens the game room directly
+    const webAppUrl = `${window.location.origin}/game/${roomId}`
+    const inviteUrl = `https://t.me/BingoXOfficialBot/bingox?startapp=room_${roomId}`
+    
+    // Copy the direct web link (better for sharing)
+    navigator.clipboard.writeText(webAppUrl).then(() => {
       setInviteToastVisible(true)
       setTimeout(() => setInviteToastVisible(false), 3000)
     })
@@ -637,6 +648,31 @@ export default function GamePage() {
     const emojis = ['🎮', '🎯', '🎲', '🎪', '🎨', '🎭', '🎺', '🎸', '🎹', '🎤']
     const index = username.length % emojis.length
     return emojis[index]
+  }
+
+  // Function to get proper display name
+  const getDisplayName = (userId: string, isCurrentUser: boolean) => {
+    if (isCurrentUser) {
+      // For current user, prefer first_name > display_name > username (without @) > fallback
+      const firstName = user?.first_name?.trim()
+      const displayName = user?.display_name?.trim()
+      const username = user?.username?.replace('@', '').trim()
+      
+      return firstName || displayName || username || 'You'
+    } else {
+      // For other players, generate a friendly name
+      const playerNumber = (gameState?.players?.findIndex(p => p === userId) ?? -1) + 1 || 1
+      return `Player ${playerNumber}`
+    }
+  }
+
+  // Function to calculate user level from XP
+  const getUserLevel = (xp: number = 0) => {
+    if (xp >= 1000) return { name: 'Legend', color: 'text-purple-600', bgColor: 'bg-purple-100' }
+    if (xp >= 600) return { name: 'Master', color: 'text-red-600', bgColor: 'bg-red-100' }
+    if (xp >= 300) return { name: 'Expert', color: 'text-orange-600', bgColor: 'bg-orange-100' }
+    if (xp >= 100) return { name: 'Skilled', color: 'text-blue-600', bgColor: 'bg-blue-100' }
+    return { name: 'Beginner', color: 'text-green-600', bgColor: 'bg-green-100' }
   }
 
   // Generate sequential player numbers
@@ -694,12 +730,10 @@ export default function GamePage() {
     roomData: !!roomData
   })
   const stake = roomData?.stake || 10
-  // Calculate actual prize pool using dynamic commission rate  
-  const commissionRate = 0.1 // 10% commission
-  const netRate = 1 - commissionRate
+  // Calculate FULL prize pool (before commission)
+  // Commission is deducted when winner receives the prize
   const currentPlayers = gameState?.players?.length || 1
-  const actualPrizePool = Math.floor((currentPlayers * stake) * netRate)
-  const prizePool = actualPrizePool
+  const prizePool = currentPlayers * stake
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -738,25 +772,6 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* Countdown Overlay */}
-            {((waitingRoomState?.countdown && waitingRoomState.countdown <= 10) || 
-              (gameState?.status === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10)) && (
-              <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 animate-in fade-in">
-                <div className="bg-white rounded-3xl p-12 text-center shadow-2xl max-w-sm w-full mx-4">
-                  <div className="text-8xl font-black text-blue-600 mb-4 animate-pulse">
-                    {waitingRoomState?.countdown || gameState?.countdown_time || 10}
-                  </div>
-                  <h3 className="text-2xl font-bold text-slate-900 mb-2">Game Starting!</h3>
-                  <p className="text-slate-600">Get ready to play...</p>
-                  <div className="w-full bg-slate-200 rounded-full h-2 mt-6">
-                    <div 
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-1000"
-                      style={{ width: `${((10 - (waitingRoomState?.countdown || gameState?.countdown_time || 10)) / 10) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            )}
             {/* Game Level Header */}
             <div className={`bg-gradient-to-r ${getGameLevelColor(roomData?.game_level || roomData?.default_level || 'medium')} rounded-xl p-4 text-white shadow-lg transition-all duration-500`}>
               <div className="flex items-center justify-between">
@@ -793,7 +808,7 @@ export default function GamePage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Users className="w-4 h-4" />
-                      <span>Players ({gameState?.players?.length || 1}/{roomData?.max_players || 8})</span>
+                      <span>Players ({gameState?.players?.length || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
                     </div>
                   </div>
 
@@ -808,7 +823,7 @@ export default function GamePage() {
                         gameState.players.forEach((playerId: string, index: number) => {
                           const isCurrentUser = playerId === user?.id
                           allPlayers.push({
-                            username: isCurrentUser ? (user.username || 'You') : `Player ${index + 1}`,
+                            username: getDisplayName(playerId, isCurrentUser),
                             isCurrentUser: isCurrentUser,
                             playerNumber: index + 1
                           })
@@ -828,7 +843,7 @@ export default function GamePage() {
                             }`}>
                               {getRandomEmoji(player.username)}
                             </div>
-                            Player {player.playerNumber}{player.isCurrentUser ? ' (You)' : ''}
+                            {player.username}{player.isCurrentUser ? ' (You)' : ''}
                           </div>
                         ))
                       })()}
@@ -879,12 +894,37 @@ export default function GamePage() {
                         </div>
                       )}
                     </div>
-                  ) : (waitingRoomState?.currentPlayers || 0) < 2 ? (
+                  ) : ((waitingRoomState?.currentPlayers || gameState?.players?.length || 0) < 2) ? (
                     <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-3">
                       <div className="flex items-center justify-center gap-2">
                         <Users className="w-4 h-4 text-yellow-600" />
                         <span className="font-medium text-yellow-700">
-                          Need at least 2 players to start ({waitingRoomState?.currentPlayers || 0}/2)
+                          Waiting for players... ({waitingRoomState?.currentPlayers || gameState?.players?.length || 0}/2)
+                        </span>
+                      </div>
+                    </div>
+                  ) : gameStatus === 'waiting_for_players' && gameState?.countdown_time && gameState.countdown_time > 10 ? (
+                    <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Clock className="w-6 h-6 text-blue-600 animate-pulse" />
+                        <div className="text-center">
+                          <div className="text-3xl font-bold text-blue-600 mb-1">
+                            {gameState.countdown_time}s
+                          </div>
+                          <span className="text-sm font-medium text-blue-700">
+                            Waiting for more players...
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : gameStatus === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10 ? (
+                    <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-300 rounded-lg p-4">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <div className="text-5xl font-black text-orange-600 animate-pulse">
+                          {gameState.countdown_time}
+                        </div>
+                        <span className="text-lg font-bold text-orange-700">
+                          Get Ready!
                         </span>
                       </div>
                     </div>
