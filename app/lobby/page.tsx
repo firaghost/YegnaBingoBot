@@ -332,27 +332,15 @@ export default function LobbyPage() {
                     </div>
                   </div>
 
-                  {/* Waiting Players & Game Level Info */}
-                  <div className="flex items-center justify-between mb-4 p-2 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <LuUsers className="w-4 h-4 text-slate-500" />
-                      <span className="text-xs text-slate-600">
-                        {room.waiting_players > 0 
-                          ? `${room.waiting_players} waiting` 
-                          : 'No players waiting'
-                        }
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <div className={`w-2 h-2 rounded-full ${
-                        room.game_level === 'easy' ? 'bg-green-500' :
-                        room.game_level === 'medium' ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`}></div>
-                      <span className="text-xs font-medium text-slate-700 capitalize">
-                        {room.game_level || 'Medium'}
-                      </span>
-                    </div>
+                  {/* Waiting Players Info */}
+                  <div className="flex items-center gap-2 mb-4 p-2 bg-slate-50 rounded-lg">
+                    <LuUsers className="w-4 h-4 text-slate-500" />
+                    <span className="text-xs text-slate-600">
+                      {room.waiting_players > 0 
+                        ? `${room.waiting_players} waiting` 
+                        : 'No players waiting'
+                      }
+                    </span>
                   </div>
 
                   {authLoading ? (

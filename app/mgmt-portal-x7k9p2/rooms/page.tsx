@@ -114,7 +114,10 @@ export default function AdminRoomsPage() {
       } else {
         const { error } = await supabase
           .from('rooms')
-          .insert(roomData)
+          .insert({
+            ...roomData,
+            id: formData.id
+          })
         
         if (error) throw error
         alert('Room created successfully!')
