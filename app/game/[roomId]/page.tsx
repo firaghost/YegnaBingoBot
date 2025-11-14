@@ -316,23 +316,60 @@ export default function GamePage() {
     if (gameState.status === 'countdown' || gameState.status === 'active') {
       const deductStake = async () => {
         try {
-          // Deduct stake from user balance
-          await supabase.rpc('deduct_balance', {
-            user_id: user.id,
-            amount: roomData.stake
+          // Try bonus-first deduction via RPC (atomic)
+          const { data: deductionResult, error: deductErr } = await supabase.rpc('deduct_stake_with_bonus', {
+            p_user_id: user.id,
+            p_amount: roomData.stake
           })
 
+          if (deductErr) {
+            console.warn('⚠️ deduct_stake_with_bonus RPC failed, attempting fallback:', deductErr)
+            // Fallback: manual single-row update (bonus first)
+            const { data: u, error: fetchErr } = await supabase
+              .from('users')
+              .select('balance, bonus_balance')
+              .eq('id', user.id)
+              .single()
+
+            if (fetchErr || !u) {
+              throw fetchErr || new Error('User not found for manual deduction')
+            }
+
+            const bonusAvailable = Math.max(0, u.bonus_balance || 0)
+            const mainAvailable = Math.max(0, u.balance || 0)
+            if (bonusAvailable + mainAvailable < roomData.stake) {
+              throw new Error('Insufficient total balance for stake deduction')
+            }
+
+            const bonusDeduct = Math.min(bonusAvailable, roomData.stake)
+            const mainDeduct = roomData.stake - bonusDeduct
+
+            const { error: updateErr } = await supabase
+              .from('users')
+              .update({
+                bonus_balance: bonusAvailable - bonusDeduct,
+                balance: mainAvailable - mainDeduct,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', user.id)
+
+            if (updateErr) {
+              throw updateErr
+            }
+          }
+
           // Create transaction record
-          await supabase.from('transactions').insert({
+          const { error: txErr } = await supabase.from('transactions').insert({
             user_id: user.id,
             type: 'stake',
             amount: -roomData.stake,
             game_id: gameId,
             status: 'completed'
           })
+          if (txErr) console.warn('⚠️ Failed to log stake transaction:', txErr)
           
           setStakeDeducted(true)
-          console.log('💰 Stake deducted:', roomData.stake)
+          console.log('💰 Stake deducted (bonus-first):', roomData.stake)
         } catch (error) {
           console.error('Error deducting stake:', error)
         }

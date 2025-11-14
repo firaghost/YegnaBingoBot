@@ -96,10 +96,10 @@ export default function LobbyPage() {
 
             const waitingPlayers = activeGames?.[0]?.players?.length || 0
             
-            // Calculate dynamic prize pool based on waiting players
-            const basePrizePool = room.stake * room.max_players * 0.9 // Max potential prize
+            // Calculate dynamic prize pool based on waiting players (gross, before commission)
+            const basePrizePool = room.stake * room.max_players
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers * 0.9 // 90% of current stakes
+              ? room.stake * waitingPlayers
               : 0 // Show 0 when no players waiting
 
             return {
@@ -114,7 +114,7 @@ export default function LobbyPage() {
             return {
               ...room,
               waiting_players: 0,
-              base_prize_pool: room.prize_pool || room.stake * room.max_players * 0.9,
+              base_prize_pool: room.prize_pool || room.stake * room.max_players,
               game_level: room.game_level || room.default_level || 'medium'
             }
           }
@@ -192,7 +192,7 @@ export default function LobbyPage() {
         prevRooms.map(room => {
           if (room.id === roomId) {
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers * 0.9
+              ? room.stake * waitingPlayers
               : 0
             
             return {
