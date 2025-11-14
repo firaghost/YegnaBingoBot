@@ -37,7 +37,7 @@ export function useSocket() {
 
   // Connect to Socket.IO server on Railway
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingo-production.up.railway.app'
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
     console.log('🔌 Connecting to Socket.IO:', socketUrl)
     
     const socket = io(socketUrl, {
@@ -468,23 +468,21 @@ export function useSocket() {
     console.log('🎯 Marked number:', number)
   }
 
-  const claimBingo = async (gameId: string, userId: string, card: number[][]): Promise<{ success: boolean; error?: string; status?: string }> => {
+  const claimBingo = async (gameId: string, userId: string, card: number[][], marked: boolean[][]): Promise<{ success: boolean; error?: string; status?: string }> => {
     console.log('🎰 Claiming bingo for game:', gameId)
-    
     try {
       const response = await fetch('/api/game/claim-bingo', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId, userId, card })
+        body: JSON.stringify({ gameId, userId, card, marked })
       })
 
       const data = await response.json()
 
       if (!response.ok) {
         console.error('❌ Bingo claim error:', data.error)
-        // Return error information to caller
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: data.error || 'Failed to claim bingo',
           status: data.status || 'unknown'
         }
@@ -494,8 +492,8 @@ export function useSocket() {
       return { success: true }
     } catch (error) {
       console.error('❌ Bingo claim error:', error)
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error instanceof Error ? error.message : 'Network error'
       }
     }

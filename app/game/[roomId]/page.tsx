@@ -236,7 +236,7 @@ export default function GamePage() {
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
         
         // Test if API routes are working on Railway
-        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingo-production.up.railway.app'
+        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
         
         // Remove test API calls - they're working now
 
@@ -689,7 +689,7 @@ export default function GamePage() {
     // Valid bingo - claim it!
     console.log('🎉 Claiming BINGO!')
     setClaimingBingo(true)
-    const result = await claimBingo(gameId, user.id, bingoCard)
+    const result = await claimBingo(gameId, user.id, bingoCard, markedCells)
     setClaimingBingo(false)
     
     // Handle claim result
@@ -1574,17 +1574,17 @@ export default function GamePage() {
                 // Case 1: We have the winner's actual card
                 if (displayCard && Array.isArray(displayCard) && displayCard.length === 5) {
                   return (
-                    <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 mb-6">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="w-4 h-4 text-amber-600" />
-                        <span className="text-sm font-bold text-slate-700">Winning Card</span>
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="text-xs font-semibold text-slate-700">Winning Card</span>
                         {displayPattern && (
-                          <span className="text-xs text-slate-500">({displayPattern})</span>
+                          <span className="text-[10px] text-slate-500">({displayPattern})</span>
                         )}
                       </div>
-                      <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-amber-300 pb-1">
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-300 pb-0.5">
                         {['B','I','N','G','O'].map((h) => (
-                          <div key={h} className="text-center font-black text-sm text-slate-700">{h}</div>
+                          <div key={h} className="text-center font-black text-[11px] text-slate-700">{h}</div>
                         ))}
                       </div>
                       <div className="grid grid-cols-5 gap-0">
@@ -1595,11 +1595,11 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`win-${ri}-${ci}`}
-                                className={`aspect-square flex items-center justify-center text-sm font-bold border-r border-b border-slate-200 ${
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-200 ${
                                   ci === 4 ? 'border-r-0' : ''
                                 } ${ri === 4 ? 'border-b-0' : ''} ${
                                   isWinCell
-                                    ? 'bg-emerald-500 text-white rounded-none'
+                                    ? 'bg-emerald-500 text-white'
                                     : isFree
                                     ? 'bg-slate-100 text-slate-600'
                                     : 'bg-white text-slate-700'
@@ -1618,15 +1618,15 @@ export default function GamePage() {
                 // Case 2: Only pattern available -> render mask-only grid (no numbers)
                 if (displayPattern) {
                   return (
-                    <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 mb-6">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Trophy className="w-4 h-4 text-amber-600" />
-                        <span className="text-sm font-bold text-slate-700">Winning Pattern</span>
-                        <span className="text-xs text-slate-500">({displayPattern})</span>
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="text-xs font-semibold text-slate-700">Winning Pattern</span>
+                        <span className="text-[10px] text-slate-500">({displayPattern})</span>
                       </div>
-                      <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-amber-300 pb-1">
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-300 pb-0.5">
                         {['B','I','N','G','O'].map((h) => (
-                          <div key={h} className="text-center font-black text-sm text-slate-700">{h}</div>
+                          <div key={h} className="text-center font-black text-[11px] text-slate-700">{h}</div>
                         ))}
                       </div>
                       <div className="grid grid-cols-5 gap-0">
@@ -1637,7 +1637,7 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`mask-${ri}-${ci}`}
-                                className={`aspect-square flex items-center justify-center text-sm font-bold border-r border-b border-slate-200 ${
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-200 ${
                                   ci === 4 ? 'border-r-0' : ''
                                 } ${ri === 4 ? 'border-b-0' : ''} ${
                                   isWinCell

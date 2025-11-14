@@ -51,7 +51,7 @@ function verifyMarkedCells(
 
 export async function POST(request: NextRequest) {
   try {
-    const { gameId, userId, card } = await request.json()
+    const { gameId, userId, card, marked } = await request.json()
     console.log(`Processing bingo claim for game ${gameId}, user ${userId}`)
 
     if (!gameId || !userId || !card) {
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     // Force sync cache to database before validation (critical operation)
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'yegnabingobot-production.up.railway.app'
       await fetch(`${baseUrl}/api/cache/force-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,18 +116,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create marked cells array from the frontend card
-    const markedCells: boolean[][] = []
-    for (let i = 0; i < 5; i++) {
-      markedCells[i] = []
-      for (let j = 0; j < 5; j++) {
-        const num = card[i][j]
-        // Free space is always marked
-        if (i === 2 && j === 2) {
-          markedCells[i][j] = true
-        } else {
-          // Mark if number was called
-          markedCells[i][j] = game.called_numbers.includes(num)
+    // Use client-provided marked grid if available; otherwise reconstruct from called numbers
+    const markedCells: boolean[][] = Array(5).fill(null).map(() => Array(5).fill(false))
+    if (Array.isArray(marked) && marked.length === 5 && marked.every(r => Array.isArray(r) && r.length === 5)) {
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          // Always treat center as marked
+          markedCells[i][j] = (i === 2 && j === 2) ? true : !!marked[i][j]
+        }
+      }
+    } else {
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          const num = card[i][j]
+          // Free space is always marked
+          if (i === 2 && j === 2) markedCells[i][j] = true
+          else markedCells[i][j] = game.called_numbers.includes(num)
         }
       }
     }

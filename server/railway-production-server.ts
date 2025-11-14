@@ -17,6 +17,19 @@ import { gameStateCache } from './game-state-cache'
 const app = express()
 const httpServer = createServer(app)
 
+// Silence logs in production (keep errors). Override is possible with ENABLE_LOGS=true
+const SILENCE_LOGS = process.env.NODE_ENV === 'production' && process.env.ENABLE_LOGS !== 'true'
+if (SILENCE_LOGS) {
+  const noop = () => {}
+  ;(console as any).log = noop
+  ;(console as any).info = noop
+  ;(console as any).debug = noop
+  ;(console as any).warn = noop
+  ;(console as any).trace = noop
+  ;(console as any).time = noop
+  ;(console as any).timeEnd = noop
+}
+
 // Store active game intervals to manage number calling
 const gameIntervals = new Map<string, NodeJS.Timeout>()
 
