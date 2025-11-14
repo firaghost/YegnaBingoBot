@@ -94,6 +94,21 @@ export default function AdminGameViewer() {
     )
   }
 
+  // Redirect if game is not active (canceled, finished, etc.)
+  if (game.status !== 'active') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-white mb-2">Game No Longer Active</h1>
+          <p className="text-gray-400 mb-4">This game has {game.status === 'finished' ? 'finished' : 'been canceled'}</p>
+          <Link href="/mgmt-portal-x7k9p2/games" className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
+            ← Back to Games
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       {/* Header */}

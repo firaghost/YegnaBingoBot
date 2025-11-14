@@ -190,8 +190,8 @@ export default function AdminGamesPage() {
                         </span>
                       </div>
                       
-                      {/* Live Watch Button */}
-                      {(game.status === 'active' || game.status === 'countdown') && (
+                      {/* Live Watch Button - Only for truly active games */}
+                      {game.status === 'active' && (
                         <Link
                           href={`/mgmt-portal-x7k9p2/games/${game.id}`}
                           className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-lg"
