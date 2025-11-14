@@ -188,8 +188,7 @@ export function useSocket() {
 
     socket.on('game_snapshot', (data) => {
       console.log('📸 Game snapshot received:', data)
-      setGameState(prev => ({
-        ...prev,
+      setGameState({
         id: data.roomId,
         room_id: data.roomId,
         status: data.status || 'active',
@@ -205,21 +204,37 @@ export function useSocket() {
         prize_pool: 100,
         winner_id: null,
         min_players: 1
-      }))
+      })
     })
 
     // New unified game state update (from cache system)
     socket.on('game_state_update', (data) => {
       console.log('⚡ Fast game state update:', data)
-      setGameState(prev => prev ? {
-        ...prev,
-        status: data.status,
-        called_numbers: data.called_numbers || prev.called_numbers,
-        latest_number: data.latest_number || prev.latest_number,
-        countdown_time: data.countdown_time ?? prev.countdown_time,
-        prize_pool: data.prize_pool ?? prev.prize_pool,
-        winner_id: data.winner_id ?? prev.winner_id
-      } : null)
+      setGameState(prev => {
+        const base = prev || {
+          id: data.roomId,
+          room_id: data.roomId,
+          status: data.status || 'active',
+          countdown_time: data.countdown_time ?? 0,
+          players: [],
+          bots: [],
+          called_numbers: data.called_numbers || [],
+          latest_number: data.latest_number || null,
+          stake: 10,
+          prize_pool: data.prize_pool ?? 0,
+          winner_id: data.winner_id ?? null,
+          min_players: data.min_players ?? 2
+        }
+        return {
+          ...base,
+          status: data.status ?? base.status,
+          called_numbers: data.called_numbers ?? base.called_numbers,
+          latest_number: data.latest_number ?? base.latest_number,
+          countdown_time: data.countdown_time ?? base.countdown_time,
+          prize_pool: data.prize_pool ?? base.prize_pool,
+          winner_id: data.winner_id ?? base.winner_id
+        }
+      })
     })
 
     socket.on('number_called', (data) => {
@@ -292,6 +307,9 @@ export function useSocket() {
 
     socket.on('spectator_joined', (data) => {
       console.log('👁️ Spectator joined:', data.username)
+      setIsSpectator(true)
+      setIsInWaitingRoom(false)
+      setWaitingRoomState(null)
     })
 
     socket.on('bingo_winner', (data) => {
@@ -506,6 +524,11 @@ export function useSocket() {
     console.log(`👁️ Joining as spectator: ${roomId}`)
     
     if (socketRef.current) {
+      // Immediately set spectator UI state to avoid rendering waiting room
+      setIsSpectator(true)
+      setIsInWaitingRoom(false)
+      setWaitingRoomState(null)
+
       socketRef.current.emit('join_spectator', {
         username,
         roomId

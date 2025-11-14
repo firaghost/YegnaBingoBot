@@ -192,7 +192,9 @@ export default function GamePage() {
           setGameId(result.gameId)
           
           // Check if user should spectate
-          if (result.action === 'spectate') {
+          const serverAction = result.action
+          const serverStatus = result.game?.status
+          if (serverAction === 'spectate' || serverStatus === 'active') {
             console.log('👁️ Game already active, joining as spectator...')
             await spectateGame(result.gameId, user.username || user.id)
             console.log('👁️ Spectator join completed')
@@ -822,7 +824,7 @@ export default function GamePage() {
       <div className="max-w-2xl mx-auto px-4 py-3">
 
         {/* Enhanced Waiting Room System */}
-        {(gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
+        {!isSpectator && (gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
           <div className="space-y-4 animate-in fade-in duration-500">
             
             {/* Invite Toast */}

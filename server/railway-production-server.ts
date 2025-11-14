@@ -412,9 +412,35 @@ app.post('/api/game/join', async (req, res) => {
       console.warn('Cleanup warning:', cleanupError)
     }
 
-    // Find active or waiting game for this room
+    // Find existing games for this room
     console.log(`🔍 Looking for existing games in room: ${roomId}`)
-    
+
+    // 1) If there is an ACTIVE game, user should spectate it
+    const { data: runningGame, error: activeErr } = await supabase
+      .from('games')
+      .select('*')
+      .eq('room_id', roomId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (activeErr) {
+      console.error('Error checking active game:', activeErr)
+    }
+
+    if (runningGame) {
+      console.log(`⚠️ Game ${runningGame.id} is active. Returning spectate action for user ${userId}`)
+      return res.json({
+        success: true,
+        gameId: runningGame.id,
+        game: runningGame,
+        action: 'spectate',
+        message: 'Game already in progress. Joining as spectator.'
+      })
+    }
+
+    // 2) Otherwise, look for a game in waiting/countdown phases to join
     let { data: activeGame, error: findError } = await supabase
       .from('games')
       .select('*')
