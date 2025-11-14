@@ -58,6 +58,9 @@ export default function GamePage() {
   const [connectionErrorMessage, setConnectionErrorMessage] = useState('')
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
 
+  // Lucky number selection (purely cosmetic)
+  const [luckyNumber, setLuckyNumber] = useState<number | null>(null)
+
   // Load commission rate from admin config once
   useEffect(() => {
     const loadCommission = async () => {
@@ -71,6 +74,23 @@ export default function GamePage() {
     }
     loadCommission()
   }, [])
+
+  // Load and persist lucky number locally
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('bingo_lucky_number') : null
+      if (stored) {
+        const n = parseInt(stored)
+        if (!isNaN(n)) setLuckyNumber(n)
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (luckyNumber != null) {
+      try { localStorage.setItem('bingo_lucky_number', String(luckyNumber)) } catch {}
+    }
+  }, [luckyNumber])
 
   // Fetch room data and game configuration
   const fetchRoomData = async () => {
@@ -233,6 +253,8 @@ export default function GamePage() {
       setLoading(false)
     }
   }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState])
+
+  // (Preview card removed) We will show a 10x10 picker grid in waiting room instead
 
   // Prize pool animation effect
   useEffect(() => {
@@ -402,22 +424,25 @@ export default function GamePage() {
     const handleGameTransition = (event: any) => {
       console.log('🎯 Game transition event received, generating bingo card')
       
-      // Generate bingo card
-      const newCard = generateBingoCard()
-      setBingoCard(newCard)
-      
-      // Initialize marked cells (5x5 grid, center is free space)
-      const initialMarked = Array(5).fill(null).map((_, row) => 
-        Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
-      )
-      setMarkedCells(initialMarked)
+      // If we already have a card from the waiting room, keep it
+      if (bingoCard.length === 0) {
+        // Generate bingo card
+        const newCard = generateBingoCard()
+        setBingoCard(newCard)
+        
+        // Initialize marked cells (5x5 grid, center is free space)
+        const initialMarked = Array(5).fill(null).map((_, row) => 
+          Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
+        )
+        setMarkedCells(initialMarked)
+      }
       
       console.log('✅ Bingo card generated and ready for play')
     }
 
     window.addEventListener('gameTransition', handleGameTransition)
     return () => window.removeEventListener('gameTransition', handleGameTransition)
-  }, [])
+  }, [bingoCard.length])
 
   // Generate bingo card when game becomes active (fallback)
   useEffect(() => {
@@ -1032,6 +1057,42 @@ export default function GamePage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Lucky Number Picker Card (waiting room) */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                      <Star className="w-4 h-4" />
+                      <span>Choose Your Lucky Number</span>
+                    </div>
+                    <button
+                      onClick={() => setLuckyNumber(Math.floor(Math.random() * 100) + 1)}
+                      className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    >
+                      Random
+                    </button>
+                  </div>
+                  <div className="bg-white rounded-2xl p-3 border border-amber-200 shadow-sm max-w-md mx-auto">
+                    <div className="grid grid-cols-10 gap-1">
+                      {Array.from({ length: 100 }, (_, i) => i + 1).map((n) => (
+                        <button
+                          key={n}
+                          onClick={() => setLuckyNumber(n)}
+                          className={`h-8 text-xs rounded-md border transition-all duration-150 ${
+                            luckyNumber === n
+                              ? 'bg-emerald-500 text-white border-emerald-600 ring-2 ring-emerald-300'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    
+                  </div>
+                </div>
+
+                {/* No modal; picking is done directly on the 10x10 card above */}
               </div>
             </div>
             
