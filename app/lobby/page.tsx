@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
 import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX } from 'react-icons/lu'
+import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
 interface Room {
   id: string
@@ -30,9 +31,28 @@ export default function LobbyPage() {
   const [showInsufficientBalance, setShowInsufficientBalance] = useState(false)
   const [insufficientBalanceMessage, setInsufficientBalanceMessage] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
-
+  const [commissionRate, setCommissionRate] = useState<number>(0.1)
+  const [commissionLoaded, setCommissionLoaded] = useState<boolean>(false)
   useEffect(() => {
-    fetchRooms()
+    // Load commission rate once on mount
+    const loadCommission = async () => {
+      try {
+        // Ensure we fetch the latest commission value (avoid cached 0.1)
+        clearConfigCache()
+        const rate = await getConfig('game_commission_rate')
+        const numeric = typeof rate === 'number' ? rate : parseFloat(rate)
+        const normalized = isNaN(numeric as number)
+          ? 0.1
+          : ((numeric as number) > 1 ? (numeric as number) / 100 : (numeric as number))
+        setCommissionRate(normalized)
+        setCommissionLoaded(true)
+      } catch (e) {
+        // keep default 0.1
+        console.warn('Failed to load commission rate, using default 10%')
+        setCommissionLoaded(true)
+      }
+    }
+    loadCommission()
     
     // Subscribe to real-time updates
     const roomsChannel = supabase
@@ -66,6 +86,30 @@ export default function LobbyPage() {
     }
   }, [])
 
+  // Recompute displayed net prize when commission rate changes
+  useEffect(() => {
+    if (!commissionLoaded) return
+    setRooms(prevRooms => prevRooms.map(room => {
+      const netMultiplier = 1 - commissionRate
+      const waitingPlayers = room.waiting_players || 0
+      const basePrizePool = room.stake * room.max_players * netMultiplier
+      const dynamicPrizePool = waitingPlayers > 0
+        ? room.stake * waitingPlayers * netMultiplier
+        : 0
+      return {
+        ...room,
+        base_prize_pool: Math.round(basePrizePool * 100) / 100,
+        prize_pool: Math.round(dynamicPrizePool * 100) / 100
+      }
+    }))
+  }, [commissionRate, commissionLoaded])
+
+  // Re-fetch rooms after commission loads/changes to ensure fresh state uses correct net multiplier
+  useEffect(() => {
+    if (!commissionLoaded) return
+    fetchRooms()
+  }, [commissionRate, commissionLoaded])
+
   const fetchRooms = async () => {
     try {
       const { data, error } = await supabase
@@ -96,10 +140,11 @@ export default function LobbyPage() {
 
             const waitingPlayers = activeGames?.[0]?.players?.length || 0
             
-            // Calculate dynamic prize pool based on waiting players (gross, before commission)
-            const basePrizePool = room.stake * room.max_players
+            // Calculate dynamic NET prize pool based on waiting players (after commission)
+            const netMultiplier = 1 - commissionRate
+            const basePrizePool = room.stake * room.max_players * netMultiplier
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers
+              ? room.stake * waitingPlayers * netMultiplier
               : 0 // Show 0 when no players waiting
 
             return {
@@ -114,7 +159,7 @@ export default function LobbyPage() {
             return {
               ...room,
               waiting_players: 0,
-              base_prize_pool: room.prize_pool || room.stake * room.max_players,
+              base_prize_pool: room.prize_pool || room.stake * room.max_players * (1 - commissionRate),
               game_level: room.game_level || room.default_level || 'medium'
             }
           }
@@ -149,7 +194,7 @@ export default function LobbyPage() {
       const enhancedRoom = {
         ...newRoom,
         waiting_players: 0,
-        base_prize_pool: newRoom.stake * newRoom.max_players * 0.9,
+        base_prize_pool: newRoom.stake * newRoom.max_players * (1 - commissionRate),
         prize_pool: 0,
         game_level: newRoom.game_level || newRoom.default_level || 'medium'
       }
@@ -192,7 +237,7 @@ export default function LobbyPage() {
         prevRooms.map(room => {
           if (room.id === roomId) {
             const dynamicPrizePool = waitingPlayers > 0 
-              ? room.stake * waitingPlayers
+              ? room.stake * waitingPlayers * (1 - commissionRate)
               : 0
             
             return {
@@ -327,7 +372,7 @@ export default function LobbyPage() {
                       <div className="font-bold text-slate-900 text-sm sm:text-base">{formatCurrency(room.stake)}</div>
                     </div>
                     <div className="text-center sm:text-right">
-                      <div className="text-slate-500 text-xs mb-1">Prize Pool</div>
+                      <div className="text-slate-500 text-xs mb-1">Net Prize</div>
                       <div className="font-bold text-emerald-600 text-sm sm:text-base">{formatCurrency(room.prize_pool)}</div>
                     </div>
                   </div>

@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
-import { getGameConfig } from '@/lib/admin-config'
+import { getGameConfig, getConfig } from '@/lib/admin-config'
 import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
 
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
@@ -49,6 +49,7 @@ export default function GamePage() {
   const [bingoError, setBingoError] = useState<string | null>(null)
   const [claimingBingo, setClaimingBingo] = useState(false)
   const [gameConfig, setGameConfig] = useState<any>(null)
+  const [commissionRate, setCommissionRate] = useState<number>(0.1)
   
   // Enhanced waiting room states
   const [inviteToastVisible, setInviteToastVisible] = useState(false)
@@ -56,6 +57,20 @@ export default function GamePage() {
   const [showConnectionError, setShowConnectionError] = useState(false)
   const [connectionErrorMessage, setConnectionErrorMessage] = useState('')
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
+
+  // Load commission rate from admin config once
+  useEffect(() => {
+    const loadCommission = async () => {
+      try {
+        const rate = await getConfig('game_commission_rate')
+        const numeric = typeof rate === 'number' ? rate : parseFloat(rate) || 0.1
+        setCommissionRate(numeric)
+      } catch (e) {
+        console.warn('Failed to load commission rate, using default 10%')
+      }
+    }
+    loadCommission()
+  }, [])
 
   // Fetch room data and game configuration
   const fetchRoomData = async () => {
@@ -69,15 +84,15 @@ export default function GamePage() {
       
       // If not found, try case-insensitive search
       if (!room && roomId) {
-        const { data: rooms } = await supabase
+        const { data: roomsIlike } = await supabase
           .from('rooms')
           .select('*')
           .ilike('id', roomId)
           .limit(1)
-        
-        room = rooms?.[0] || null
+
+        room = roomsIlike?.[0] || null
       }
-      
+
       if (!room) {
         throw new Error(`Room '${roomId}' not found`)
       }
@@ -85,13 +100,13 @@ export default function GamePage() {
       if (error) throw error
       setRoomData(room)
 
-      // Create game configuration using room's actual data
+      // Create game configuration using room's actual data (commissionRate loaded separately)
       const config = {
         stake: room.stake,
         maxPlayers: room.max_players,
         callInterval: 2000, // 2 seconds between numbers
         prizePool: room.stake * room.max_players,
-        commissionRate: 0.1, // 10%
+        commissionRate: commissionRate,
         level: room.game_level || room.default_level || 'medium'
       }
       setGameConfig(config)
@@ -444,19 +459,23 @@ export default function GamePage() {
     if (gameState.status === 'finished' && gameState.winner_id) {
       console.log('🏁 Game finished! Winner:', gameState.winner_id)
       
+      // Compute NET prize (fallback to client-side using admin commission)
+      const gross = gameState.prize_pool
+      const net = typeof gameState.net_prize === 'number' 
+        ? gameState.net_prize 
+        : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+
       if (gameState.winner_id === user?.id) {
         // User won
-        const prize = gameState.net_prize || gameState.prize_pool
-        setWinAmount(prize)
+        setWinAmount(net)
         
         // Note: Auto-win when opponent left
         
-        console.log('🎉 You won!', prize)
+        console.log('🎉 You won!', net)
         setShowWinDialog(true)
       } else {
         // User lost
-        const prize = gameState.net_prize || gameState.prize_pool
-        setWinAmount(prize)
+        setWinAmount(net)
         setShowLoseDialog(true)
         
         console.log('😢 You lost. Winner:', gameState.winner_id)
@@ -482,7 +501,7 @@ export default function GamePage() {
         }, 8000)
       }
     }
-  }, [gameState?.status, gameState?.winner_id, user, roomId, router])
+  }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
 
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
@@ -525,8 +544,11 @@ export default function GamePage() {
         
         if (freshGame && freshGame.status === 'finished' && freshGame.winner_id) {
           // Game already finished - manually trigger win/lose dialog
-          const prize = freshGame.net_prize || freshGame.prize_pool
-          setWinAmount(prize)
+          const gross = freshGame.prize_pool
+          const net = typeof freshGame.net_prize === 'number' 
+            ? freshGame.net_prize 
+            : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+          setWinAmount(net)
           
           if (freshGame.winner_id === user.id) {
             console.log('🎉 You won!')
@@ -597,8 +619,11 @@ export default function GamePage() {
         // Clear error and show game result
         setBingoError(null)
         
-        const prize = freshGame.net_prize || freshGame.prize_pool
-        setWinAmount(prize)
+        const gross = freshGame.prize_pool
+        const net = typeof freshGame.net_prize === 'number' 
+          ? freshGame.net_prize 
+          : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+        setWinAmount(net)
         
         if (freshGame.winner_id === user.id) {
           // Somehow we won even though claim failed (race condition)
@@ -770,6 +795,7 @@ export default function GamePage() {
   // Commission is deducted when winner receives the prize
   const currentPlayers = gameState?.players?.length || 1
   const prizePool = currentPlayers * stake
+  const netPrizePool = Math.round(prizePool * (1 - commissionRate) * 100) / 100
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -992,17 +1018,17 @@ export default function GamePage() {
                   )}
                 </div>
                 
-                {/* Compact Prize Pool */}
+                {/* Compact Net Prize */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Trophy className="w-4 h-4" />
-                      <span>Prize Pool</span>
+                      <span>Net Prize</span>
                     </div>
                   </div>
                   <div className={`bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-3 transition-all duration-500 ${prizePoolAnimation ? 'scale-105 shadow-lg' : ''}`}>
                     <div className="text-2xl font-bold text-emerald-600 transition-all duration-300">
-                      {formatCurrency(prizePool)}
+                      {formatCurrency(netPrizePool)}
                     </div>
                   </div>
                 </div>
@@ -1121,12 +1147,12 @@ export default function GamePage() {
                     </div>
                   </div>
 
-                  {/* Prize Pool */}
+                  {/* Net Prize */}
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
                     <div className="text-center">
-                      <div className="text-sm text-emerald-600 mb-1">Prize Pool</div>
+                      <div className="text-sm text-emerald-600 mb-1">Net Prize</div>
                       <div className="text-3xl font-bold text-emerald-600">
-                        {formatCurrency(gameState.prize_pool)}
+                        {formatCurrency(typeof gameState.net_prize === 'number' ? gameState.net_prize : netPrizePool)}
                       </div>
                     </div>
                   </div>
@@ -1195,7 +1221,7 @@ export default function GamePage() {
             <div className="text-center text-sm text-slate-700 font-medium py-2">
               <span>Stake: <span className="font-bold text-amber-600">{formatCurrency(stake)}</span></span>
               <span className="mx-3 text-slate-300">|</span>
-              <span>Total Win Pool: <span className="font-bold text-emerald-600">{formatCurrency(prizePool)}</span></span>
+              <span>Net Win Pool: <span className="font-bold text-emerald-600">{formatCurrency(typeof gameState?.net_prize === 'number' ? gameState.net_prize : netPrizePool)}</span></span>
             </div>
 
             {/* Number Called Section - Beautiful card */}
