@@ -569,11 +569,10 @@ export default function GamePage() {
       } else {
         // User lost
         setWinAmount(net)
-        setShowLoseDialog(true)
-        
+
         console.log('😢 You lost. Winner:', gameState.winner_id)
-        
-        // Fetch winner name
+
+        // Fetch winner name (in parallel)
         if (gameState.winner_id) {
           supabase
             .from('users')
@@ -587,11 +586,56 @@ export default function GamePage() {
               }
             })
         }
-        
-        // Auto-redirect after 8 seconds
-        setTimeout(() => {
-          router.push('/lobby')
-        }, 8000)
+
+        // Gate the dialog until we have the winner pattern so the new UI shows immediately
+        const openDialogWhenReady = async () => {
+          // If socket already has it, open immediately
+          if (gameState.winner_pattern) {
+            setShowLoseDialog(true)
+            setTimeout(() => router.push('/lobby'), 8000)
+            return
+          }
+
+          // Try admin-backed API a few times quickly
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              const resp = await fetch('/api/game/winner', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+              })
+              if (resp.ok) {
+                const data = await resp.json()
+                if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                if (data?.winner_pattern) setFallbackWinnerPattern(data.winner_pattern as string)
+                if (data?.winner_pattern) {
+                  setShowLoseDialog(true)
+                  setTimeout(() => router.push('/lobby'), 8000)
+                  return
+                }
+              }
+            } catch {}
+            await new Promise(res => setTimeout(res, 250))
+          }
+
+          // Final DB check
+          try {
+            const { data } = await supabase
+              .from('games')
+              .select('winner_card,winner_pattern')
+              .eq('id', gameId)
+              .single()
+            if (data?.winner_pattern) {
+              if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+              setFallbackWinnerPattern(data.winner_pattern as string)
+            }
+          } catch {}
+
+          // Show dialog whether or not we got it (worst-case), but we likely have it now
+          setShowLoseDialog(true)
+          setTimeout(() => router.push('/lobby'), 8000)
+        }
+        openDialogWhenReady()
       }
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
