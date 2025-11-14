@@ -632,12 +632,11 @@ export default function GamePage() {
   }
 
   const generateInviteLink = () => {
-    // Generate web app link that opens the game room directly
-    const webAppUrl = `${window.location.origin}/game/${roomId}`
+    // Generate Telegram bot mini app link that opens the game room directly
     const inviteUrl = `https://t.me/BingoXOfficialBot/bingox?startapp=room_${roomId}`
     
-    // Copy the direct web link (better for sharing)
-    navigator.clipboard.writeText(webAppUrl).then(() => {
+    // Copy the Telegram bot mini app link (for sharing in Telegram)
+    navigator.clipboard.writeText(inviteUrl).then(() => {
       setInviteToastVisible(true)
       setTimeout(() => setInviteToastVisible(false), 3000)
     })

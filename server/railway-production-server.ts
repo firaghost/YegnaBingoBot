@@ -146,31 +146,71 @@ async function startNumberCalling(gameId: string) {
           return
         }
 
-        // Get the next number in sequence (fair distribution)
-        const calledNumber = availableNumbers[numberIndex]
-        const letter = getBingoLetter(calledNumber)
-        callCount++
-        numberIndex++
-        
-        const newCalledNumbers = [...alreadyCalled, ...availableNumbers.slice(0, numberIndex)]
-        
-        // Update cache immediately (instant broadcast to all players)
-        gameStateCache.update(gameId, {
-          called_numbers: newCalledNumbers,
-          last_number_called: calledNumber,
-          last_called_at: new Date().toISOString(),
-          latest_number: { letter, number: calledNumber }
-        }, { immediate: true, priority: 'high' })
-        
-        // Database will be synced automatically in batch (every 30s)
-        // No need for immediate DB update - cache handles it!
+        // Use secure fair number calling function with fallback
+        try {
+          const { supabaseAdmin } = await import('../lib/supabase')
+          const { data: numberResult, error: numberError } = await supabaseAdmin
+            .rpc('call_next_number', {
+              p_game_id: gameId
+            })
 
-        // Validate fairness with dynamic interval
-        const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
-        console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
-        
-        // Note: Socket broadcast is handled automatically by gameStateCache.update()
-        // No need for duplicate emission here!
+          if (numberError) {
+            console.warn('⚠️ Secure number calling failed, falling back to manual method:', numberError)
+            throw new Error('Fallback to manual method')
+          }
+
+          const result = numberResult[0]
+          if (!result.success) {
+            console.log(`🏁 Number calling ended: ${result.message}`)
+            clearInterval(callInterval)
+            gameIntervals.delete(gameId)
+            return
+          }
+
+          const calledNumber = result.number_called
+          const letter = result.letter
+          const remainingNumbers = result.remaining_numbers
+
+          // Update cache with secure result
+          gameStateCache.update(gameId, {
+            called_numbers: [...(currentGame.called_numbers || []), calledNumber],
+            last_number_called: calledNumber,
+            last_called_at: new Date().toISOString(),
+            latest_number: { letter, number: calledNumber }
+          }, { immediate: true, priority: 'high' })
+
+          console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${75 - remainingNumbers}/75) - SECURE`)
+
+          // Check if game should end
+          if (remainingNumbers === 0) {
+            console.log(`🏁 All numbers called for game ${gameId}`)
+            clearInterval(callInterval)
+            gameIntervals.delete(gameId)
+            return
+          }
+
+        } catch (fallbackError) {
+          // FALLBACK: Use original manual method if secure function fails
+          console.log('📋 Using fallback manual number calling')
+          
+          const calledNumber = availableNumbers[numberIndex]
+          const letter = getBingoLetter(calledNumber)
+          callCount++
+          numberIndex++
+          
+          const newCalledNumbers = [...alreadyCalled, ...availableNumbers.slice(0, numberIndex)]
+          
+          // Update cache (original method)
+          gameStateCache.update(gameId, {
+            called_numbers: newCalledNumbers,
+            last_number_called: calledNumber,
+            last_called_at: new Date().toISOString(),
+            latest_number: { letter, number: calledNumber }
+          }, { immediate: true, priority: 'high' })
+          
+          const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
+          console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
+        }
 
       } catch (error) {
         console.error(`❌ Error calling number for game ${gameId}:`, error)
@@ -396,21 +436,13 @@ app.post('/api/game/join', async (req, res) => {
     if (!activeGame) {
       console.log(`🆕 No active game found, creating new game for room: ${roomId}`)
       
-      const { data: newGame, error: createError } = await supabase
-        .from('games')
-        .insert({
-          room_id: roomId,
-          status: 'waiting',
-          countdown_time: 10,
-          players: [userId],
-          bots: [],
-          called_numbers: [],
-          stake: room.stake,
-          prize_pool: room.stake,
-          started_at: new Date().toISOString()
+      // Use secure game creation function with built-in validation
+      const { data: createResult, error: createError } = await supabase
+        .rpc('create_game_safe', {
+          p_room_id: roomId,
+          p_creator_id: userId,
+          p_stake: room.stake
         })
-        .select()
-        .single()
 
       if (createError) {
         console.error('Error creating game:', createError)
@@ -420,9 +452,24 @@ app.post('/api/game/join', async (req, res) => {
         })
       }
 
+      const result = createResult[0]
+      if (!result.success) {
+        console.warn(`⚠️ Game creation failed: ${result.message}`)
+        return res.status(400).json({
+          error: result.message
+        })
+      }
+
+      // Get the created game details
+      const { data: newGame } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', result.game_id)
+        .single()
+
       return res.json({
         success: true,
-        gameId: newGame.id,
+        gameId: result.game_id,
         game: newGame,
         action: 'created'
       })
@@ -445,41 +492,91 @@ app.post('/api/game/join', async (req, res) => {
     
     if (!activeGame.players.includes(userId)) {
       console.log(`➕ Adding new player ${userId} to game ${activeGame.id}`)
-      const updatedPlayers = [...activeGame.players, userId]
-      const updatedPrizePool = activeGame.prize_pool + stake
       
-      let newStatus = activeGame.status
-      if (activeGame.status === 'countdown') {
-        newStatus = 'countdown'
-      } else {
-        newStatus = 'waiting'
-      }
-      
-      // Update game with new player
-      const { data: updatedGame, error: joinError } = await supabase
-        .from('games')
-        .update({
-          players: updatedPlayers,
-          prize_pool: updatedPrizePool,
-          status: newStatus
-        })
-        .eq('id', activeGame.id)
-        .select()
-        .single()
+      // Use atomic player joining function with fallback
+      try {
+        const { data: joinResult, error: joinFunctionError } = await supabase
+          .rpc('add_player_to_game', {
+            p_game_id: activeGame.id,
+            p_user_id: userId,
+            p_max_players: room.max_players || 20
+          })
 
-      if (joinError) {
-        console.error('Error joining game:', joinError)
-        return res.status(500).json({
-          error: 'Failed to join game',
-          details: joinError.message
-        })
+        if (joinFunctionError) {
+          console.warn('⚠️ Atomic join function failed, falling back to manual method:', joinFunctionError)
+          throw new Error('Fallback to manual method')
+        }
+
+        const result = joinResult[0]
+        if (!result.success) {
+          console.warn(`⚠️ Player join rejected: ${result.message}`)
+          return res.status(400).json({
+            error: result.message,
+            currentPlayerCount: result.current_player_count
+          })
+        }
+
+        console.log(`✅ Player ${userId} added atomically. Players: ${result.current_player_count}`)
+        
+        // Get updated game state
+        const { data: updatedGame, error: fetchError } = await supabase
+          .from('games')
+          .select('*')
+          .eq('id', activeGame.id)
+          .single()
+
+        if (fetchError) {
+          console.error('Error fetching updated game:', fetchError)
+          return res.status(500).json({
+            error: 'Failed to get updated game state'
+          })
+        }
+
+        // Continue with existing logic using updatedGame
+        activeGame = updatedGame
+
+      } catch (fallbackError) {
+        // FALLBACK: Use original manual method if atomic function fails
+        console.log('📋 Using fallback manual player joining method')
+        
+        const updatedPlayers = [...activeGame.players, userId]
+        const updatedPrizePool = activeGame.prize_pool + stake
+        
+        let newStatus = activeGame.status
+        if (activeGame.status === 'countdown') {
+          newStatus = 'countdown'
+        } else {
+          newStatus = 'waiting'
+        }
+        
+        // Update game with new player (original method)
+        const { data: updatedGame, error: joinError } = await supabase
+          .from('games')
+          .update({
+            players: updatedPlayers,
+            prize_pool: updatedPrizePool,
+            status: newStatus
+          })
+          .eq('id', activeGame.id)
+          .select()
+          .single()
+
+        if (joinError) {
+          console.error('Error joining game:', joinError)
+          return res.status(500).json({
+            error: 'Failed to join game',
+            details: joinError.message
+          })
+        }
+
+        activeGame = updatedGame
       }
 
-      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
+      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${activeGame.status}, Players: ${activeGame.players.length}`)
 
       // If we have 2+ players and game is still in waiting status, start 30-second waiting period (only once)
-      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting') && !activeWaitingPeriods.has(activeGame.id)) {
-        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
+      if (activeGame.players.length >= 2 && activeGame.status === 'waiting' && !activeWaitingPeriods.has(activeGame.id)) {
+        console.log(`⏳ Game ${activeGame.id} has ${activeGame.players.length} players, starting 30-second waiting period...`)
         
         // Mark this game as having an active waiting period
         activeWaitingPeriods.add(activeGame.id)
@@ -595,7 +692,7 @@ app.post('/api/game/join', async (req, res) => {
         }, 1000)
         
         console.log('✅ Waiting period started successfully')
-      } else if (updatedPlayers.length >= 2 && activeWaitingPeriods.has(activeGame.id)) {
+      } else if (activeGame.players.length >= 2 && activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⚠️ Game ${activeGame.id} already has active waiting period, player ${userId} joined existing process`)
       }
 
@@ -609,7 +706,7 @@ app.post('/api/game/join', async (req, res) => {
       return res.json({
         success: true,
         gameId: activeGame.id,
-        game: finalGameState || updatedGame,
+        game: finalGameState || activeGame,
         action: 'joined'
       })
     }

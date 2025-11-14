@@ -147,53 +147,153 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if it's a valid bingo
-    const hasBingo = checkBingo(card, markedCells)
-    console.log(`🎯 Bingo check result: ${hasBingo ? 'YES - VALID BINGO!' : 'NO - Not a bingo'}`)
-    
-    if (!hasBingo) {
-      // Log which patterns were checked
-      console.log(`❌ No bingo pattern found`)
-      console.log(`   Rows checked: ${markedCells.map((row, i) => `Row ${i}: ${row.every(c => c)}`).join(', ')}`)
-      console.log(`   Cols checked: ${[0,1,2,3,4].map(j => `Col ${j}: ${markedCells.every(row => row[j])}`).join(', ')}`)
+    // Initialize prize calculation variables
+    let commissionRateDecimal = await getConfig('game_commission_rate') || 0.1
+    let commissionRate = commissionRateDecimal * 100
+    let commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
+    let netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
+
+    // Use secure bingo validation function with anti-cheat protection
+    try {
+      console.log(`🔒 Using secure bingo validation with anti-cheat protection`)
       
-      return NextResponse.json(
-        { error: 'Not a valid bingo' },
-        { status: 400 }
-      )
-    }
+      // Determine bingo pattern from the marked cells
+      let bingoPattern = 'unknown'
+      
+      // Check for row bingo
+      for (let i = 0; i < 5; i++) {
+        if (markedCells[i].every(cell => cell)) {
+          bingoPattern = 'row'
+          break
+        }
+      }
+      
+      // Check for column bingo
+      if (bingoPattern === 'unknown') {
+        for (let j = 0; j < 5; j++) {
+          if (markedCells.every(row => row[j])) {
+            bingoPattern = 'column'
+            break
+          }
+        }
+      }
+      
+      // Check for diagonal bingo
+      if (bingoPattern === 'unknown') {
+        if (markedCells.every((row, i) => row[i])) {
+          bingoPattern = 'diagonal'
+        } else if (markedCells.every((row, i) => row[4 - i])) {
+          bingoPattern = 'diagonal'
+        }
+      }
+      
+      // Get claimed cell numbers for validation
+      const claimedCells: number[] = []
+      for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < 5; j++) {
+          if (markedCells[i][j]) {
+            claimedCells.push(card[i][j])
+          }
+        }
+      }
 
-    // Get commission rate from admin config
-    const commissionRateDecimal = await getConfig('game_commission_rate') || 0.1
-    const commissionRate = commissionRateDecimal * 100 // Convert to percentage for display
-    const commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
-    const netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
+      // Use atomic bingo validation function
+      const { data: validationResult, error: validationError } = await supabase
+        .rpc('validate_bingo_claim', {
+          p_game_id: gameId,
+          p_user_id: userId,
+          p_claimed_cells: claimedCells,
+          p_bingo_pattern: bingoPattern,
+          p_user_card: card
+        })
 
-    console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
-    console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
-    console.log(`🎁 Net Prize: ${netPrize} ETB`)
+      if (validationError) {
+        console.warn('⚠️ Secure validation failed, falling back to manual validation:', validationError)
+        throw new Error('Fallback to manual validation')
+      }
 
-    // Update game with winner and commission info
-    const { error: updateError } = await supabase
-      .from('games')
-      .update({
-        status: 'finished',
-        winner_id: userId,
-        ended_at: new Date().toISOString(),
-        commission_rate: commissionRate,
-        commission_amount: commissionAmount,
-        net_prize: netPrize
-      })
-      .eq('id', gameId)
-      .eq('status', 'active') // Only update active games (atomic operation)
-      .is('winner_id', null) // Only update if no winner yet (race condition protection)
+      const validation = validationResult[0]
+      
+      if (!validation.is_valid) {
+        console.log(`❌ Secure validation failed:`, validation.validation_details)
+        return NextResponse.json(
+          { 
+            error: 'Invalid bingo claim', 
+            details: validation.validation_details 
+          },
+          { status: 400 }
+        )
+      }
 
-    if (updateError) {
-      console.error('Error updating game:', updateError)
-      return NextResponse.json(
-        { error: 'Failed to claim bingo - another player may have won' },
-        { status: 500 }
-      )
+      if (!validation.is_winner) {
+        console.log(`⏰ Valid bingo but not winner:`, validation.validation_details)
+        return NextResponse.json(
+          { 
+            error: 'Valid bingo, but another player won first',
+            details: validation.validation_details
+          },
+          { status: 400 }
+        )
+      }
+
+      // Winner! The atomic function already updated the game
+      console.log(`🏆 ATOMIC WINNER! User ${userId} won with ${bingoPattern}`)
+      
+      console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
+      console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
+      console.log(`🎁 Net Prize: ${netPrize} ETB`)
+
+      // Update additional prize information
+      await supabase
+        .from('games')
+        .update({
+          commission_rate: commissionRate,
+          commission_amount: commissionAmount,
+          net_prize: netPrize
+        })
+        .eq('id', gameId)
+
+    } catch (fallbackError) {
+      // FALLBACK: Use original manual validation if atomic function fails
+      console.log('📋 Using fallback manual bingo validation')
+      
+      const hasBingo = checkBingo(card, markedCells)
+      console.log(`🎯 Bingo check result: ${hasBingo ? 'YES - VALID BINGO!' : 'NO - Not a bingo'}`)
+      
+      if (!hasBingo) {
+        console.log(`❌ No bingo pattern found`)
+        return NextResponse.json(
+          { error: 'Not a valid bingo' },
+          { status: 400 }
+        )
+      }
+
+      console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
+      console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
+      console.log(`🎁 Net Prize: ${netPrize} ETB`)
+
+      // Update game with winner (original method)
+      const { error: updateError } = await supabase
+        .from('games')
+        .update({
+          status: 'finished',
+          winner_id: userId,
+          ended_at: new Date().toISOString(),
+          commission_rate: commissionRate,
+          commission_amount: commissionAmount,
+          net_prize: netPrize
+        })
+        .eq('id', gameId)
+        .eq('status', 'active')
+        .is('winner_id', null)
+
+      if (updateError) {
+        console.error('Error updating game:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to claim bingo - another player may have won' },
+          { status: 500 }
+        )
+      }
     }
 
     // Add NET winnings to user balance (after commission)
