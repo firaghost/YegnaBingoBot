@@ -21,6 +21,8 @@ export interface GameState {
   commission_rate?: number
   commission_amount?: number
   net_prize?: number
+  winner_card?: number[][] | null
+  winner_pattern?: string | null
 }
 
 export function useSocket() {
@@ -35,7 +37,7 @@ export function useSocket() {
 
   // Connect to Socket.IO server on Railway
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingo-production.up.railway.app'
     console.log('🔌 Connecting to Socket.IO:', socketUrl)
     
     const socket = io(socketUrl, {
@@ -358,8 +360,8 @@ export function useSocket() {
     let lastUpdate = 0
     const UPDATE_THROTTLE = 500 // Only update every 500ms max
 
-    const gameChannel = supabase
-      .channel(`game:${gameId}`)
+      const gameChannel = supabase
+        .channel(`game:${gameId}`)
       .on(
         'postgres_changes',
         {
@@ -389,7 +391,12 @@ export function useSocket() {
             stake: game.stake,
             prize_pool: game.prize_pool,
             winner_id: game.winner_id,
-            min_players: game.min_players || 2
+            min_players: game.min_players || 2,
+            commission_rate: game.commission_rate ?? undefined,
+            commission_amount: game.commission_amount ?? undefined,
+            net_prize: game.net_prize ?? undefined,
+            winner_card: game.winner_card || null,
+            winner_pattern: game.winner_pattern || null
           })
         }
       )
@@ -427,7 +434,12 @@ export function useSocket() {
         stake: game.stake,
         prize_pool: game.prize_pool,
         winner_id: game.winner_id,
-        min_players: game.min_players || 2
+        min_players: game.min_players || 2,
+        commission_rate: game.commission_rate ?? undefined,
+        commission_amount: game.commission_amount ?? undefined,
+        net_prize: game.net_prize ?? undefined,
+        winner_card: game.winner_card || null,
+        winner_pattern: game.winner_pattern || null
       })
     } else {
       console.warn('⚠️ No game found with ID:', gameId)

@@ -153,39 +153,44 @@ export async function POST(request: NextRequest) {
     let commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
     let netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
 
-    // Use secure bingo validation function with anti-cheat protection
-    try {
-      console.log(`🔒 Using secure bingo validation with anti-cheat protection`)
-      
-      // Determine bingo pattern from the marked cells
-      let bingoPattern = 'unknown'
-      
-      // Check for row bingo
-      for (let i = 0; i < 5; i++) {
-        if (markedCells[i].every(cell => cell)) {
-          bingoPattern = 'row'
+    // Determine bingo pattern from the marked cells (reusable for both branches)
+    let bingoPattern: 'row' | 'column' | 'diagonal' | 'unknown' = 'unknown'
+    let patternString: string = 'unknown'
+
+    // Check for row bingo
+    for (let i = 0; i < 5; i++) {
+      if (markedCells[i].every(cell => cell)) {
+        bingoPattern = 'row'
+        patternString = `row:${i}`
+        break
+      }
+    }
+
+    // Check for column bingo
+    if (bingoPattern === 'unknown') {
+      for (let j = 0; j < 5; j++) {
+        if (markedCells.every(row => row[j])) {
+          bingoPattern = 'column'
+          patternString = `column:${j}`
           break
         }
       }
-      
-      // Check for column bingo
-      if (bingoPattern === 'unknown') {
-        for (let j = 0; j < 5; j++) {
-          if (markedCells.every(row => row[j])) {
-            bingoPattern = 'column'
-            break
-          }
-        }
+    }
+
+    // Check for diagonal bingo
+    if (bingoPattern === 'unknown') {
+      if (markedCells.every((row, i) => row[i])) {
+        bingoPattern = 'diagonal'
+        patternString = 'diag:main'
+      } else if (markedCells.every((row, i) => row[4 - i])) {
+        bingoPattern = 'diagonal'
+        patternString = 'diag:anti'
       }
-      
-      // Check for diagonal bingo
-      if (bingoPattern === 'unknown') {
-        if (markedCells.every((row, i) => row[i])) {
-          bingoPattern = 'diagonal'
-        } else if (markedCells.every((row, i) => row[4 - i])) {
-          bingoPattern = 'diagonal'
-        }
-      }
+    }
+
+    // Use secure bingo validation function with anti-cheat protection
+    try {
+      console.log(`🔒 Using secure bingo validation with anti-cheat protection`)
       
       // Get claimed cell numbers for validation
       const claimedCells: number[] = []
@@ -249,7 +254,9 @@ export async function POST(request: NextRequest) {
         .update({
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
-          net_prize: netPrize
+          net_prize: netPrize,
+          winner_card: card,
+          winner_pattern: patternString || bingoPattern
         })
         .eq('id', gameId)
 
@@ -281,7 +288,9 @@ export async function POST(request: NextRequest) {
           ended_at: new Date().toISOString(),
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
-          net_prize: netPrize
+          net_prize: netPrize,
+          winner_card: card,
+          winner_pattern: patternString || bingoPattern
         })
         .eq('id', gameId)
         .eq('status', 'active')

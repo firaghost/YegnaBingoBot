@@ -60,6 +60,9 @@ export default function GamePage() {
 
   // Lucky number selection (purely cosmetic)
   const [luckyNumber, setLuckyNumber] = useState<number | null>(null)
+  // Winner pattern fallback (if socket update hasn't brought it yet)
+  const [fallbackWinnerCard, setFallbackWinnerCard] = useState<number[][] | null>(null)
+  const [fallbackWinnerPattern, setFallbackWinnerPattern] = useState<string | null>(null)
 
   // Load commission rate from admin config once
   useEffect(() => {
@@ -74,6 +77,71 @@ export default function GamePage() {
     }
     loadCommission()
   }, [])
+
+  // Compute a 5x5 boolean mask for the winning pattern string
+  const getPatternMask = (pattern?: string | null): boolean[][] => {
+    const mask = Array(5).fill(null).map(() => Array(5).fill(false))
+    if (!pattern) return mask
+    if (pattern.startsWith('row:')) {
+      const i = parseInt(pattern.split(':')[1] || '0')
+      if (!isNaN(i) && i >= 0 && i < 5) {
+        for (let c = 0; c < 5; c++) mask[i][c] = true
+      }
+    } else if (pattern.startsWith('column:')) {
+      const j = parseInt(pattern.split(':')[1] || '0')
+      if (!isNaN(j) && j >= 0 && j < 5) {
+        for (let r = 0; r < 5; r++) mask[r][j] = true
+      }
+    } else if (pattern === 'diag:main') {
+      for (let k = 0; k < 5; k++) mask[k][k] = true
+    } else if (pattern === 'diag:anti') {
+      for (let k = 0; k < 5; k++) mask[k][4 - k] = true
+    }
+    return mask
+  }
+
+  // Fetch winner card/pattern after loss if not present yet
+  useEffect(() => {
+    const fetchWinnerInfo = async () => {
+      if (showLoseDialog && gameId && (!gameState?.winner_card || !gameState?.winner_pattern)) {
+        try {
+          // First try admin-backed API (bypasses RLS)
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const resp = await fetch('/api/game/winner', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+              })
+              if (resp.ok) {
+                const data = await resp.json()
+                if (data?.winner_card && !fallbackWinnerCard) setFallbackWinnerCard(data.winner_card as number[][])
+                if (data?.winner_pattern && !fallbackWinnerPattern) setFallbackWinnerPattern(data.winner_pattern as string)
+                if (data?.winner_pattern) return // success
+              }
+            } catch {}
+            await new Promise(res => setTimeout(res, 500))
+          }
+
+          // If still not available, poll DB directly up to 5 times in case server is still writing
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const { data } = await supabase
+              .from('games')
+              .select('winner_card,winner_pattern')
+              .eq('id', gameId)
+              .single()
+            if (data) {
+              if (data.winner_card && !fallbackWinnerCard) setFallbackWinnerCard(data.winner_card as number[][])
+              if (data.winner_pattern && !fallbackWinnerPattern) setFallbackWinnerPattern(data.winner_pattern as string)
+            }
+            if ((data?.winner_card && data?.winner_pattern)) break
+            await new Promise(res => setTimeout(res, 700))
+          }
+        } catch {}
+      }
+    }
+    fetchWinnerInfo()
+  }, [showLoseDialog, gameId, gameState?.winner_card, gameState?.winner_pattern, fallbackWinnerCard, fallbackWinnerPattern])
 
   // Load and persist lucky number locally
   useEffect(() => {
@@ -168,7 +236,7 @@ export default function GamePage() {
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
         
         // Test if API routes are working on Railway
-        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://BingoXbot-production.up.railway.app'
+        const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingo-production.up.railway.app'
         
         // Remove test API calls - they're working now
 
@@ -1496,6 +1564,100 @@ export default function GamePage() {
                   )}
                 </div>
               )}
+
+              {/* Winner Pattern Grid */}
+              {(() => {
+                const displayCard = (gameState?.winner_card as number[][] | undefined) || fallbackWinnerCard
+                const displayPattern = (gameState?.winner_pattern as string | undefined) || fallbackWinnerPattern
+                const mask = getPatternMask(displayPattern)
+
+                // Case 1: We have the winner's actual card
+                if (displayCard && Array.isArray(displayCard) && displayCard.length === 5) {
+                  return (
+                    <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 mb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Trophy className="w-4 h-4 text-amber-600" />
+                        <span className="text-sm font-bold text-slate-700">Winning Card</span>
+                        {displayPattern && (
+                          <span className="text-xs text-slate-500">({displayPattern})</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-amber-300 pb-1">
+                        {['B','I','N','G','O'].map((h) => (
+                          <div key={h} className="text-center font-black text-sm text-slate-700">{h}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-5 gap-0">
+                        {displayCard.map((row, ri) =>
+                          row.map((num, ci) => {
+                            const isWinCell = mask[ri]?.[ci]
+                            const isFree = num === 0
+                            return (
+                              <div
+                                key={`win-${ri}-${ci}`}
+                                className={`aspect-square flex items-center justify-center text-sm font-bold border-r border-b border-slate-200 ${
+                                  ci === 4 ? 'border-r-0' : ''
+                                } ${ri === 4 ? 'border-b-0' : ''} ${
+                                  isWinCell
+                                    ? 'bg-emerald-500 text-white rounded-none'
+                                    : isFree
+                                    ? 'bg-slate-100 text-slate-600'
+                                    : 'bg-white text-slate-700'
+                                }`}
+                              >
+                                {isFree ? '★' : num}
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                // Case 2: Only pattern available -> render mask-only grid (no numbers)
+                if (displayPattern) {
+                  return (
+                    <div className="bg-slate-50 border-2 border-slate-200 rounded-xl p-3 mb-6">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Trophy className="w-4 h-4 text-amber-600" />
+                        <span className="text-sm font-bold text-slate-700">Winning Pattern</span>
+                        <span className="text-xs text-slate-500">({displayPattern})</span>
+                      </div>
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-amber-300 pb-1">
+                        {['B','I','N','G','O'].map((h) => (
+                          <div key={h} className="text-center font-black text-sm text-slate-700">{h}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-5 gap-0">
+                        {Array.from({ length: 5 }, (_, ri) => ri).map((ri) =>
+                          Array.from({ length: 5 }, (_, ci) => ci).map((ci) => {
+                            const isWinCell = mask[ri]?.[ci]
+                            const isCenter = ri === 2 && ci === 2
+                            return (
+                              <div
+                                key={`mask-${ri}-${ci}`}
+                                className={`aspect-square flex items-center justify-center text-sm font-bold border-r border-b border-slate-200 ${
+                                  ci === 4 ? 'border-r-0' : ''
+                                } ${ri === 4 ? 'border-b-0' : ''} ${
+                                  isWinCell
+                                    ? 'bg-emerald-500 text-white'
+                                    : isCenter
+                                    ? 'bg-slate-100 text-slate-600'
+                                    : 'bg-white text-slate-400'
+                                }`}
+                              >
+                                {isCenter ? '★' : ''}
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+                return null
+              })()}
 
               <p className="text-center text-sm text-slate-500 mb-6">
                 Auto-redirecting in 8 seconds...
