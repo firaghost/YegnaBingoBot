@@ -276,8 +276,13 @@ export function useSocket() {
     })
 
     socket.on('bingo_winner', (data) => {
-      console.log('🏆 Bingo winner:', data.username)
-      setGameState(prev => prev ? { ...prev, winner_id: data.username, status: 'finished' } : null)
+      console.log('🏆 Bingo winner:', data.username, 'pattern:', data.pattern)
+      setGameState(prev => prev ? { 
+        ...prev, 
+        winner_id: data.username, 
+        winner_pattern: data.pattern ?? prev.winner_pattern ?? null,
+        status: 'finished' 
+      } : null)
     })
 
     socket.on('game_over', (data) => {
@@ -510,49 +515,99 @@ export function useSocket() {
     console.log('🎯 Marked number:', number)
   }
 
-  const claimBingo = async (gameId: string, userId: string, card: number[][], marked: boolean[][]): Promise<{ success: boolean; error?: string; status?: string }> => {
-    console.log('🎰 Claiming bingo for game:', gameId)
-    try {
-      const response = await fetch('/api/game/claim-bingo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId, userId, card, marked })
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        console.error('❌ Bingo claim error:', data.error)
-        return {
-          success: false,
-          error: data.error || 'Failed to claim bingo',
-          status: data.status || 'unknown'
-        }
-      }
-
-      console.log('✅ Bingo claimed:', data)
-      return { success: true }
-    } catch (error) {
-      console.error('❌ Bingo claim error:', error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Network error'
-      }
-    }
-  }
-
   // Waiting Room Functions
   const joinWaitingRoom = async (level: 'easy' | 'medium' | 'hard' = 'medium', username: string = 'Player') => {
-    console.log(`🏠 Joining waiting room (${level})`)
-    
+    console.log(`🏠 Joining waiting room (${level}) as ${username}`)
     if (socketRef.current) {
       socketRef.current.emit('join_waiting_room', {
         username,
         level,
         telegram_id: `user_${Date.now()}`
       })
+      setIsInWaitingRoom(true)
+      setWaitingRoomState((prev: any) => ({ ...(prev || {}), level, username }))
     }
   }
+
+  const claimBingo = async (gameId: string, userId: string, card: number[][], marked: boolean[][]): Promise<{ success: boolean; error?: string; status?: string }> => {
+  console.log('🎰 Claiming bingo for game:', gameId)
+
+  // Compute claimed cells and a simple pattern string (row/column/diagonal)
+  const claimedCells: number[] = []
+  const isMarked = (i: number, j: number) => (i === 2 && j === 2) ? true : !!(marked?.[i]?.[j])
+  try {
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        if (isMarked(i, j)) claimedCells.push(card?.[i]?.[j])
+      }
+    }
+  } catch {}
+  const computePattern = (): string => {
+    try {
+      // Rows
+      for (let i = 0; i < 5; i++) {
+        let ok = true
+        for (let j = 0; j < 5; j++) if (!isMarked(i, j)) { ok = false; break }
+        if (ok) return `row:${i}`
+      }
+      // Columns
+      for (let j = 0; j < 5; j++) {
+        let ok = true
+        for (let i = 0; i < 5; i++) if (!isMarked(i, j)) { ok = false; break }
+        if (ok) return `column:${j}`
+      }
+      // Diagonals
+      if ([0,1,2,3,4].every(k => isMarked(k, k))) return 'diag:main'
+      if ([0,1,2,3,4].every(k => isMarked(k, 4-k))) return 'diag:anti'
+    } catch {}
+    return 'unknown'
+  }
+  const bingoPattern = computePattern()
+
+  // Emit through Socket.IO for instant broadcast (does not affect DB state)
+  try {
+    if (socketRef.current) {
+      console.log('📡 Emitting bingo_claim via socket for instant broadcast')
+      socketRef.current.emit('bingo_claim', {
+        username: userId,
+        claimedCells,
+        bingoPattern,
+        board: card
+      })
+    }
+  } catch (e) {
+    console.warn('⚠️ Failed to emit bingo_claim via socket:', e)
+  }
+
+  // Still call the HTTP API to perform authoritative validation and payouts
+  try {
+    const response = await fetch('/api/game/claim-bingo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameId, userId, card, marked })
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      console.error('❌bingo claim error:', data.error)
+      return {
+        success: false,
+        error: data.error || 'Failed to claim bingo',
+        status: data.status || 'unknown'
+      }
+    }
+
+    console.log('✅ Bingo claimed:', data)
+    return { success: true }
+  } catch (error) {
+    console.error('❌ Bingo claim error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Network error'
+    }
+  }
+}
 
   const spectateGame = async (roomId: string, username: string = 'Spectator') => {
     console.log(`👁️ Joining as spectator: ${roomId}`)

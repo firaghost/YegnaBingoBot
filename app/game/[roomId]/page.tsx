@@ -81,6 +81,27 @@ export default function GamePage() {
     try { if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundEnabled)) } catch {}
   }, [soundEnabled])
 
+  // Listen for preference changes made on other pages (no refresh)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'bingo_sound_enabled' && e.newValue != null) {
+        setSoundEnabled(e.newValue === 'true')
+      }
+    }
+    const onCustom = (ev: Event) => {
+      try {
+        const enabled = (ev as CustomEvent)?.detail?.enabled
+        if (typeof enabled === 'boolean') setSoundEnabled(enabled)
+      } catch {}
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('bingo_sound_pref_changed', onCustom as EventListener)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('bingo_sound_pref_changed', onCustom as EventListener)
+    }
+  }, [])
+
   // If autoplay is blocked, enable on first user interaction
   useEffect(() => {
     if (!showSoundPrompt) return
@@ -706,7 +727,10 @@ export default function GamePage() {
         ? gameState.net_prize 
         : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
 
-      if (gameState.winner_id === user?.id) {
+      const winnerKey = gameState.winner_id
+      const isSelfWinner = (winnerKey === user?.id) || (winnerKey && winnerKey === user?.username)
+
+      if (isSelfWinner) {
         // User won
         setWinAmount(net)
         
@@ -720,33 +744,35 @@ export default function GamePage() {
 
         console.log('😢 You lost. Winner:', gameState.winner_id)
 
-        // Fetch winner name (in parallel)
+        // Show the lose dialog immediately; fetch details in background
+        setShowLoseDialog(true)
+
+        // Fetch winner name (best-effort): try by id then by username
         if (gameState.winner_id) {
           supabase
             .from('users')
             .select('username')
             .eq('id', gameState.winner_id)
-            .single()
-            .then(({ data }) => {
-              if (data) {
-                console.log('Winner name:', data.username)
+            .maybeSingle()
+            .then(async ({ data }) => {
+              if (data?.username) {
                 setWinnerName(data.username)
+                return
               }
+              // Try by username as fallback
+              const { data: byUsername } = await supabase
+                .from('users')
+                .select('username')
+                .eq('username', gameState.winner_id)
+                .maybeSingle()
+              if (byUsername?.username) setWinnerName(byUsername.username)
             })
         }
 
-        // Gate the dialog until we have the winner pattern so the new UI shows immediately
-        const openDialogWhenReady = async () => {
-          // If socket already has it, open immediately
-          if (gameState.winner_pattern) {
-            setShowLoseDialog(true)
-            setTimeout(() => router.push('/lobby'), 8000)
-            return
-          }
-
-          // Try admin-backed API a few times quickly
-          for (let attempt = 0; attempt < 4; attempt++) {
-            try {
+        // Fetch winner pattern/card in background and update UI if available
+        ;(async () => {
+          try {
+            for (let attempt = 0; attempt < 4; attempt++) {
               const resp = await fetch('/api/game/winner', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -755,35 +781,23 @@ export default function GamePage() {
               if (resp.ok) {
                 const data = await resp.json()
                 if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                if (data?.winner_pattern) setFallbackWinnerPattern(data.winner_pattern as string)
-                if (data?.winner_pattern) {
-                  setShowLoseDialog(true)
-                  setTimeout(() => router.push('/lobby'), 8000)
-                  return
-                }
+                if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
               }
-            } catch {}
-            await new Promise(res => setTimeout(res, 250))
-          }
-
-          // Final DB check
-          try {
-            const { data } = await supabase
-              .from('games')
-              .select('winner_card,winner_pattern')
-              .eq('id', gameId)
-              .single()
-            if (data?.winner_pattern) {
-              if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-              setFallbackWinnerPattern(data.winner_pattern as string)
+              await new Promise(res => setTimeout(res, 250))
+            }
+            if (!fallbackWinnerPattern && gameId) {
+              const { data } = await supabase
+                .from('games')
+                .select('winner_card,winner_pattern')
+                .eq('id', gameId)
+                .single()
+              if (data?.winner_pattern) {
+                if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                setFallbackWinnerPattern(data.winner_pattern as string)
+              }
             }
           } catch {}
-
-          // Show dialog whether or not we got it (worst-case), but we likely have it now
-          setShowLoseDialog(true)
-          setTimeout(() => router.push('/lobby'), 8000)
-        }
-        openDialogWhenReady()
+        })()
       }
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])

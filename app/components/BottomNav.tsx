@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LuGrid3X3, LuGift, LuUser } from 'react-icons/lu'
+import { LuGrid3X3, LuGift, LuUser, LuTrophy } from 'react-icons/lu'
 
 export default function BottomNav() {
   const pathname = usePathname()
@@ -13,6 +13,12 @@ export default function BottomNav() {
       href: '/lobby',
       icon: LuGrid3X3,
       active: pathname === '/lobby' || pathname.startsWith('/game')
+    },
+    {
+      name: 'Leaderboard',
+      href: '/leaderboard',
+      icon: LuTrophy,
+      active: pathname === '/leaderboard'
     },
     {
       name: 'Bonus',

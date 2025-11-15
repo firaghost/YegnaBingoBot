@@ -48,7 +48,7 @@ function getLevelInfo(xp: number = 0, level_progress?: string) {
   }
 }
 import BottomNav from '@/app/components/BottomNav'
-import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck } from 'react-icons/lu'
+import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck, LuVolume2, LuVolumeX } from 'react-icons/lu'
 
 interface Transaction {
   id: string
@@ -94,6 +94,20 @@ export default function AccountPage() {
       router.push('/login')
     }
   }, [authLoading, isAuthenticated, router])
+
+  // Load and persist sound preference
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('bingo_sound_enabled') : null
+      if (stored != null) setSoundOn(stored === 'true')
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundOn))
+    } catch {}
+  }, [soundOn])
 
   // Fetch support information from database
   useEffect(() => {
@@ -562,6 +576,21 @@ export default function AccountPage() {
           <h3 className="text-base font-semibold text-slate-900 mb-4">Settings & Support</h3>
           
           <div className="space-y-2">
+            {/* Game Sound */}
+            <button 
+              onClick={() => setSoundOn(s => { const next = !s; try { window.dispatchEvent(new CustomEvent('bingo_sound_pref_changed', { detail: { enabled: next } })) } catch {}; return next })}
+              className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
+            >
+              <div className="flex items-center gap-3">
+                {soundOn ? <LuVolume2 className="w-5 h-5 text-slate-600" /> : <LuVolumeX className="w-5 h-5 text-slate-600" />}
+                <span className="text-sm font-medium text-slate-900">Game Sound</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">{soundOn ? 'On' : 'Off'}</span>
+                <LuChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </button>
+
             {/* Language */}
             <button 
               onClick={() => setShowLanguageModal(true)}
