@@ -3,6 +3,7 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
+import compression from 'compression'
 import path from 'path'
 
 // Global socket server declaration
@@ -19,6 +20,8 @@ import { gameStateManager } from '../lib/game-state-manager'
 import { gameStateCache } from './game-state-cache'
 
 const app = express()
+// Enable gzip compression for faster responses
+app.use(compression())
 const httpServer = createServer(app)
 
 // Lazy bot engine singleton

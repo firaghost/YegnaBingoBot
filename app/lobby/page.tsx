@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
@@ -25,6 +26,7 @@ interface Room {
 }
 
 export default function LobbyPage() {
+  const router = useRouter()
   const { user, isAuthenticated, loading: authLoading } = useAuth()
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
@@ -86,6 +88,16 @@ export default function LobbyPage() {
     }
   }, [])
 
+  // Prefetch game routes for top visible rooms to make join nearly instant
+  useEffect(() => {
+    if (!rooms || rooms.length === 0) return
+    try {
+      rooms.slice(0, 6).forEach(r => {
+        try { router.prefetch(`/game/${r.id}`) } catch {}
+      })
+    } catch {}
+  }, [rooms, router])
+
   // Recompute displayed net prize when commission rate changes
   useEffect(() => {
     if (!commissionLoaded) return
@@ -114,7 +126,7 @@ export default function LobbyPage() {
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('*')
+        .select('id,name,stake,max_players,description,prize_pool,game_level,default_level,status,current_players,color')
         .eq('status', 'active')
         .order('stake', { ascending: true })
 

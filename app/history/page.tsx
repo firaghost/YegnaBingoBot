@@ -1,11 +1,13 @@
 "use client"
 
-import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import BottomNav from '@/app/components/BottomNav'
+import { LuHistory, LuCalendar, LuClock } from 'react-icons/lu'
+import { getConfig } from '@/lib/admin-config'
 
 interface Transaction {
   id: string
@@ -32,6 +34,7 @@ interface GameHistory {
   winner_id: string | null
   started_at: string
   ended_at: string | null
+  players: string[]
   rooms: {
     name: string
     color: string
@@ -44,7 +47,11 @@ export default function HistoryPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [gameHistory, setGameHistory] = useState<GameHistory[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'transactions' | 'games'>('transactions')
+  const [activeTab, setActiveTab] = useState<'transactions' | 'games'>('games')
+  const [txVisible, setTxVisible] = useState(5)
+  const [gamesVisible, setGamesVisible] = useState(5)
+  const [commissionRate, setCommissionRate] = useState<number>(0.1)
+  const [myGameIds, setMyGameIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -67,8 +74,20 @@ export default function HistoryPage() {
         if (txError) throw txError
         setTransactions(txData || [])
 
-        // Fetch game history
-        const { data: gamesData, error: gamesError } = await supabase
+        // Determine user's game IDs from transactions (stake/win)
+        const { data: myTxGameRows } = await supabase
+          .from('transactions')
+          .select('game_id, type')
+          .eq('user_id', user.id)
+          .in('type', ['stake', 'win'])
+          .not('game_id', 'is', null)
+          .limit(200)
+
+        const gameIds = Array.from(new Set((myTxGameRows || []).map((r: any) => r.game_id).filter(Boolean)))
+        setMyGameIds(new Set(gameIds as string[]))
+
+        // Fetch game history constrained to these game IDs; if none, fallback to players contains
+        let gamesQuery = supabase
           .from('games')
           .select(`
             *,
@@ -77,12 +96,15 @@ export default function HistoryPage() {
               color
             )
           `)
-          .contains('players', [user.id])
           .order('started_at', { ascending: false })
           .limit(50)
 
+        gamesQuery = gameIds.length > 0 ? gamesQuery.in('id', gameIds as string[]) : gamesQuery.contains('players', [user.id])
+        gamesQuery = gamesQuery.eq('status', 'finished')
+
+        const { data: gamesData, error: gamesError } = await gamesQuery
         if (gamesError) throw gamesError
-        setGameHistory(gamesData || [])
+        setGameHistory((gamesData || []) as any)
       } catch (error) {
         console.error('Error fetching history:', error)
       } finally {
@@ -93,141 +115,186 @@ export default function HistoryPage() {
     fetchHistory()
   }, [user])
 
+  // Load commission rate once
+  useEffect(() => {
+    const loadCommission = async () => {
+      try {
+        const rate = await getConfig('game_commission_rate')
+        const numeric = typeof rate === 'number' ? rate : parseFloat(rate)
+        const normalized = isNaN(numeric as number)
+          ? 0.1
+          : ((numeric as number) > 1 ? (numeric as number) / 100 : (numeric as number))
+        setCommissionRate(normalized)
+      } catch {}
+    }
+    loadCommission()
+  }, [])
+
   if (authLoading || loading || !user) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
   }
 
+  // Capture current user fields (user is guaranteed non-null after the guard above)
+  const UID = String(user.id)
+  const TGID_STR = String(user.telegram_id)
+  const TGID_NUM = Number(user.telegram_id)
+  const UNAME = String(user.username || '')
+
+  // Helper: decide if a game belongs to the current user (after user is non-null)
+  const isMyGame = (game: any) => {
+    if (!game) return false
+    const players: any[] = Array.isArray(game.players) ? game.players : []
+    if (players.length > 0) {
+      return (
+        players.includes(UID) ||
+        players.includes(TGID_STR) ||
+        players.includes(TGID_NUM)
+      )
+    }
+    return myGameIds.size > 0 ? myGameIds.has(game.id) : false
+  }
+
+  // Only finished games count as history
+  const myGames = gameHistory.filter(g => g.status === 'finished' && isMyGame(g))
+  const myWins = myGames.filter(g => {
+    const wid = (g as any).winner_id
+    return String(wid) === UID || String(wid) === UNAME || String(wid) === TGID_STR
+  }).length
+  const winRate = myGames.length > 0 ? (myWins / myGames.length) * 100 : 0
+  const totalWonAmount = transactions
+    .filter(tx => tx.type === 'win' && typeof tx.amount === 'number' && tx.amount > 0)
+    .reduce((sum, tx) => sum + tx.amount, 0)
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-purple-50">
-      <div className="container mx-auto px-6 py-12">
-        <Link href="/lobby" className="inline-block mb-8 text-blue-600 hover:text-blue-800 font-medium transition-colors">
-          ← Back to Lobby
-        </Link>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Sticky Header */}
+      <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LuHistory className="w-5 h-5 text-blue-500" />
+            <h1 className="text-lg font-bold text-slate-900">History</h1>
+          </div>
+        </div>
+      </div>
 
-        <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-gray-800">
-          📜 Game History
-        </h1>
-        <p className="text-center text-gray-600 mb-8">
-          View your complete transaction and game history
-        </p>
-
-        {/* User Stats Summary */}
-        <div className="max-w-4xl mx-auto mb-8">
-          <div className="bg-white rounded-2xl shadow-xl p-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-1">Total Games</p>
-                <p className="text-2xl font-bold text-blue-600">{user.games_played}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-1">Games Won</p>
-                <p className="text-2xl font-bold text-green-600">{user.games_won}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-1">Win Rate</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : '0.0'}%
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-sm text-gray-600 mb-1">Total Winnings</p>
-                <p className="text-2xl font-bold text-orange-600">{formatCurrency(user.total_winnings)}</p>
-              </div>
+      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        {/* Summary card */}
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl p-4 mb-4 shadow-lg">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs opacity-80">Total Games</div>
+              <div className="text-xl font-semibold">{myGames.length}</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-80">Games Won</div>
+              <div className="text-xl font-semibold">{myWins}</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-80">Win Rate</div>
+              <div className="text-xl font-semibold">{winRate.toFixed(1)}%</div>
+            </div>
+            <div>
+              <div className="text-xs opacity-80">Total Winnings</div>
+              <div className="text-xl font-semibold">{formatCurrency(totalWonAmount)}</div>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="max-w-4xl mx-auto mb-6">
-          <div className="flex gap-4 border-b border-gray-200">
-            <button
-              onClick={() => setActiveTab('transactions')}
-              className={`px-6 py-3 font-semibold transition-all ${
-                activeTab === 'transactions'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              💰 Transactions ({transactions.length})
-            </button>
+        <div className="bg-white rounded-xl p-3 border border-slate-200 mb-4">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setActiveTab('games')}
-              className={`px-6 py-3 font-semibold transition-all ${
-                activeTab === 'games'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'games' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
               }`}
             >
-              🎮 Games ({gameHistory.length})
+              Games ({myGames.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('transactions')}
+              className={`px-2 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              Transactions ({transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length})
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="max-w-4xl mx-auto">
+        <div>
           {activeTab === 'transactions' ? (
-            <div className="bg-white rounded-2xl shadow-xl p-6">
-              <h3 className="text-2xl font-bold mb-6 text-gray-800">Transaction History</h3>
-              
-              {transactions.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 className="text-base font-semibold mb-4 text-slate-900">Transaction History</h3>
+              {transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <div className="text-6xl mb-4">💳</div>
                   <p className="text-xl">No transactions yet</p>
                   <p className="text-sm mt-2">Start playing to see your history!</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {transactions.map(tx => (
-                    <div key={tx.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${
-                          tx.display_status === 'success' ? 'bg-green-500' :
-                          tx.display_status === 'loss' ? 'bg-red-500' :
-                          'bg-blue-500'
-                        }`}>
-                          {tx.display_icon.split(' ')[0]}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-800">
-                            {tx.room_name || tx.description}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm text-gray-500">
-                              {new Date(tx.created_at).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              tx.status === 'completed' ? 'bg-green-100 text-green-700' :
-                              tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
+                <>
+                  <div className="space-y-2">
+                    {transactions
+                      .filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal')
+                      .slice(0, txVisible)
+                      .map(tx => (
+                        <div key={tx.id} className="flex items-center justify-between px-3 py-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
+                              tx.display_status === 'success' ? 'bg-green-500' :
+                              tx.display_status === 'loss' ? 'bg-red-500' :
+                              'bg-blue-500'
                             }`}>
-                              {tx.status}
-                            </span>
+                              <span className="text-sm">{tx.display_icon.split(' ')[0]}</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-800">
+                                {tx.room_name || tx.description}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm text-gray-500">
+                                  {new Date(tx.created_at).toLocaleString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                  tx.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                  tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {tx.status}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`text-xl font-bold ${
+                            tx.amount > 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
                           </div>
                         </div>
-                      </div>
-                      <div className={`text-xl font-bold ${
-                        tx.amount > 0 ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                      </div>
+                      ))}
+                  </div>
+                  {transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length > txVisible && (
+                    <div className="mt-3 flex justify-center">
+                      <button onClick={() => setTxVisible(v => v + 10)} className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 rounded-lg">View more</button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
-            <div className="bg-white rounded-2xl shadow-xl p-6">
-              <h3 className="text-2xl font-bold mb-6 text-gray-800">Game History</h3>
-              
+            <div className="bg-white rounded-xl border border-slate-200 p-4">
+              <h3 className="text-base font-semibold mb-4 text-slate-900">Game History</h3>
               {gameHistory.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <div className="text-6xl mb-4">🎰</div>
@@ -235,79 +302,87 @@ export default function HistoryPage() {
                   <p className="text-sm mt-2">Join a room to start playing!</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {gameHistory.map(game => {
-                    const isWinner = game.winner_id === user.id
-                    const isFinished = game.status === 'finished'
-                    
-                    return (
-                      <div key={game.id} className={`p-5 rounded-lg border-2 transition-all ${
-                        isWinner ? 'bg-green-50 border-green-300' :
-                        isFinished ? 'bg-red-50 border-red-300' :
-                        'bg-gray-50 border-gray-300'
-                      }`}>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${
-                              game.status === 'finished' ? 'bg-gray-400' :
-                              game.status === 'active' ? 'bg-green-500 animate-pulse' :
-                              'bg-yellow-500'
-                            }`}></div>
-                            <h4 className="font-bold text-lg text-gray-800">{game.rooms.name}</h4>
+                <>
+                  <div className="space-y-2">
+                    {gameHistory
+                      .filter(isMyGame)
+                      .slice(0, gamesVisible)
+                      .map(game => {
+                      const isWinner = game.winner_id === user.id
+                      const isFinished = game.status === 'finished'
+                      const winnersCount = game.winner_id ? 1 : 0
+                      const shortId = (game.id || '').toString().slice(0, 8).toUpperCase()
+                      // Calculate net prize after commission
+                      const netPrize = game.prize_pool * (1 - commissionRate)
+                      return (
+                        <div key={game.id} className="px-3 py-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-all">
+                          {/* Header: game name + status pill */}
+                          <div className="flex items-center justify-between mb-1.5">
+                            <h4 className="font-semibold text-slate-900">Game {shortId}</h4>
+                            {isFinished && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                isWinner ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+                              }`}>
+                                {isWinner ? 'Won' : 'Lost'}
+                              </span>
+                            )}
                           </div>
-                          {isFinished && (
-                            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                              isWinner ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-                            }`}>
-                              {isWinner ? '🏆 Won' : '😢 Lost'}
+
+                          {/* Subline: date/time */}
+                          <div className="flex items-center gap-3 text-[11px] text-slate-600 mb-2">
+                            <span className="inline-flex items-center gap-1">
+                              <LuCalendar className="w-3.5 h-3.5" />
+                              {new Date(game.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </span>
+                            <span className="inline-flex items-center gap-1">
+                              <LuClock className="w-3.5 h-3.5" />
+                              {new Date(game.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="grid grid-cols-3 gap-3 text-xs">
+                            <div>
+                              <p className="text-slate-600">Stake</p>
+                              <p className="font-semibold text-slate-900">{formatCurrency(game.stake)}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-600">Net Prize</p>
+                              <p className="font-semibold text-emerald-600">{formatCurrency(netPrize)}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-600">Winners</p>
+                              <p className="font-semibold text-slate-900">{winnersCount}</p>
+                            </div>
+                          </div>
+
+                          {isFinished && game.ended_at && (
+                            <div className="mt-2 pt-2 border-t border-slate-200">
+                              <p className="text-xs text-slate-500">
+                                Game ended: {new Date(game.ended_at).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
                           )}
                         </div>
-                        
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                          <div>
-                            <p className="text-gray-600">Stake</p>
-                            <p className="font-semibold text-gray-800">{formatCurrency(game.stake)}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Prize Pool</p>
-                            <p className="font-semibold text-green-600">{formatCurrency(game.prize_pool)}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Status</p>
-                            <p className="font-semibold capitalize text-gray-800">{game.status}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Date</p>
-                            <p className="font-semibold text-gray-800">
-                              {new Date(game.started_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-
-                        {isFinished && game.ended_at && (
-                          <div className="mt-3 pt-3 border-t border-gray-200">
-                            <p className="text-xs text-gray-500">
-                              Game ended: {new Date(game.ended_at).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
+                      )
+                    })}
+                  </div>
+                  {gameHistory.length > gamesVisible && (
+                    <div className="mt-3 flex justify-center">
+                      <button onClick={() => setGamesVisible(v => v + 10)} className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 rounded-lg">View more</button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
         </div>
+        <BottomNav />
       </div>
     </div>
   )
