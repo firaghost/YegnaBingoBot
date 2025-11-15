@@ -3,6 +3,7 @@ import { supabaseAdmin } from './supabase'
 import { getConfig } from './admin-config'
 
 const MINI_APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || 'https://yegnagame.vercel.app'
+const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial'
 
 // Use admin client for all operations
 const supabase = supabaseAdmin
@@ -38,11 +39,13 @@ export function setupBotHandlers(bot: Telegraf) {
           `⚡ Real-time gameplay\n` +
           `🏆 Leaderboard rankings\n` +
           `🔥 Daily streak bonuses\n\n` +
+          `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
           `Click "Register Now" to begin!`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
               [Markup.button.callback('Register Now', 'register')],
+              [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
               [Markup.button.callback('Help', 'help')]
             ])
           }
@@ -57,13 +60,15 @@ export function setupBotHandlers(bot: Telegraf) {
           `🎮 Games Played: ${existingUser.games_played}\n` +
           `🏆 Games Won: ${existingUser.games_won}\n` +
           `🔥 Daily Streak: ${existingUser.daily_streak || 0} days\n\n` +
+          `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
           `Tap the button below to start playing!`,
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
               [Markup.button.webApp('Play Now', MINI_APP_URL)],
               [Markup.button.callback('Balance', 'balance')],
-              [Markup.button.callback('Leaderboard', 'leaderboard')]
+              [Markup.button.callback('Leaderboard', 'leaderboard')],
+              [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
             ])
           }
         )
@@ -281,6 +286,81 @@ export function setupBotHandlers(bot: Telegraf) {
     )
   })
 
+  // Channel command
+  bot.command('channel', async (ctx) => {
+    await ctx.reply(
+      `📢 *Join Our Official Channel*\n\n` +
+      `Stay updated with announcements, bonuses, and events.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
+  })
+
+  // Levels command (+ alias /level)
+  bot.command(['levels', 'level'], async (ctx) => {
+    await ctx.reply(
+      `🎯 *Game Difficulty Levels*\n\n` +
+      `**Easy** \n   • Speed: 1 second intervals\n   • XP Reward: 10 XP per win\n   • Perfect for beginners\n\n` +
+      `**Medium** \n   • Speed: 2 second intervals\n   • XP Reward: 25 XP per win\n   • Balanced risk/reward\n\n` +
+      `**Hard** \n   • Speed: 3 second intervals\n   • XP Reward: 50 XP per win\n   • Higher stakes, bigger wins\n\n` +
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
+        ])
+      }
+    )
+  })
+
+  // My stats command (+ alias /mystat)
+  bot.command(['mystats', 'mystat'], async (ctx) => {
+    const userId = ctx.from.id
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('*')
+        .eq('telegram_id', userId.toString())
+        .single()
+
+      if (!user) {
+        await ctx.reply('Please use /start to register first!')
+        return
+      }
+
+      const winRate = user.games_played > 0
+        ? ((user.games_won / user.games_played) * 100).toFixed(1)
+        : '0.0'
+
+      await ctx.reply(
+        `📊 *Your XP & Statistics*\n\n` +
+        `💰 Balance: ${user.balance} ETB\n` +
+        `🎮 Games Played: ${user.games_played}\n` +
+        `🏆 Games Won: ${user.games_won}\n` +
+        `📈 Win Rate: ${winRate}%\n` +
+        `💵 Total Winnings: ${user.total_winnings} ETB\n\n` +
+        `📢 *Join our channel:* ${CHANNEL_URL}`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('Play Game', MINI_APP_URL)],
+            [Markup.button.webApp('Full Stats', `${MINI_APP_URL}/account`)],
+            [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
+          ])
+        }
+      )
+    } catch (error) {
+      console.error('Error in mystats command:', error)
+      await ctx.reply('Failed to fetch statistics.')
+    }
+  })
+
   // Leaderboard command
   bot.command('leaderboard', async (ctx) => {
     try {
@@ -355,10 +435,13 @@ export function setupBotHandlers(bot: Telegraf) {
       `*Game Commands:*\n` +
       `/start - Register and start playing\n` +
       `/play - Open the game\n` +
+      `/channel - Join our official channel\n` +
       `/balance - Check your balance\n` +
       `/deposit - Add funds to your account\n` +
       `/withdraw - Withdraw your winnings\n` +
       `/leaderboard - View top players\n` +
+      `/levels - View game difficulty levels\n` +
+      `/mystats - View your stats\n` +
       `/help - Show this help message\n\n` +
       `*How to Play:*\n` +
       `1️⃣ Register with /start\n` +
@@ -366,11 +449,13 @@ export function setupBotHandlers(bot: Telegraf) {
       `3️⃣ Join a game room\n` +
       `4️⃣ Mark numbers as they're called\n` +
       `5️⃣ Get BINGO and win prizes!\n\n` +
+      `📢 *Join our channel:* ${CHANNEL_URL}\n` +
       `Need more help? Contact support!`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )

@@ -5,6 +5,7 @@ import { getConfig } from '../lib/admin-config'
 
 const BOT_TOKEN = process.env.BOT_TOKEN!
 const MINI_APP_URL = process.env.MINI_APP_URL || 'https://yegnagame.vercel.app'
+const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial'
 
 const bot = new Telegraf(BOT_TOKEN)
 
@@ -52,13 +53,13 @@ bot.command('start', async (ctx) => {
         `🏆 Leaderboard rankings\n` +
         `🔥 Daily streak bonuses\n\n` +
         `📢 *Join our official channel for updates:*\n` +
-        `https://t.me/BingoXofficial\n\n` +
+        `${CHANNEL_URL}\n\n` +
         `Click "Register Now" to begin!`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.callback('✅ Register Now', 'register')],
-            [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')],
+            [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
             [Markup.button.callback('❓ Help', 'help')]
           ])
         }
@@ -73,13 +74,13 @@ bot.command('start', async (ctx) => {
         `🎮 Games Played: ${existingUser.games_played}\n` +
         `🏆 Games Won: ${existingUser.games_won}\n` +
         `🔥 Daily Streak: ${existingUser.daily_streak || 0} days\n\n` +
-        `📢 *Join our channel:* https://t.me/BingoXofficial\n\n` +
+        `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
         `Tap the button below to start playing!`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-            [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')],
+            [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
             [Markup.button.callback('💰 Balance', 'balance')]
           ])
         }
@@ -114,12 +115,12 @@ bot.command('play', async (ctx) => {
       `🎮 *Ready to Play?*\n\n` +
       `💰 Available Balance: ${totalBalance.toFixed(2)} ETB\n\n` +
       `Choose your game room and start playing!\n\n` +
-      `📢 *Join our channel:* https://t.me/BingoXofficial`,
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )
@@ -153,13 +154,13 @@ bot.command('rooms', async (ctx) => {
       message += `   Current: ${room.current_players || 0} players\n\n`
     })
 
-    message += `📢 *Join our channel:* https://t.me/BingoXofficial`
+    message += `📢 *Join our channel:* ${CHANNEL_URL}`
 
     await ctx.reply(message, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🎮 Join Game', `${MINI_APP_URL}/lobby`)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     })
   } catch (error) {
@@ -195,12 +196,12 @@ bot.command('balance', async (ctx) => {
       `🎮 Games Played: ${user.games_played || 0}\n` +
       `🏆 Games Won: ${user.games_won || 0}\n` +
       `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB\n\n` +
-      `📢 *Join our channel:* https://t.me/BingoXofficial`,
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )
@@ -250,12 +251,12 @@ bot.command('account', async (ctx) => {
       `📈 Win Rate: ${winRate}%\n` +
       `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB\n` +
       `🔥 Daily Streak: ${user.daily_streak || 0} days\n\n` +
-      `📢 *Join our channel:* https://t.me/BingoXofficial`,
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('📊 Full Profile', `${MINI_APP_URL}/account`)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )
@@ -282,12 +283,12 @@ bot.command('levels', async (ctx) => {
     `   • XP Reward: 50 XP per win\n` +
     `   • Higher stakes, bigger wins\n\n` +
     `💡 *Tip: Higher levels give more XP!*\n\n` +
-    `📢 *Join our channel:* https://t.me/BingoXofficial`,
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -331,12 +332,12 @@ bot.command('mystats', async (ctx) => {
       `💸 Total Winnings: ${(user.total_winnings || 0).toFixed(2)} ETB\n` +
       `🔥 Daily Streak: ${user.daily_streak || 0} days\n` +
       `📅 Member Since: ${new Date(user.created_at).toLocaleDateString()}\n\n` +
-      `📢 *Join our channel:* https://t.me/BingoXofficial`,
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('📈 Detailed Stats', `${MINI_APP_URL}/account`)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )
@@ -351,12 +352,12 @@ bot.command('leaderboard', async (ctx) => {
   await ctx.reply(
     '🏆 *Leaderboard*\n\n' +
     'View top players and rankings:\n\n' +
-    '📢 *Join our channel:* https://t.me/BingoXofficial',
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🏆 View Leaderboard', `${MINI_APP_URL}/leaderboard`)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -377,12 +378,12 @@ bot.command('history', async (ctx) => {
     `• Bonus earnings\n` +
     `• Game stakes\n` +
     `• Balance changes\n\n` +
-    `📢 *Join our channel:* https://t.me/BingoXofficial`,
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('📜 View History', `${MINI_APP_URL}/history`)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -393,12 +394,12 @@ bot.command('deposit', async (ctx) => {
   await ctx.reply(
     '💸 *Deposit Funds*\n\n' +
     'Add money to your account to play more games!\n\n' +
-    '📢 *Join our channel:* https://t.me/BingoXofficial',
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -409,12 +410,12 @@ bot.command('withdraw', async (ctx) => {
   await ctx.reply(
     '💰 *Withdraw Winnings*\n\n' +
     'Cash out your winnings to your account!\n\n' +
-    '📢 *Join our channel:* https://t.me/BingoXofficial',
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('💰 Withdraw', `${MINI_APP_URL}/withdraw`)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -448,13 +449,13 @@ bot.command('help', async (ctx) => {
     `4. Mark numbers as they're called\n` +
     `5. Complete a line to win!\n` +
     `6. Earn XP and level up!\n\n` +
-    `📢 *Join our channel:* https://t.me/BingoXofficial\n` +
+    `📢 *Join our channel:* ${CHANNEL_URL}\n` +
     `*Need Support?* Contact: @bingox_support`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -474,7 +475,7 @@ bot.command('channel', async (ctx) => {
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
-        [Markup.button.url('📢 Join BingoX Official', 'https://t.me/BingoXofficial')],
+        [Markup.button.url('📢 Join BingoX Official', CHANNEL_URL)],
         [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
       ])
     }
@@ -507,13 +508,13 @@ bot.action('register', async (ctx) => {
         `✅ You're already registered!\n\n` +
         `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
         `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n\n` +
-        `📢 *Join our channel:* https://t.me/BingoXofficial\n\n` +
+        `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
         `Tap "Play Now" to start!`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-            [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+            [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
           ])
         }
       )
@@ -555,14 +556,14 @@ bot.action('register', async (ctx) => {
       `🎁 Bonus: ${registrationBonus.toFixed(2)} ETB\n` +
       `📊 Total: ${registrationBonus.toFixed(2)} ETB\n\n` +
       `📢 *Don't forget to join our channel:*\n` +
-      `https://t.me/BingoXofficial\n\n` +
+      `${CHANNEL_URL}\n\n` +
       `You can start playing right away!\n` +
       `Tap "Play Now" to choose a room! 🎮`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')],
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
           [Markup.button.callback('💰 Balance', 'balance')],
           [Markup.button.callback('❓ Help', 'help')]
         ])
@@ -599,14 +600,14 @@ bot.action('balance', async (ctx) => {
       `Games Played: ${user.games_played || 0}\n` +
       `Games Won: ${user.games_won || 0}\n` +
       `Win Rate: ${user.games_played > 0 ? ((user.games_won / user.games_played) * 100).toFixed(1) : 0}%\n\n` +
-      `📢 *Join our channel:* https://t.me/BingoXofficial`,
+      `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.webApp('💸 Deposit', `${MINI_APP_URL}/deposit`)],
           [Markup.button.webApp('💰 Withdraw', `${MINI_APP_URL}/withdraw`)],
           [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)],
-          [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+          [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
     )
@@ -626,12 +627,12 @@ bot.action('help', async (ctx) => {
     `/play - Join a game room\n` +
     `/balance - Check your balance\n` +
     `/help - Show this help\n\n` +
-    `📢 *Join our channel:* https://t.me/BingoXofficial`,
+    `📢 *Join our channel:* ${CHANNEL_URL}`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
         [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-        [Markup.button.url('📢 Join Channel', 'https://t.me/BingoXofficial')]
+        [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
       ])
     }
   )
@@ -648,8 +649,9 @@ bot.on('inline_query', async (ctx) => {
     const joinKeyboard = {
       inline_keyboard: [
         [
-          { text: '📢 Join Channel', url: 'https://t.me/BingoXofficial' },
-          { text: '🎮 Play Now', web_app: { url: MINI_APP_URL } as any }
+          { text: '📢 Join Channel', url: CHANNEL_URL },
+          { text: '🎮 Play Now', web_app: { url: MINI_APP_URL } as any },
+          { text: '💸 Deposit', web_app: { url: `${MINI_APP_URL}/deposit` } as any }
         ]
       ]
     }
@@ -691,7 +693,7 @@ bot.on('inline_query', async (ctx) => {
         title: 'Join Channel',
         description: 'Official announcements and bonuses',
         input_message_content: {
-          message_text: '📢 Join our official channel: https://t.me/BingoXofficial',
+          message_text: '📢 Join our official channel: ' + CHANNEL_URL,
           parse_mode: 'Markdown'
         },
         reply_markup: joinKeyboard
@@ -706,6 +708,20 @@ bot.on('inline_query', async (ctx) => {
         description: 'Open profile and stats',
         input_message_content: {
           message_text: '📊 Open the mini app to view your stats and profile.',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    if (!q || q === 'deposit') {
+      results.push({
+        type: 'article',
+        id: 'deposit',
+        title: 'Deposit',
+        description: 'Add funds to your account',
+        input_message_content: {
+          message_text: '💸 Tap Deposit to add funds to your account in the mini app.',
           parse_mode: 'Markdown'
         },
         reply_markup: joinKeyboard
@@ -759,7 +775,7 @@ process.on('uncaughtException', (error) => {
 
 bot.launch()
 console.log('🤖 BingoX Bot is running...')
-console.log('📢 Channel: https://t.me/BingoXofficial')
+console.log('📢 Channel:', CHANNEL_URL)
 
 // Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'))
