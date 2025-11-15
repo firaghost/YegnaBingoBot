@@ -318,13 +318,29 @@ export class OptimizedTimerManager {
 }
 
 // Export singleton instance
+// [ADDED FOR CAPACITY FIX] Hookable callbacks so servers can inject per-game logic
+let externalOnNumberCall: ((gameId: string, callCount: number) => Promise<void> | void) | null = null
+let externalOnGameEnd: ((gameId: string, reason: string) => Promise<void> | void) | null = null
+
+// [ADDED FOR CAPACITY FIX] Allow servers to set hooks at runtime
+export function setTimerHooks(hooks: { onNumberCall?: typeof externalOnNumberCall; onGameEnd?: typeof externalOnGameEnd }) {
+  if (hooks.onNumberCall) externalOnNumberCall = hooks.onNumberCall
+  if (hooks.onGameEnd) externalOnGameEnd = hooks.onGameEnd
+}
+
 export const optimizedTimerManager = new OptimizedTimerManager({
   onNumberCall: async (gameId: string, callCount: number) => {
-    // This will be implemented in the main server file
+    if (externalOnNumberCall) {
+      try { await externalOnNumberCall(gameId, callCount) } catch (e) { /* noop */ }
+      return
+    }
     console.log(`📢 Game ${gameId}: Call number ${callCount}`)
   },
   onGameEnd: async (gameId: string, reason: string) => {
-    // This will be implemented in the main server file  
+    if (externalOnGameEnd) {
+      try { await externalOnGameEnd(gameId, reason) } catch (e) { /* noop */ }
+      return
+    }
     console.log(`🏁 Game ${gameId} ended: ${reason}`)
   }
 })

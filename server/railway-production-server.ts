@@ -18,11 +18,19 @@ import { BotEngine } from './bot-engine'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
 import { gameStateCache } from './game-state-cache'
+// [ADDED FOR CAPACITY FIX]
+import { acquireOrWait, releaseSlot } from './capacity-manager'
+// [ADDED FOR CAPACITY FIX]
+import { optimizedTimerManager, setTimerHooks } from '../lib/optimized-timer-manager'
+// [ADDED FOR CAPACITY FIX]
+import { startRoomGC } from './room-gc.js'
 
 const app = express()
 // Enable gzip compression for faster responses
 app.use(compression())
 const httpServer = createServer(app)
+// [ADDED FOR CAPACITY FIX] Start background room garbage collector
+try { startRoomGC() } catch {}
 
 // Lazy bot engine singleton
 let botEngineInstance: BotEngine | null = null
@@ -36,6 +44,10 @@ async function getBotEngine(): Promise<BotEngine> {
 
 // Store active game intervals to manage number calling
 const gameIntervals = new Map<string, NodeJS.Timeout>()
+// [ADDED FOR CAPACITY FIX] Track games driven by the global scheduler instead of per-game intervals
+const schedulerGames = new Set<string>()
+// [ADDED FOR CAPACITY FIX] Per-game tick registry used by the scheduler hook
+const schedulerTickMap = new Map<string, () => Promise<void>>()
 
 // Store active waiting periods to prevent duplicates
 const activeWaitingPeriods = new Set<string>()
@@ -142,15 +154,34 @@ async function startNumberCalling(gameId: string) {
       return 'N'
     }
     
-    const callInterval = setInterval(async () => {
+    // [ADDED FOR CAPACITY FIX] Capacity gate: acquire a global slot (queue 1–3s on pressure)
+    try {
+      const ok = await acquireOrWait(gameId)
+      if (!ok) {
+        console.warn(`⚠️ Capacity busy for game ${gameId}. Proceeding cautiously.`)
+      }
+    } catch {}
+
+    // Common tick body used by both scheduler and fallback interval
+    const doTick = async () => {
       try {
         // Check if game is still active (from cache - instant)
         const currentGame = gameStateCache.get(gameId)
 
         if (!currentGame || currentGame.status !== 'active' || currentGame.winner_id) {
           console.log(`🛑 Stopping number calling - game ${gameId} ended (status: ${currentGame?.status}, winner: ${currentGame?.winner_id})`)
-          clearInterval(callInterval)
-          gameIntervals.delete(gameId)
+          // Stop correctly depending on driver
+          if (schedulerGames.has(gameId)) {
+            optimizedTimerManager.removeGame(gameId)
+            schedulerGames.delete(gameId)
+            schedulerTickMap.delete(gameId)
+          } else {
+            const t = gameIntervals.get(gameId)
+            if (t) clearInterval(t)
+            gameIntervals.delete(gameId)
+          }
+          // [ADDED FOR CAPACITY FIX]
+          try { await releaseSlot(gameId) } catch {}
           gameStateCache.remove(gameId) // Clean up cache
           return
         }
@@ -158,8 +189,17 @@ async function startNumberCalling(gameId: string) {
         // Check if we have numbers left to call
         if (numberIndex >= availableNumbers.length) {
           console.log(`🏁 All available numbers called for game ${gameId}`)
-          clearInterval(callInterval)
-          gameIntervals.delete(gameId)
+          if (schedulerGames.has(gameId)) {
+            optimizedTimerManager.removeGame(gameId)
+            schedulerGames.delete(gameId)
+            schedulerTickMap.delete(gameId)
+          } else {
+            const t = gameIntervals.get(gameId)
+            if (t) clearInterval(t)
+            gameIntervals.delete(gameId)
+          }
+          // [ADDED FOR CAPACITY FIX]
+          try { await releaseSlot(gameId) } catch {}
           return
         }
 
@@ -171,6 +211,8 @@ async function startNumberCalling(gameId: string) {
               p_game_id: gameId
             })
 
+// (moved endpoints to top-level outside function)
+
           if (numberError) {
             console.warn('⚠️ Secure number calling failed, falling back to manual method:', numberError)
             throw new Error('Fallback to manual method')
@@ -179,8 +221,16 @@ async function startNumberCalling(gameId: string) {
           const result = numberResult[0]
           if (!result.success) {
             console.log(`🏁 Number calling ended: ${result.message}`)
-            clearInterval(callInterval)
-            gameIntervals.delete(gameId)
+            if (schedulerGames.has(gameId)) {
+              optimizedTimerManager.removeGame(gameId)
+              schedulerGames.delete(gameId)
+              schedulerTickMap.delete(gameId)
+            } else {
+              const t = gameIntervals.get(gameId)
+              if (t) clearInterval(t)
+              gameIntervals.delete(gameId)
+            }
+            try { await releaseSlot(gameId) } catch {}
             return
           }
 
@@ -204,8 +254,16 @@ async function startNumberCalling(gameId: string) {
           // Check if game should end
           if (remainingNumbers === 0) {
             console.log(`🏁 All numbers called for game ${gameId}`)
-            clearInterval(callInterval)
-            gameIntervals.delete(gameId)
+            if (schedulerGames.has(gameId)) {
+              optimizedTimerManager.removeGame(gameId)
+              schedulerGames.delete(gameId)
+              schedulerTickMap.delete(gameId)
+            } else {
+              const t = gameIntervals.get(gameId)
+              if (t) clearInterval(t)
+              gameIntervals.delete(gameId)
+            }
+            try { await releaseSlot(gameId) } catch {}
             return
           }
 
@@ -238,10 +296,25 @@ async function startNumberCalling(gameId: string) {
         console.error(`❌ Error calling number for game ${gameId}:`, error)
         // Don't stop on single errors, but log them
       }
-    }, callIntervalMs) // Dynamic interval based on game level (Easy: 1s, Medium: 2s, Hard: 3s)
+    }
 
-    // Store interval for cleanup
-    gameIntervals.set(gameId, callInterval)
+    const USE_GLOBAL_SCHED = process.env.USE_GLOBAL_SCHEDULER === 'true'
+    if (USE_GLOBAL_SCHED) {
+      // [ADDED FOR CAPACITY FIX] Drive ticks via global scheduler
+      schedulerTickMap.set(gameId, doTick)
+      // Set hooks once (idempotent) to dispatch to per-game registry
+      setTimerHooks({
+        onNumberCall: async (gid: string) => { const fn = schedulerTickMap.get(gid); if (fn) await fn() },
+        onGameEnd: async (gid: string) => { schedulerTickMap.delete(gid); schedulerGames.delete(gid); try { await releaseSlot(gid) } catch {} }
+      })
+      optimizedTimerManager.addGame(gameId, (gameLevel as any))
+      schedulerGames.add(gameId)
+    } else {
+      // Fallback to original per-game interval
+      const callInterval = setInterval(doTick, callIntervalMs)
+      // Store interval for cleanup
+      gameIntervals.set(gameId, callInterval)
+    }
 
   } catch (error) {
     console.error(`❌ Error starting number calling for game ${gameId}:`, error)
@@ -271,6 +344,13 @@ function stopNumberCalling(gameId: string) {
     
     console.log(`🧹 Cleaned up all tracking for game ${gameId}`)
   }
+  // [ADDED FOR CAPACITY FIX] Also stop scheduler-driven games and release capacity
+  if (schedulerGames.has(gameId)) {
+    try { optimizedTimerManager.removeGame(gameId) } catch {}
+    schedulerGames.delete(gameId)
+    schedulerTickMap.delete(gameId)
+  }
+  try { releaseSlot(gameId) } catch {}
   // Removed the "No active interval found" warning to reduce spam
 }
 
@@ -1579,8 +1659,8 @@ httpServer.listen(PORT, () => {
   console.log('🎮 ========================================')
   console.log('')
   console.log(`🚀 Server running on port ${PORT}`)
-  console.log(`🌐 Health check: https://BingoXbot-production.up.railway.app/health`)
-  console.log(`📊 Admin stats: https://BingoXbot-production.up.railway.app/api/admin/stats`)
+  console.log(`🌐 Health check: https://yegnabingobot-production.up.railway.app/health`)
+  console.log(`📊 Admin stats: https://yegnabingobot-production.up.railway.app/api/admin/stats`)
   console.log('')
   console.log('🔌 Socket.IO Features Available:')
   console.log('   🏠 Waiting Room System (Phase 1)')
