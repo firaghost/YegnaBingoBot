@@ -8,7 +8,7 @@ import { useSocket } from '@/lib/hooks/useSocket'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 import { getGameConfig, getConfig } from '@/lib/admin-config'
-import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown } from 'lucide-react'
+import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown, Volume2, VolumeX } from 'lucide-react'
 
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
 
@@ -57,6 +57,22 @@ export default function GamePage() {
   const [showConnectionError, setShowConnectionError] = useState(false)
   const [connectionErrorMessage, setConnectionErrorMessage] = useState('')
   const cleanupRef = useRef<{ gameId: string; userId: string } | null>(null)
+  // Sound toggle and simple audio cache
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const audioCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+
+  // Load persisted sound preference
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('bingo_sound_enabled') : null
+      if (stored != null) setSoundEnabled(stored === 'true')
+    } catch {}
+  }, [])
+
+  // Persist sound preference
+  useEffect(() => {
+    try { if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundEnabled)) } catch {}
+  }, [soundEnabled])
 
   // Lucky number selection (purely cosmetic)
   const [luckyNumber, setLuckyNumber] = useState<number | null>(null)
@@ -486,6 +502,45 @@ export default function GamePage() {
 
   // Track previous latest number for haptic feedback
   const prevLatestNumberRef = useRef<number | null>(null)
+  const lastPlayedAudioRef = useRef<number | null>(null)
+
+  // Play called number audio using files under /BINGO_Sound (served from public/)
+  const playCallAudio = (letter: string, number: number) => {
+    if (!soundEnabled) return
+    const key = `${letter}${number}`
+    const url = `/BINGO_Sound/${key}.mp3`
+    let audio = audioCacheRef.current.get(key)
+    if (!audio) {
+      audio = new Audio(url)
+      audio.preload = 'auto'
+      audioCacheRef.current.set(key, audio)
+    }
+    try {
+      audio.currentTime = 0
+      audio.play().catch((e) => {
+        // Autoplay might be blocked until user interacts; ignore errors silently
+        console.warn('Audio play blocked or failed:', e?.message || e)
+      })
+    } catch {}
+  }
+
+  // Immediate audio on socket event (no need to wait for state propagation)
+  useEffect(() => {
+    const handler = (ev: any) => {
+      try {
+        const detail = (ev as CustomEvent)?.detail as any
+        const letter = detail?.letter
+        const number = detail?.number
+        if (letter && typeof number === 'number') {
+          lastPlayedAudioRef.current = number
+          playCallAudio(letter, number)
+          if (navigator.vibrate) navigator.vibrate(100)
+        }
+      } catch {}
+    }
+    window.addEventListener('bingo_number_called', handler as EventListener)
+    return () => window.removeEventListener('bingo_number_called', handler as EventListener)
+  }, [soundEnabled])
 
   // Handle game transition and generate bingo card
   useEffect(() => {
@@ -535,7 +590,7 @@ export default function GamePage() {
   useEffect(() => {
     if (!gameState) return
 
-    // Haptic feedback when new number is called
+    // Haptic feedback and audio when new number is called (state-based fallback)
     if (gameState.status === 'active' && gameState.latest_number) {
       const currentNumber = gameState.latest_number.number
       if (prevLatestNumberRef.current !== currentNumber) {
@@ -544,6 +599,13 @@ export default function GamePage() {
         // Vibrate on mobile when number is called
         if (navigator.vibrate) {
           navigator.vibrate(100) // Vibrate for 100ms
+        }
+
+        // Play the pre-recorded audio for the called number if not already played via event
+        if (lastPlayedAudioRef.current !== currentNumber) {
+          const currentLetter = gameState.latest_number.letter
+          playCallAudio(currentLetter, currentNumber)
+          lastPlayedAudioRef.current = currentNumber
         }
       }
     }
@@ -952,7 +1014,14 @@ export default function GamePage() {
             ×
           </button>
           <h1 className="text-xl font-bold text-slate-900">{getRoomName()}</h1>
-          <div className="w-6"></div>
+          <button
+            onClick={() => setSoundEnabled(s => !s)}
+            aria-label={soundEnabled ? 'Mute calls' : 'Unmute calls'}
+            title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
+            className="text-slate-900 hover:text-slate-600 transition-colors"
+          >
+            {soundEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+          </button>
         </div>
       </div>
 

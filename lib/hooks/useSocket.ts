@@ -231,6 +231,11 @@ export function useSocket() {
         called_numbers: [...(prev.called_numbers || []), data.number],
         latest_number: { letter: data.letter, number: data.number }
       } : null)
+
+      // Fire a lightweight DOM event so the UI can react instantly (e.g., play audio)
+      try {
+        window.dispatchEvent(new CustomEvent('bingo_number_called', { detail: data }))
+      } catch {}
     })
 
     socket.on('bingo_winner', (data) => {
