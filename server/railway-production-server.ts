@@ -203,9 +203,36 @@ async function startNumberCalling(gameId: string) {
 
           // Check if game should end
           if (remainingNumbers === 0) {
-            console.log(`🏁 All numbers called for game ${gameId}`)
+            console.log(`🏁 All 75 numbers called for game ${gameId} - ending game`)
             clearInterval(callInterval)
             gameIntervals.delete(gameId)
+            
+            // End game with no winner
+            try {
+              const { supabaseAdmin } = await import('../lib/supabase')
+              await supabaseAdmin
+                .from('games')
+                .update({
+                  status: 'finished',
+                  ended_at: new Date().toISOString(),
+                  winner_id: null
+                })
+                .eq('id', gameId)
+              
+              // Broadcast no winner event
+              if (global.io) {
+                global.io.to(`game-${gameId}`).to(gameId).emit('game_over', {
+                  gameId,
+                  winner: null,
+                  reason: 'no_winner_all_numbers_called',
+                  message: 'Game ended - All 75 numbers called with no winner'
+                })
+              }
+              
+              console.log(`📢 Game ${gameId}: No winner - all numbers called`)
+            } catch (error) {
+              console.error(`Error ending game ${gameId}:`, error)
+            }
             return
           }
 
@@ -232,6 +259,41 @@ async function startNumberCalling(gameId: string) {
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
           // Let bot engine act on this tick
           try { (await getBotEngine()).tick(gameId) } catch {}
+          
+          // Check if all numbers called
+          if (callCount >= 75) {
+            console.log(`🏁 All 75 numbers called for game ${gameId} - ending game`)
+            clearInterval(callInterval)
+            gameIntervals.delete(gameId)
+            
+            // End game with no winner
+            try {
+              const { supabaseAdmin } = await import('../lib/supabase')
+              await supabaseAdmin
+                .from('games')
+                .update({
+                  status: 'finished',
+                  ended_at: new Date().toISOString(),
+                  winner_id: null
+                })
+                .eq('id', gameId)
+              
+              // Broadcast no winner event
+              if (global.io) {
+                global.io.to(`game-${gameId}`).to(gameId).emit('game_over', {
+                  gameId,
+                  winner: null,
+                  reason: 'no_winner_all_numbers_called',
+                  message: 'Game ended - All 75 numbers called with no winner'
+                })
+              }
+              
+              console.log(`📢 Game ${gameId}: No winner - all numbers called`)
+            } catch (error) {
+              console.error(`Error ending game ${gameId}:`, error)
+            }
+            return
+          }
         }
 
       } catch (error) {

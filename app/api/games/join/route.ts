@@ -72,13 +72,17 @@ export async function POST(request: Request) {
                 })
             }
 
-            // Update game player count
+            // Update game player count and bots array
+            const botIds = bots.map((b: any) => b.id)
             await supabaseAdmin
               .from('games')
-              .update({ players: currentPlayers + bots.length })
+              .update({ 
+                players: currentPlayers + bots.length,
+                bots: botIds
+              })
               .eq('id', gameId)
 
-            console.log(`🤖 Added ${bots.length} bots to game ${gameId}`)
+            console.log(`🤖 Added ${bots.length} bots to game ${gameId}: ${botIds.join(', ')}`)
           }
         }
       }
