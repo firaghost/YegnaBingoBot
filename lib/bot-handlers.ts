@@ -376,7 +376,7 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       let message = '🏆 *Top 10 Players*\n\n'
-      leaderboard.forEach((player: any, index: number) => {
+      leaderboard.forEach((player: any, index: any) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         message += `${medal} ${player.username}\n`
         message += `   💰 ${player.total_winnings} ETB | 🎯 ${player.games_won} wins\n\n`
@@ -409,7 +409,7 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       let message = '🏆 *Top 10 Players*\n\n'
-      leaderboard.forEach((player: any, index: number) => {
+      leaderboard.forEach((player : any, index: any) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         message += `${medal} ${player.username} - ${player.total_winnings} ETB\n`
       })

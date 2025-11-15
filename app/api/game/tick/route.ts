@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     // This ensures only ONE tick can process at a time
     const { data: game, error: gameError } = await supabase
       .rpc('get_game_for_update', { game_id: gameId })
-      .single()
+      .single() as { data: Game | null; error: any }
 
     if (gameError || !game) {
       // Game not found or locked by another tick
@@ -175,17 +175,45 @@ export async function POST(request: NextRequest) {
       }
       
       if (!nextNumber) {
-        // All numbers called, end game
-        await supabase
-          .from('games')
-          .update({ status: 'finished', ended_at: new Date().toISOString() })
-          .eq('id', gameId)
-          .eq('status', 'active')
+        // All numbers called - wait 10 seconds for bingo claims, then finish with no winner
+        console.log(`⏰ Game ${gameId} - all 75 numbers called, waiting 10s for bingo claims...`)
+        
+        // Schedule the no-winner finish after grace period
+        setTimeout(async () => {
+          try {
+            // Check if someone claimed in the meantime
+            const { data: finalGame } = await supabase
+              .from('games')
+              .select('winner_id, status')
+              .eq('id', gameId)
+              .single()
+            
+            if (finalGame?.winner_id || finalGame?.status === 'finished') {
+              console.log(`✅ Game ${gameId} already finished with winner`)
+              return
+            }
+            
+            // No winner claimed - finish game with no winner
+            await supabase
+              .from('games')
+              .update({ 
+                status: 'finished', 
+                ended_at: new Date().toISOString(),
+                winner_id: null
+              })
+              .eq('id', gameId)
+              .is('winner_id', null)  // Only if no winner yet
+            
+            console.log(`🏁 Game ${gameId} finished - NO WINNER (all 75 numbers called)`)
+          } catch (error) {
+            console.error(`Error finishing game ${gameId} with no winner:`, error)
+          }
+        }, 10000)  // 10 second grace period
         
         return NextResponse.json({
           success: true,
-          action: 'end',
-          message: 'All numbers called, game ended'
+          action: 'all_numbers_called',
+          message: 'All 75 numbers called, waiting for bingo claims...'
         })
       }
       

@@ -42,6 +42,7 @@ export default function GamePage() {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showWinDialog, setShowWinDialog] = useState(false)
   const [showLoseDialog, setShowLoseDialog] = useState(false)
+  const [showNoWinnerDialog, setShowNoWinnerDialog] = useState(false)
   const [winAmount, setWinAmount] = useState(0)
   const [winnerName, setWinnerName] = useState('')
   const [findingNewGame, setFindingNewGame] = useState(false)
@@ -766,90 +767,96 @@ export default function GamePage() {
     }
 
     // Check if game finished
-    if (gameState.status === 'finished' && gameState.winner_id) {
-      console.log('🏁 Game finished! Winner:', gameState.winner_id)
-      
-      // Compute NET prize (fallback to client-side using admin commission)
-      const gross = gameState.prize_pool
-      const net = typeof gameState.net_prize === 'number' 
-        ? gameState.net_prize 
-        : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
-
-      const winnerKey = gameState.winner_id
-      const isSelfWinner = (winnerKey === user?.id) || (winnerKey && winnerKey === user?.username)
-
-      if (isSelfWinner) {
-        // User won
-        setWinAmount(net)
-        if (!bingoAudioPlayedRef.current) {
-          playBingoAudio()
-          bingoAudioPlayedRef.current = true
-        }
+    if (gameState.status === 'finished') {
+      if (gameState.winner_id === null) {
+        // No winner - all 75 numbers called without a claim
+        console.log('🏁 Game finished with NO WINNER')
+        setShowNoWinnerDialog(true)
+      } else if (gameState.winner_id) {
+        console.log('🏁 Game finished! Winner:', gameState.winner_id)
         
-        // Note: Auto-win when opponent left
-        
-        console.log('🎉 You won!', net)
-        setShowWinDialog(true)
-      } else {
-        // User lost
-        setWinAmount(net)
+        // Compute NET prize (fallback to client-side using admin commission)
+        const gross = gameState.prize_pool
+        const net = typeof gameState.net_prize === 'number' 
+          ? gameState.net_prize 
+          : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
 
-        console.log('😢 You lost. Winner:', gameState.winner_id)
+        const winnerKey = gameState.winner_id
+        const isSelfWinner = (winnerKey === user?.id) || (winnerKey && winnerKey === user?.username)
 
-        // Show the lose dialog immediately; fetch details in background
-        setShowLoseDialog(true)
+        if (isSelfWinner) {
+          // User won
+          setWinAmount(net)
+          if (!bingoAudioPlayedRef.current) {
+            playBingoAudio()
+            bingoAudioPlayedRef.current = true
+          }
+          
+          // Note: Auto-win when opponent left
+          
+          console.log('🎉 You won!', net)
+          setShowWinDialog(true)
+        } else {
+          // User lost
+          setWinAmount(net)
 
-        // Fetch winner name (best-effort): try by id then by username
-        if (gameState.winner_id) {
-          supabase
-            .from('users')
-            .select('username')
-            .eq('id', gameState.winner_id)
-            .maybeSingle()
-            .then(async ({ data }: any) => {
-              if (data?.username) {
-                setWinnerName(data.username)
-                return
-              }
-              // Try by username as fallback
-              const { data: byUsername } = await supabase
-                .from('users')
-                .select('username')
-                .eq('username', gameState.winner_id)
-                .maybeSingle()
-              if (byUsername?.username) setWinnerName(byUsername.username)
-            })
-        }
+          console.log('😢 You lost. Winner:', gameState.winner_id)
 
-        // Fetch winner pattern/card in background and update UI if available
-        ;(async () => {
-          try {
-            for (let attempt = 0; attempt < 4; attempt++) {
-              const resp = await fetch('/api/game/winner', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId })
+          // Show the lose dialog immediately; fetch details in background
+          setShowLoseDialog(true)
+
+          // Fetch winner name (best-effort): try by id then by username
+          if (gameState.winner_id) {
+            supabase
+              .from('users')
+              .select('username')
+              .eq('id', gameState.winner_id)
+              .maybeSingle()
+              .then(async ({ data }: any) => {
+                if (data?.username) {
+                  setWinnerName(data.username)
+                  return
+                }
+                // Try by username as fallback
+                const { data: byUsername } = await supabase
+                  .from('users')
+                  .select('username')
+                  .eq('username', gameState.winner_id)
+                  .maybeSingle()
+                if (byUsername?.username) setWinnerName(byUsername.username)
               })
-              if (resp.ok) {
-                const data = await resp.json()
-                if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
+          }
+
+          // Fetch winner pattern/card in background and update UI if available
+          ;(async () => {
+            try {
+              for (let attempt = 0; attempt < 4; attempt++) {
+                const resp = await fetch('/api/game/winner', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameId })
+                })
+                if (resp.ok) {
+                  const data = await resp.json()
+                  if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                  if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
+                }
+                await new Promise(res => setTimeout(res, 250))
               }
-              await new Promise(res => setTimeout(res, 250))
-            }
-            if (!fallbackWinnerPattern && gameId) {
-              const { data } = await supabase
-                .from('games')
-                .select('winner_card,winner_pattern')
-                .eq('id', gameId)
-                .single()
-              if (data?.winner_pattern) {
-                if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                setFallbackWinnerPattern(data.winner_pattern as string)
+              if (!fallbackWinnerPattern && gameId) {
+                const { data } = await supabase
+                  .from('games')
+                  .select('winner_card,winner_pattern')
+                  .eq('id', gameId)
+                  .single()
+                if (data?.winner_pattern) {
+                  if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                  setFallbackWinnerPattern(data.winner_pattern as string)
+                }
               }
-            }
-          } catch {}
-        })()
+            } catch {}
+          })()
+        }
       }
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
@@ -1996,6 +2003,41 @@ export default function GamePage() {
                   </button>
                 </Link>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* No Winner Dialog */}
+        {showNoWinnerDialog && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+              {/* Draw/Tie Icon */}
+              <div className="flex justify-center mb-6">
+                <div className="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center">
+                  <Frown className="w-14 h-14 text-slate-600" />
+                </div>
+              </div>
+
+              <h2 className="text-3xl font-bold mb-3 text-slate-900">No Winner!</h2>
+              <p className="text-lg mb-6 text-slate-600">
+                All 75 numbers were called, but no one claimed bingo.
+              </p>
+              
+              <div className="bg-slate-50 border-2 border-slate-300 rounded-xl p-6 mb-6">
+                <p className="text-sm text-slate-600 mb-2">Game Result:</p>
+                <p className="text-2xl font-bold text-slate-700">Draw</p>
+              </div>
+
+              <p className="text-sm text-slate-500 mb-6">
+                Your stake has been refunded to your account.
+              </p>
+
+              <Link href="/lobby">
+                <button className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg flex items-center justify-center gap-2">
+                  <ArrowLeft className="w-5 h-5" />
+                  Back to Lobby
+                </button>
+              </Link>
             </div>
           </div>
         )}

@@ -291,6 +291,16 @@ export function useSocket() {
       setGameState(prev => prev ? { ...prev, status: 'finished', winner_id: data.winner } : null)
     })
 
+    socket.on('no_winner', (data) => {
+      console.log('🏁 No winner announcement:', data.message)
+      setGameState(prev => prev ? { ...prev, status: 'finished', winner_id: null } : null)
+    })
+
+    socket.on('all_numbers_called', (data) => {
+      console.log('📢 All numbers called:', data.message)
+      // Game is still active, just waiting for bingo claims
+    })
+
     socket.on('game_error', (data) => {
       console.log('❌ Game error:', data.message)
       if (data.canSpectate) {

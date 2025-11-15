@@ -67,14 +67,14 @@ export default function AdminDashboard() {
         .from('games')
         .select('prize_pool, commission_amount, created_at')
       
-      const totalRevenue = allGames?.reduce((sum: number, g: any) => sum + (g.prize_pool || 0), 0) || 0
-      const totalCommission = allGames?.reduce((sum: number, g: any) => sum + (g.commission_amount || 0), 0) || 0
+      const totalRevenue = allGames?.reduce((sum: any, g: any) => sum + (g.prize_pool || 0), 0) || 0
+      const totalCommission = allGames?.reduce((sum: any, g: any) => sum + (g.commission_amount || 0), 0) || 0
       
       const today = new Date().toISOString().split('T')[0]
       const todayRevenue = allGames?.filter((g: any) => g.created_at?.startsWith(today))
-        .reduce((sum: number, g: any) => sum + (g.prize_pool || 0), 0) || 0
+        .reduce((sum: any, g: any) => sum + (g.prize_pool || 0), 0) || 0
       const todayCommission = allGames?.filter((g: any) => g.created_at?.startsWith(today))
-        .reduce((sum: number, g: any) => sum + (g.commission_amount || 0), 0) || 0
+        .reduce((sum: any, g: any) => sum + (g.commission_amount || 0), 0) || 0
 
       // Fetch pending deposits
       const { count: pendingDepositsCount } = await supabase

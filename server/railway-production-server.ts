@@ -199,45 +199,13 @@ async function startNumberCalling(gameId: string) {
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${75 - remainingNumbers}/75) - SECURE`)
 
           // Let bot engine act on this secure tick too
-          try { 
-            console.log(`🤖 Invoking BotEngine.tick for game ${gameId}`)
-            await (await getBotEngine()).tick(gameId) 
-          } catch (err) {
-            console.error(`❌ BotEngine.tick error:`, err)
-          }
+          try { (await getBotEngine()).tick(gameId) } catch {}
 
           // Check if game should end
           if (remainingNumbers === 0) {
-            console.log(`🏁 All 75 numbers called for game ${gameId} - ending game`)
+            console.log(`🏁 All numbers called for game ${gameId}`)
             clearInterval(callInterval)
             gameIntervals.delete(gameId)
-            
-            // End game with no winner
-            try {
-              const { supabaseAdmin } = await import('../lib/supabase')
-              await supabaseAdmin
-                .from('games')
-                .update({
-                  status: 'finished',
-                  ended_at: new Date().toISOString(),
-                  winner_id: null
-                })
-                .eq('id', gameId)
-              
-              // Broadcast no winner event
-              if (global.io) {
-                global.io.to(`game-${gameId}`).to(gameId).emit('game_over', {
-                  gameId,
-                  winner: null,
-                  reason: 'no_winner_all_numbers_called',
-                  message: 'Game ended - All 75 numbers called with no winner'
-                })
-              }
-              
-              console.log(`📢 Game ${gameId}: No winner - all numbers called`)
-            } catch (error) {
-              console.error(`Error ending game ${gameId}:`, error)
-            }
             return
           }
 
@@ -263,47 +231,7 @@ async function startNumberCalling(gameId: string) {
           const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
           // Let bot engine act on this tick
-          try { 
-            console.log(`🤖 Invoking BotEngine.tick for game ${gameId} (fallback)`)
-            await (await getBotEngine()).tick(gameId) 
-          } catch (err) {
-            console.error(`❌ BotEngine.tick error (fallback):`, err)
-          }
-          
-          // Check if all numbers called
-          if (callCount >= 75) {
-            console.log(`🏁 All 75 numbers called for game ${gameId} - ending game`)
-            clearInterval(callInterval)
-            gameIntervals.delete(gameId)
-            
-            // End game with no winner
-            try {
-              const { supabaseAdmin } = await import('../lib/supabase')
-              await supabaseAdmin
-                .from('games')
-                .update({
-                  status: 'finished',
-                  ended_at: new Date().toISOString(),
-                  winner_id: null
-                })
-                .eq('id', gameId)
-              
-              // Broadcast no winner event
-              if (global.io) {
-                global.io.to(`game-${gameId}`).to(gameId).emit('game_over', {
-                  gameId,
-                  winner: null,
-                  reason: 'no_winner_all_numbers_called',
-                  message: 'Game ended - All 75 numbers called with no winner'
-                })
-              }
-              
-              console.log(`📢 Game ${gameId}: No winner - all numbers called`)
-            } catch (error) {
-              console.error(`Error ending game ${gameId}:`, error)
-            }
-            return
-          }
+          try { (await getBotEngine()).tick(gameId) } catch {}
         }
 
       } catch (error) {
@@ -575,27 +503,18 @@ app.post('/api/game/join', async (req, res) => {
       // Prefill bots immediately so prize_pool reflects bots before first human joins
       let prefilledGame = newGame
       try {
-        console.log(`🤖 Autofilling bots for new game ${result.game_id}`)
-        const { updatedGame, assigned } = await autofillBotsForGame(supabase, newGame, room.stake)
+        const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
         prefilledGame = updatedGame || newGame
-        console.log(`✅ Autofilled ${assigned.length} bots: ${assigned.join(', ')}`)
-        console.log(`📊 Game now has ${prefilledGame.bots?.length || 0} bots, prize pool: ${prefilledGame.prize_pool}`)
-        
         // Guarantee minimum participants using bots (up to room.min_players)
         const minPlayers = room.min_players || 3
         const humanCount = prefilledGame.players?.length || 0
         const botCount = prefilledGame.bots?.length || 0
         const neededBotsTotal = Math.max(0, minPlayers - humanCount)
-        console.log(`🎯 Min players: ${minPlayers}, humans: ${humanCount}, bots: ${botCount}, needed: ${neededBotsTotal}`)
-        
         if (botCount < neededBotsTotal) {
-          const { updatedGame: botFilled, assigned: moreAssigned } = await autofillBotsForGame(supabase, prefilledGame, room.stake, neededBotsTotal)
+          const { updatedGame: botFilled } = await autofillBotsForGame(supabase, prefilledGame, room.stake, neededBotsTotal)
           prefilledGame = botFilled || prefilledGame
-          console.log(`✅ Added ${moreAssigned.length} more bots to reach minimum`)
         }
-      } catch (err) {
-        console.error(`❌ Bot autofill error:`, err)
-      }
+      } catch {}
 
       // Fallback: ensure at least one bot if participants < 2
       try {

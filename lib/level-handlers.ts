@@ -80,7 +80,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Weekly Leaderboard**\n\n'
       
-      weeklyBoard.forEach((player: any, index: number) => {
+      weeklyBoard.forEach((player: any, index: any) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         
@@ -312,7 +312,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Monthly Leaderboard**\n\n'
       
-      monthlyBoard.forEach((player: any, index: number) => {
+      monthlyBoard.forEach((player: any, index: any) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         
@@ -365,7 +365,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Weekly Leaderboard**\n\n'
       
-      weeklyBoard.forEach((player: any, index: number) => {
+      weeklyBoard.forEach((player: any, index: any) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         

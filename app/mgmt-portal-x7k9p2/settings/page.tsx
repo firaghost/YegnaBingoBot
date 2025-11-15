@@ -28,8 +28,6 @@ export default function AdminSettings() {
     supportEmail: 'support@bingox.com',
     supportTelegram: '@bingox_support',
     supportPhone: '+251 911 234 567',
-    aiBotDifficulty: 'medium' as 'easy'|'medium'|'hard'|'unbeatable',
-    adminDebugMode: false,
   })
 
   // Keep track of original settings to detect changes
@@ -69,8 +67,6 @@ export default function AdminSettings() {
           supportEmail: config.supportEmail || 'support@bingox.com',
           supportTelegram: config.telegramSupport || '@bingox_support',
           supportPhone: config.supportPhone || '+251 911 234 567',
-          aiBotDifficulty: (config as any).botDifficulty || 'medium',
-          adminDebugMode: Boolean((config as any).adminDebugMode) || false,
         }
         
         setSettings(prev => ({ ...prev, ...mappedSettings }))
@@ -108,8 +104,6 @@ export default function AdminSettings() {
       if (settings.socketUrl !== originalSettings.socketUrl) changedSettings.socket_url = settings.socketUrl
       if (Boolean(settings.emailNotifications) !== Boolean(originalSettings.emailNotifications)) changedSettings.email_notifications = Boolean(settings.emailNotifications)
       if (Boolean(settings.telegramNotifications) !== Boolean(originalSettings.telegramNotifications)) changedSettings.telegram_notifications = Boolean(settings.telegramNotifications)
-      if (settings.aiBotDifficulty !== originalSettings.aiBotDifficulty) changedSettings.bot_difficulty = settings.aiBotDifficulty
-      if (Boolean(settings.adminDebugMode) !== Boolean(originalSettings.adminDebugMode)) changedSettings.admin_debug_mode = Boolean(settings.adminDebugMode)
 
       const changedCount = Object.keys(changedSettings).length
       
@@ -179,42 +173,6 @@ export default function AdminSettings() {
 
       <div className="container mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Bot AI Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">Bot AI Settings</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Global Bot Difficulty</label>
-                <select
-                  value={settings.aiBotDifficulty}
-                  onChange={(e) => setSettings({ ...settings, aiBotDifficulty: e.target.value as any })}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                  <option value="unbeatable">Unbeatable</option>
-                </select>
-                <p className="text-xs text-gray-400 mt-1">Overrides bot behavior to use the selected global difficulty.</p>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Admin Debug Mode</div>
-                  <div className="text-sm text-gray-400">Enable verbose server logs for debugging hidden bot behavior</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.adminDebugMode}
-                    onChange={(e) => setSettings({ ...settings, adminDebugMode: e.target.checked })}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
-            </div>
-          </div>
           {/* General Settings */}
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
             <h2 className="text-xl font-bold text-white mb-6">General Settings</h2>

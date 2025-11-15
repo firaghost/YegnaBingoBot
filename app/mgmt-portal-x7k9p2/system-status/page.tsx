@@ -50,7 +50,7 @@ export default function SystemStatusPage() {
       const totalTransactions = transactions?.length || 0
       const totalRevenue = transactions
         ?.filter((t: any) => t.type === 'stake' && t.status === 'completed')
-        ?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0
+        ?.reduce((sum: any, t: any) => sum + (t.amount || 0), 0) || 0
 
       setStats({
         totalUsers,
