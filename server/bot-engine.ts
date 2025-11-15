@@ -50,7 +50,12 @@ class BotEngine {
       .select('id, status, bots, called_numbers, prize_pool, stake')
       .eq('id', gameId)
       .single()
-    if (!game || game.status !== 'active') return
+    if (!game || game.status !== 'active') {
+      console.log(`🤖 BotEngine.tick: Game ${gameId} not found or not active`)
+      return
+    }
+
+    console.log(`🤖 BotEngine.tick: Game ${gameId}, bots: ${game.bots?.length || 0}, called: ${game.called_numbers?.length || 0}`)
 
     await this.ensureGame(gameId)
     const map = this.sessions.get(gameId)!
@@ -59,7 +64,10 @@ class BotEngine {
 
     for (const botId of game.bots || []) {
       const sess = map.get(botId)
-      if (!sess) continue
+      if (!sess) {
+        console.log(`🤖 BotEngine.tick: Bot ${botId} session not found`)
+        continue
+      }
 
       const callCount = called.length
       if (callCount === sess.lastCallCount) continue
@@ -76,14 +84,21 @@ class BotEngine {
       }
 
       // Check for bingo
-      if (!this.checkBingo(marked)) continue
+      if (!this.checkBingo(marked)) {
+        console.log(`🤖 BotEngine.tick: Bot ${botId} no bingo yet (${callCount}/75 called)`)
+        continue
+      }
+
+      console.log(`🎉 BotEngine.tick: Bot ${botId} HAS BINGO! Scheduling claim...`)
 
       // Schedule a claim according to behavior profile / win probability
       const delayMs = await this.getClaimDelay(botId)
+      console.log(`⏱️ BotEngine.tick: Bot ${botId} will claim in ${delayMs}ms`)
 
       if (sess.pendingClaim) { clearTimeout(sess.pendingClaim); sess.pendingClaim = null }
       sess.pendingClaim = setTimeout(async () => {
         try {
+          console.log(`📤 BotEngine: Bot ${botId} claiming bingo for game ${gameId}`)
           const resp = await fetch(`${API_BASE}/api/game/claim-bingo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -94,8 +109,11 @@ class BotEngine {
               marked
             })
           })
-          await resp.json().catch(() => null)
-        } catch {}
+          const result = await resp.json().catch(() => null)
+          console.log(`✅ BotEngine: Bot ${botId} claim response:`, result)
+        } catch (err) {
+          console.error(`❌ BotEngine: Bot ${botId} claim failed:`, err)
+        }
       }, delayMs)
     }
   }

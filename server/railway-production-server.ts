@@ -199,7 +199,12 @@ async function startNumberCalling(gameId: string) {
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${75 - remainingNumbers}/75) - SECURE`)
 
           // Let bot engine act on this secure tick too
-          try { (await getBotEngine()).tick(gameId) } catch {}
+          try { 
+            console.log(`🤖 Invoking BotEngine.tick for game ${gameId}`)
+            await (await getBotEngine()).tick(gameId) 
+          } catch (err) {
+            console.error(`❌ BotEngine.tick error:`, err)
+          }
 
           // Check if game should end
           if (remainingNumbers === 0) {
@@ -258,7 +263,12 @@ async function startNumberCalling(gameId: string) {
           const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
           // Let bot engine act on this tick
-          try { (await getBotEngine()).tick(gameId) } catch {}
+          try { 
+            console.log(`🤖 Invoking BotEngine.tick for game ${gameId} (fallback)`)
+            await (await getBotEngine()).tick(gameId) 
+          } catch (err) {
+            console.error(`❌ BotEngine.tick error (fallback):`, err)
+          }
           
           // Check if all numbers called
           if (callCount >= 75) {
@@ -565,18 +575,27 @@ app.post('/api/game/join', async (req, res) => {
       // Prefill bots immediately so prize_pool reflects bots before first human joins
       let prefilledGame = newGame
       try {
-        const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
+        console.log(`🤖 Autofilling bots for new game ${result.game_id}`)
+        const { updatedGame, assigned } = await autofillBotsForGame(supabase, newGame, room.stake)
         prefilledGame = updatedGame || newGame
+        console.log(`✅ Autofilled ${assigned.length} bots: ${assigned.join(', ')}`)
+        console.log(`📊 Game now has ${prefilledGame.bots?.length || 0} bots, prize pool: ${prefilledGame.prize_pool}`)
+        
         // Guarantee minimum participants using bots (up to room.min_players)
         const minPlayers = room.min_players || 3
         const humanCount = prefilledGame.players?.length || 0
         const botCount = prefilledGame.bots?.length || 0
         const neededBotsTotal = Math.max(0, minPlayers - humanCount)
+        console.log(`🎯 Min players: ${minPlayers}, humans: ${humanCount}, bots: ${botCount}, needed: ${neededBotsTotal}`)
+        
         if (botCount < neededBotsTotal) {
-          const { updatedGame: botFilled } = await autofillBotsForGame(supabase, prefilledGame, room.stake, neededBotsTotal)
+          const { updatedGame: botFilled, assigned: moreAssigned } = await autofillBotsForGame(supabase, prefilledGame, room.stake, neededBotsTotal)
           prefilledGame = botFilled || prefilledGame
+          console.log(`✅ Added ${moreAssigned.length} more bots to reach minimum`)
         }
-      } catch {}
+      } catch (err) {
+        console.error(`❌ Bot autofill error:`, err)
+      }
 
       // Fallback: ensure at least one bot if participants < 2
       try {

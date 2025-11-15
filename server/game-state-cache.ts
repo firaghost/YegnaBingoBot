@@ -8,6 +8,7 @@ interface CachedGameState {
   room_id: string
   status: 'waiting' | 'waiting_for_players' | 'countdown' | 'active' | 'finished'
   players: string[]
+  bots: string[]
   called_numbers: number[]
   latest_number: { letter: string; number: number } | null
   last_number_called: number | null
@@ -157,9 +158,10 @@ class GameStateCache {
       
       const cachedState: CachedGameState = {
         ...game,
+        bots: game.bots || [],
         _cache_updated_at: Date.now(),
         _needs_db_sync: false
-      }
+      } as CachedGameState
       
       this.cache.set(gameId, cachedState)
       this.lastDbSync.set(gameId, Date.now())

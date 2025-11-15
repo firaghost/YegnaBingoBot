@@ -32,19 +32,33 @@ export async function selectActiveBotJSON(supabase: SupabaseClient, difficulty?:
       p_waiting_mode: waitingMode
     })
     if (error || !data) {
-      console.warn('select_active_bot_json error or empty, falling back to direct select:', error)
+      console.warn('select_active_bot_json error or empty, falling back to direct select:', error?.message)
       // Fallback: pick a random active bot directly
       try {
-        const query = supabase
+        let query = supabase
           .from('bots')
           .select('id,name,avatar,win_probability,difficulty,behavior_profile')
           .eq('active', true)
           .order('random()')
           .limit(1)
-        if (difficulty) (query as any).eq('difficulty', difficulty)
-        const { data: botRow } = await (query as any).maybeSingle()
-        if (!botRow) return null
-        return botRow as any
+        
+        if (difficulty) {
+          query = (query as any).eq('difficulty', difficulty)
+        }
+        
+        const { data: botRow, error: selectError } = await (query as any)
+        
+        if (selectError) {
+          console.warn('fallback direct bot select error:', selectError)
+          return null
+        }
+        
+        if (!botRow || botRow.length === 0) {
+          console.warn('No active bots found in database')
+          return null
+        }
+        
+        return botRow[0] as any
       } catch (fbe) {
         console.warn('fallback direct bot select failed:', fbe)
         return null
