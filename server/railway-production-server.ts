@@ -3,6 +3,7 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import cors from 'cors'
+import path from 'path'
 
 // Global socket server declaration
 declare global {
@@ -28,19 +29,6 @@ async function getBotEngine(): Promise<BotEngine> {
     botEngineInstance = new BotEngine(supabaseAdmin)
   }
   return botEngineInstance
-}
-
-// Silence logs in production (keep errors). Override is possible with ENABLE_LOGS=true
-const SILENCE_LOGS = process.env.NODE_ENV === 'production' && process.env.ENABLE_LOGS !== 'true'
-if (SILENCE_LOGS) {
-  const noop = () => {}
-  ;(console as any).log = noop
-  ;(console as any).info = noop
-  ;(console as any).debug = noop
-  ;(console as any).warn = noop
-  ;(console as any).trace = noop
-  ;(console as any).time = noop
-  ;(console as any).timeEnd = noop
 }
 
 // Store active game intervals to manage number calling
@@ -351,6 +339,17 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json())
+
+// Serve static Bingo audio files from public/BINGO_Sound so clients can fetch
+try {
+  const soundsPath = path.join(process.cwd(), 'public', 'BINGO_Sound')
+  app.use('/BINGO_Sound', express.static(soundsPath, {
+    maxAge: process.env.NODE_ENV === 'production' ? '365d' : '0'
+  }))
+  console.log('🎧 Static route mounted: /BINGO_Sound ->', soundsPath)
+} catch (e) {
+  console.warn('⚠️ Failed to mount /BINGO_Sound static route:', e)
+}
 
 // Add test endpoint to verify API routes are working
 app.get('/api/test', (req, res) => {

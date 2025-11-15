@@ -34,6 +34,10 @@ export function useSocket() {
   const [channel, setChannel] = useState<RealtimeChannel | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const socketRef = useRef<Socket | null>(null)
+  const lastAnnouncedNumberRef = useRef<number | null>(null)
+
+  const computeLetter = (n: number): 'B' | 'I' | 'N' | 'G' | 'O' =>
+    n > 60 ? 'O' : n > 45 ? 'G' : n > 30 ? 'N' : n > 15 ? 'I' : 'B'
 
   // Connect to Socket.IO server on Railway
   useEffect(() => {
@@ -208,6 +212,17 @@ export function useSocket() {
         winner_id: null,
         min_players: 1
       }))
+
+      // Announce latest number from snapshot if it's new
+      try {
+        const n = data?.currentNumber
+        if (typeof n === 'number' && lastAnnouncedNumberRef.current !== n) {
+          lastAnnouncedNumberRef.current = n
+          const l = computeLetter(n)
+          console.log('🔊 Dispatching bingo_number_called (snapshot):', l + n)
+          window.dispatchEvent(new CustomEvent('bingo_number_called', { detail: { number: n, letter: l } }))
+        }
+      } catch {}
     })
 
     // New unified game state update (from cache system)
@@ -222,6 +237,27 @@ export function useSocket() {
         prize_pool: data.prize_pool ?? prev.prize_pool,
         winner_id: data.winner_id ?? prev.winner_id
       } : null)
+
+      // If latest number changed, fire immediate event for UI (audio)
+      try {
+        const ln = data?.latest_number
+        let n: number | null = null
+        let l: string | null = null
+        if (typeof ln === 'number') {
+          n = ln
+        } else if (ln && typeof ln.number === 'number') {
+          n = ln.number
+          l = ln.letter ?? null
+        }
+        if (typeof n === 'number') {
+          if (!l) l = computeLetter(n)
+          if (lastAnnouncedNumberRef.current !== n) {
+            lastAnnouncedNumberRef.current = n
+            console.log('🔊 Dispatching bingo_number_called (state_update):', l + n)
+            window.dispatchEvent(new CustomEvent('bingo_number_called', { detail: { number: n, letter: l } }))
+          }
+        }
+      } catch {}
     })
 
     socket.on('number_called', (data) => {
@@ -234,6 +270,7 @@ export function useSocket() {
 
       // Fire a lightweight DOM event so the UI can react instantly (e.g., play audio)
       try {
+        console.log('🔊 Dispatching bingo_number_called (number_called):', data.letter + data.number)
         window.dispatchEvent(new CustomEvent('bingo_number_called', { detail: data }))
       } catch {}
     })

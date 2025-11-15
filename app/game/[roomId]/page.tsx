@@ -60,6 +60,13 @@ export default function GamePage() {
   // Sound toggle and simple audio cache
   const [soundEnabled, setSoundEnabled] = useState(true)
   const audioCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map())
+  const [showSoundPrompt, setShowSoundPrompt] = useState(false)
+  const pendingAudioRef = useRef<{ letter: string; number: number } | null>(null)
+
+  // Bases for asset loading (prod may host frontend and socket on different domains)
+  const SOCKET_BASE = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app').replace(/\/$/, '')
+  const ASSETS_BASE = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '')
+  const buildUrl = (key: string, base: string) => base ? `${base}/BINGO_Sound/${key}.mp3` : `/BINGO_Sound/${key}.mp3`
 
   // Load persisted sound preference
   useEffect(() => {
@@ -73,6 +80,22 @@ export default function GamePage() {
   useEffect(() => {
     try { if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundEnabled)) } catch {}
   }, [soundEnabled])
+
+  // If autoplay is blocked, enable on first user interaction
+  useEffect(() => {
+    if (!showSoundPrompt) return
+    const onInteract = () => {
+      setShowSoundPrompt(false)
+      const pending = pendingAudioRef.current
+      if (pending) {
+        playCallAudio(pending.letter, pending.number)
+      } else if (gameState?.latest_number) {
+        playCallAudio(gameState.latest_number.letter, gameState.latest_number.number)
+      }
+    }
+    window.addEventListener('pointerdown', onInteract, { once: true } as any)
+    return () => window.removeEventListener('pointerdown', onInteract)
+  }, [showSoundPrompt, gameState?.latest_number?.number])
 
   // Lucky number selection (purely cosmetic)
   const [luckyNumber, setLuckyNumber] = useState<number | null>(null)
@@ -505,22 +528,83 @@ export default function GamePage() {
   const lastPlayedAudioRef = useRef<number | null>(null)
 
   // Play called number audio using files under /BINGO_Sound (served from public/)
-  const playCallAudio = (letter: string, number: number) => {
-    if (!soundEnabled) return
-    const key = `${letter}${number}`
-    const url = `/BINGO_Sound/${key}.mp3`
+  const playCallAudio = (letter: string, number: number | string) => {
+    if (!soundEnabled) {
+      console.log('🔇 Sound disabled, skipping audio')
+      return
+    }
+    const L = String(letter || '').toUpperCase()
+    const N = typeof number === 'number' ? number : parseInt(String(number), 10)
+    if (!Number.isFinite(N)) {
+      console.warn('⚠️ Invalid number for audio:', number)
+      return
+    }
+    const key = `${L}${N}`
+    const primaryUrl = buildUrl(key, ASSETS_BASE)
+    const fallbackUrl = SOCKET_BASE ? buildUrl(key, SOCKET_BASE) : ''
+    console.log('🔈 Attempting to play:', key, primaryUrl)
     let audio = audioCacheRef.current.get(key)
     if (!audio) {
-      audio = new Audio(url)
+      audio = new Audio(primaryUrl)
       audio.preload = 'auto'
-      audioCacheRef.current.set(key, audio)
+      const a = audio
+      a.onerror = () => {
+        // Try fallback host once if different
+        if (fallbackUrl && a.src !== fallbackUrl) {
+          console.warn('🎧 Primary URL failed, trying fallback:', fallbackUrl)
+          try {
+            a.src = fallbackUrl
+            a.load()
+            a.play().catch((e) => {
+              pendingAudioRef.current = { letter: L, number: N }
+              setShowSoundPrompt(true)
+              console.warn('Audio play blocked or failed (fallback):', e?.message || e)
+            })
+          } catch (e) {
+            console.error('🎧 Fallback audio failed to load:', fallbackUrl, e)
+          }
+        } else {
+          console.error('🎧 Audio failed to load:', a.src)
+        }
+      }
+      audioCacheRef.current.set(key, a)
+      audio = a
     }
     try {
-      audio.currentTime = 0
-      audio.play().catch((e) => {
-        // Autoplay might be blocked until user interacts; ignore errors silently
+      const a = audio
+      a.currentTime = 0
+      a.play().catch((e) => {
+        // Try runtime fallback swap even for cached audio
+        if (fallbackUrl && a.src !== fallbackUrl) {
+          console.warn('🎧 Primary play failed, trying fallback at runtime:', fallbackUrl)
+          try {
+            a.src = fallbackUrl
+            a.load()
+            a.play().catch((e2) => {
+              pendingAudioRef.current = { letter: L, number: N }
+              setShowSoundPrompt(true)
+              console.warn('Audio play blocked or failed (fallback runtime):', e2?.message || e2)
+            })
+            return
+          } catch (eSwap) {
+            console.error('🎧 Runtime fallback swap failed:', eSwap)
+          }
+        }
+        // Autoplay might be blocked; show prompt
+        pendingAudioRef.current = { letter: L, number: N }
+        setShowSoundPrompt(true)
         console.warn('Audio play blocked or failed:', e?.message || e)
       })
+    } catch {}
+  }
+
+  const enableSoundAndReplay = () => {
+    try {
+      const pending = pendingAudioRef.current
+      setShowSoundPrompt(false)
+      if (pending) {
+        playCallAudio(pending.letter, pending.number)
+      }
     } catch {}
   }
 
@@ -529,10 +613,12 @@ export default function GamePage() {
     const handler = (ev: any) => {
       try {
         const detail = (ev as CustomEvent)?.detail as any
-        const letter = detail?.letter
-        const number = detail?.number
-        if (letter && typeof number === 'number') {
-          lastPlayedAudioRef.current = number
+        const letter = String(detail?.letter || '').toUpperCase()
+        const rawNum = detail?.number
+        const number = typeof rawNum === 'number' ? rawNum : parseInt(String(rawNum), 10)
+        if (letter && Number.isFinite(number)) {
+          lastPlayedAudioRef.current = number as number
+          console.log('🎙️ Socket event received for audio:', letter + number)
           playCallAudio(letter, number)
           if (navigator.vibrate) navigator.vibrate(100)
         }
@@ -1015,7 +1101,23 @@ export default function GamePage() {
           </button>
           <h1 className="text-xl font-bold text-slate-900">{getRoomName()}</h1>
           <button
-            onClick={() => setSoundEnabled(s => !s)}
+            onClick={() => {
+              setSoundEnabled((s) => {
+                const next = !s
+                if (next) {
+                  // On enabling, try replaying pending or the latest number
+                  const pending = pendingAudioRef.current
+                  if (pending) {
+                    playCallAudio(pending.letter, pending.number)
+                    setShowSoundPrompt(false)
+                  } else if (latestNumber) {
+                    playCallAudio(latestNumber.letter, latestNumber.number)
+                    setShowSoundPrompt(false)
+                  }
+                }
+                return next
+              })
+            }}
             aria-label={soundEnabled ? 'Mute calls' : 'Unmute calls'}
             title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
             className="text-slate-900 hover:text-slate-600 transition-colors"
@@ -1026,6 +1128,19 @@ export default function GamePage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-3">
+        {showSoundPrompt && (
+          <div className="fixed bottom-4 left-0 right-0 z-50">
+            <div className="max-w-sm mx-auto bg-blue-600 text-white rounded-xl shadow-lg p-3 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium">Tap to enable game audio</div>
+              <button
+                onClick={enableSoundAndReplay}
+                className="bg-white text-blue-700 text-sm font-semibold px-3 py-1 rounded-lg hover:bg-slate-100"
+              >
+                Enable
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Enhanced Waiting Room System */}
         {(gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
