@@ -51,19 +51,21 @@ function verifyMarkedCells(
 
 export async function POST(request: NextRequest) {
   try {
-    const { gameId, userId, card, marked } = await request.json()
+    const body = await request.json()
+    const { gameId, userId, marked } = body
+    let card = body.card as number[][] | undefined
     console.log(`Processing bingo claim for game ${gameId}, user ${userId}`)
 
-    if (!gameId || !userId || !card) {
+    if (!gameId || !userId) {
       return NextResponse.json(
-        { error: 'Missing required fields: gameId, userId, card' },
+        { error: 'Missing required fields: gameId, userId' },
         { status: 400 }
       )
     }
 
     // Force sync cache to database before validation (critical operation)
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'yegnabingobot-production.up.railway.app'
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
       await fetch(`${baseUrl}/api/cache/force-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,22 +119,48 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use client-provided marked grid if available; otherwise reconstruct from called numbers
+    // For bot claims, prefer the board stored in game_players to avoid mismatches
+    if (isBotClaim) {
+      try {
+        const { data: gp } = await supabase
+          .from('game_players')
+          .select('board')
+          .eq('session_id', gameId)
+          .eq('bot_id', userId)
+          .eq('status', 'active')
+          .maybeSingle()
+        if (gp?.board && Array.isArray(gp.board)) {
+          card = gp.board as number[][]
+          console.log(`🤖 Using stored bot board for validation (bot ${userId})`)
+        }
+      } catch (e) {
+        console.warn('Failed to load bot board from game_players, using provided card if any')
+      }
+    }
+
+    if (!card) {
+      return NextResponse.json(
+        { error: 'Missing required field: card' },
+        { status: 400 }
+      )
+    }
+
+    // Build marked grid
+    // For bots, always reconstruct from called numbers to avoid client/engine mismatch
     const markedCells: boolean[][] = Array(5).fill(null).map(() => Array(5).fill(false))
-    if (Array.isArray(marked) && marked.length === 5 && marked.every(r => Array.isArray(r) && r.length === 5)) {
+    const shouldReconstruct = isBotClaim || !(Array.isArray(marked) && marked.length === 5 && marked.every(r => Array.isArray(r) && r.length === 5))
+    if (shouldReconstruct) {
       for (let i = 0; i < 5; i++) {
         for (let j = 0; j < 5; j++) {
-          // Always treat center as marked
-          markedCells[i][j] = (i === 2 && j === 2) ? true : !!marked[i][j]
+          const num = card[i][j]
+          if (i === 2 && j === 2) markedCells[i][j] = true
+          else markedCells[i][j] = game.called_numbers.includes(num)
         }
       }
     } else {
       for (let i = 0; i < 5; i++) {
         for (let j = 0; j < 5; j++) {
-          const num = card[i][j]
-          // Free space is always marked
-          if (i === 2 && j === 2) markedCells[i][j] = true
-          else markedCells[i][j] = game.called_numbers.includes(num)
+          markedCells[i][j] = (i === 2 && j === 2) ? true : !!marked[i][j]
         }
       }
     }
@@ -270,7 +298,7 @@ export async function POST(request: NextRequest) {
       console.log(`🎁 Net Prize: ${netPrize} ETB`)
 
       // Update game with winner (original method)
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from('games')
         .update({
           status: 'finished',
@@ -285,12 +313,19 @@ export async function POST(request: NextRequest) {
         .eq('id', gameId)
         .eq('status', 'active')
         .is('winner_id', null)
+        .select('id')
 
       if (updateError) {
         console.error('Error updating game:', updateError)
         return NextResponse.json(
-          { error: 'Failed to claim bingo - another player may have won' },
+          { error: 'Failed to claim bingo - database error' },
           { status: 500 }
+        )
+      }
+      if (!updatedRows || updatedRows.length === 0) {
+        return NextResponse.json(
+          { error: 'Failed to claim bingo - another player may have won' },
+          { status: 409 }
         )
       }
     }

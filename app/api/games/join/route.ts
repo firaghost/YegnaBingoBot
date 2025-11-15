@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { generateBingoCard } from '@/lib/utils'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(request: Request) {
@@ -59,27 +60,18 @@ export async function POST(request: Request) {
                   username: bot.name,
                   socket_id: `bot_${bot.id}`,
                   status: 'active',
-                  board: [
-                    [1, 2, 3, 4, 5],
-                    [16, 17, 18, 19, 20],
-                    [31, 32, 0, 34, 35],
-                    [46, 47, 48, 49, 50],
-                    [61, 62, 63, 64, 65]
-                  ],
+                  board: generateBingoCard(),
                   score: 0,
                   is_bot: true,
                   bot_id: bot.id
                 })
             }
 
-            // Update game player count and bots array
+            // Update bots array on the game
             const botIds = bots.map((b: any) => b.id)
             await supabaseAdmin
               .from('games')
-              .update({ 
-                players: currentPlayers + bots.length,
-                bots: botIds
-              })
+              .update({ bots: botIds })
               .eq('id', gameId)
 
             console.log(`🤖 Added ${bots.length} bots to game ${gameId}: ${botIds.join(', ')}`)

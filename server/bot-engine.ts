@@ -34,8 +34,23 @@ class BotEngine {
     const botIds: string[] = game.bots || []
     for (const botId of botIds) {
       if (!map.has(botId)) {
+        // Try to load stored board from game_players to avoid mismatches
+        let board: number[][] | null = null
+        try {
+          const { data: gp } = await this.supabase
+            .from('game_players')
+            .select('board')
+            .eq('session_id', gameId)
+            .eq('bot_id', botId)
+            .eq('status', 'active')
+            .maybeSingle()
+          if (gp?.board && Array.isArray(gp.board)) {
+            board = gp.board as number[][]
+            console.log(`🤖 Loaded stored board for bot ${botId} in game ${gameId}`)
+          }
+        } catch {}
         map.set(botId, {
-          card: generateBingoCard(),
+          card: board || generateBingoCard(),
           lastCallCount: game.called_numbers?.length || 0,
           pendingClaim: null
         })
@@ -129,7 +144,8 @@ class BotEngine {
     const checkRange: [number, number] = profile.check_bingo_interval_ms || [300, 800]
     // Bias delay by win probability: higher prob => lower delay
     const wp = Math.max(0, Math.min(1, bot?.win_probability ?? 0.5))
-    if (wp >= 0.999) return 30 // near-instant for guaranteed wins
+    if (bot?.difficulty === 'unbeatable') return 0
+    if (wp >= 0.999) return 0 // near-instant for guaranteed wins
 
     const min = Math.max(50, checkRange[0] || 300)
     const max = Math.max(min + 1, checkRange[1] || 800)

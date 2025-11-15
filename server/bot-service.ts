@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { generateBingoCard } from '../lib/utils'
 
 export type BotJSON = {
   id: string
@@ -83,7 +84,8 @@ export async function autofillBotsForGame(
   const current = (updated.bots?.length || 0)
   const need = Math.max(0, desired - current)
   for (let i = 0; i < need; i++) {
-    const bot = await selectActiveBotJSON(supabase)
+    // Prefer at least one unbeatable bot if available
+    const bot = await selectActiveBotJSON(supabase, i === 0 ? 'unbeatable' : undefined)
     if (!bot || !bot.id) break
     const newBots = [...(updated.bots || []), bot.id]
     const { data, error } = await supabase
@@ -95,6 +97,30 @@ export async function autofillBotsForGame(
     if (error || !data) break
     updated = data
     assigned.push(bot.id)
+    // Ensure a game_players row exists with a stored board for this bot
+    try {
+      const { data: existing } = await supabase
+        .from('game_players')
+        .select('id')
+        .eq('session_id', updated.id)
+        .eq('bot_id', bot.id)
+        .maybeSingle()
+      if (!existing) {
+        await supabase.from('game_players').insert({
+          id: crypto.randomUUID(),
+          session_id: updated.id,
+          username: bot.name || 'Bot',
+          socket_id: `bot_${bot.id}`,
+          status: 'active',
+          board: generateBingoCard(),
+          score: 0,
+          is_bot: true,
+          bot_id: bot.id
+        })
+      }
+    } catch (e) {
+      console.warn('autofillBotsForGame: failed to ensure game_players row for bot', bot.id, e)
+    }
     try {
       await (supabase as any).rpc('record_bot_earning', {
         p_bot_id: bot.id,
@@ -115,7 +141,8 @@ export async function assignBotIfNeeded(supabase: SupabaseClient, game: any, sta
       return { updatedGame: game, bot: null }
     }
 
-    const bot = await selectActiveBotJSON(supabase)
+    // Prefer unbeatable bot for head-to-head
+    const bot = await selectActiveBotJSON(supabase, 'unbeatable')
     if (!bot || !bot.id) {
       return { updatedGame: game, bot: null }
     }
@@ -145,6 +172,31 @@ export async function assignBotIfNeeded(supabase: SupabaseClient, game: any, sta
         p_game_id: game.id
       })
     } catch {}
+
+    // Ensure a game_players row exists with a stored board
+    try {
+      const { data: existing } = await supabase
+        .from('game_players')
+        .select('id')
+        .eq('session_id', game.id)
+        .eq('bot_id', bot.id)
+        .maybeSingle()
+      if (!existing) {
+        await supabase.from('game_players').insert({
+          id: crypto.randomUUID(),
+          session_id: game.id,
+          username: bot.name || 'Bot',
+          socket_id: `bot_${bot.id}`,
+          status: 'active',
+          board: generateBingoCard(),
+          score: 0,
+          is_bot: true,
+          bot_id: bot.id
+        })
+      }
+    } catch (e) {
+      console.warn('assignBotIfNeeded: failed to ensure game_players row for bot', bot.id, e)
+    }
 
     return { updatedGame: updated, bot }
   } catch (e) {
