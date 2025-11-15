@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
+import DeepLinkRouter from './components/DeepLinkRouter'
 
 export const metadata: Metadata = {
   title: 'BingoX - BingoX Bingo',
@@ -33,7 +34,10 @@ export default function RootLayout({
           </>
         )}
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <DeepLinkRouter />
+        {children}
+      </body>
     </html>
   )
 }

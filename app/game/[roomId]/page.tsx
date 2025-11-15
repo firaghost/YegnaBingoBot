@@ -62,11 +62,13 @@ export default function GamePage() {
   const audioCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map())
   const [showSoundPrompt, setShowSoundPrompt] = useState(false)
   const pendingAudioRef = useRef<{ letter: string; number: number } | null>(null)
+  const bingoAudioPlayedRef = useRef<boolean>(false)
 
   // Bases for asset loading (prod may host frontend and socket on different domains)
   const SOCKET_BASE = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app').replace(/\/$/, '')
   const ASSETS_BASE = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '')
   const buildUrl = (key: string, base: string) => base ? `${base}/BINGO_Sound/${key}.mp3` : `/BINGO_Sound/${key}.mp3`
+  const BINGO_VOICE_URL = '/AdditionalSounds/Good-Bingo.mp3'
 
   // Load persisted sound preference
   useEffect(() => {
@@ -101,6 +103,25 @@ export default function GamePage() {
       window.removeEventListener('bingo_sound_pref_changed', onCustom as EventListener)
     }
   }, [])
+
+  // Play "Bingo" voice when user claims/wins
+  const playBingoAudio = () => {
+    if (!soundEnabled) return
+    const key = 'BINGO_WIN'
+    let audio = audioCacheRef.current.get(key)
+    if (!audio) {
+      audio = new Audio(BINGO_VOICE_URL)
+      audio.preload = 'auto'
+      audioCacheRef.current.set(key, audio)
+    }
+    try {
+      audio.currentTime = 0
+      audio.play().catch(() => {
+        // Autoplay might be blocked; show prompt
+        setShowSoundPrompt(true)
+      })
+    } catch {}
+  }
 
   // If autoplay is blocked, enable on first user interaction
   useEffect(() => {
@@ -733,6 +754,10 @@ export default function GamePage() {
       if (isSelfWinner) {
         // User won
         setWinAmount(net)
+        if (!bingoAudioPlayedRef.current) {
+          playBingoAudio()
+          bingoAudioPlayedRef.current = true
+        }
         
         // Note: Auto-win when opponent left
         
@@ -927,6 +952,10 @@ export default function GamePage() {
         if (freshGame.winner_id === user.id) {
           // Somehow we won even though claim failed (race condition)
           console.log('✅ You are the winner!')
+          if (!bingoAudioPlayedRef.current) {
+            playBingoAudio()
+            bingoAudioPlayedRef.current = true
+          }
           setShowWinDialog(true)
         } else {
           // Someone else won
@@ -994,7 +1023,7 @@ export default function GamePage() {
 
   const generateInviteLink = () => {
     // Generate Telegram bot mini app link that opens the game room directly
-    const inviteUrl = `https://t.me/BingoXOfficialBot/bingox?startapp=room_${roomId}`
+    const inviteUrl = `https://t.me/BingoXOfficialBot?startapp=room_${roomId}`
     
     // Copy the Telegram bot mini app link (for sharing in Telegram)
     navigator.clipboard.writeText(inviteUrl).then(() => {

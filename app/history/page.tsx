@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import BottomNav from '@/app/components/BottomNav'
-import { LuHistory, LuCalendar, LuClock } from 'react-icons/lu'
+import { LuHistory, LuCalendar, LuClock, LuArrowDown, LuArrowUp } from 'react-icons/lu'
 import { getConfig } from '@/lib/admin-config'
 
 interface Transaction {
@@ -243,46 +243,56 @@ export default function HistoryPage() {
                     {transactions
                       .filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal')
                       .slice(0, txVisible)
-                      .map(tx => (
-                        <div key={tx.id} className="flex items-center justify-between px-3 py-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                          <div className="flex items-center gap-4">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${
-                              tx.display_status === 'success' ? 'bg-green-500' :
-                              tx.display_status === 'loss' ? 'bg-red-500' :
-                              'bg-blue-500'
-                            }`}>
-                              <span className="text-sm">{tx.display_icon.split(' ')[0]}</span>
-                            </div>
-                            <div>
-                              <p className="font-semibold text-gray-800">
-                                {tx.room_name || tx.description}
-                              </p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm text-gray-500">
-                                  {new Date(tx.created_at).toLocaleString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </p>
-                                <span className={`text-xs px-2 py-1 rounded-full ${
-                                  tx.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                  tx.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {tx.status}
-                                </span>
+                      .map(tx => {
+                        const isDeposit = tx.type === 'deposit'
+                        const status = (tx.status || '').toLowerCase()
+                        const title = isDeposit ? 'Deposit' : 'Withdrawal'
+                        const iconBg = isDeposit ? 'bg-emerald-500' : 'bg-rose-500'
+                        const amountColor = isDeposit ? 'text-emerald-600' : 'text-rose-600'
+                        const StatusBadge = () => (
+                          <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${
+                            status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                            status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-rose-100 text-rose-700'
+                          }`}>
+                            {status || 'unknown'}
+                          </span>
+                        )
+                        return (
+                          <div key={tx.id} className="p-3 border border-slate-200 rounded-lg bg-white hover:shadow-sm transition">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-full ${iconBg} flex items-center justify-center text-white shrink-0`}>
+                                  {isDeposit ? <LuArrowDown className="w-4 h-4" /> : <LuArrowUp className="w-4 h-4" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-semibold text-slate-900 truncate">{title}</p>
+                                    <StatusBadge />
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                                    <span className="inline-flex items-center gap-1">
+                                      <LuCalendar className="w-3.5 h-3.5" />
+                                      {new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1">
+                                      <LuClock className="w-3.5 h-3.5" />
+                                      {new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span className="truncate">Ref: {String(tx.id).slice(0, 8).toUpperCase()}</span>
+                                  </div>
+                                  {tx.description && (
+                                    <p className="mt-1 text-xs text-slate-500 truncate">{tx.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className={`ml-3 text-right font-bold ${amountColor}`}>
+                                {isDeposit ? '+' : '-'}{formatCurrency(Math.abs(tx.amount || 0))}
                               </div>
                             </div>
                           </div>
-                          <div className={`text-xl font-bold ${
-                            tx.amount > 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                   </div>
                   {transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length > txVisible && (
                     <div className="mt-3 flex justify-center">
