@@ -505,6 +505,24 @@ app.post('/api/game/join', async (req, res) => {
       try {
         const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
         prefilledGame = updatedGame || newGame
+        // Guarantee minimum participants using bots (up to room.min_players)
+        const minPlayers = room.min_players || 3
+        const humanCount = prefilledGame.players?.length || 0
+        const botCount = prefilledGame.bots?.length || 0
+        const neededBotsTotal = Math.max(0, minPlayers - humanCount)
+        if (botCount < neededBotsTotal) {
+          const { updatedGame: botFilled } = await autofillBotsForGame(supabase, prefilledGame, room.stake, neededBotsTotal)
+          prefilledGame = botFilled || prefilledGame
+        }
+      } catch {}
+
+      // Fallback: ensure at least one bot if participants < 2
+      try {
+        const participants = (prefilledGame.players?.length || 0) + (prefilledGame.bots?.length || 0)
+        if (participants < 2) {
+          const { updatedGame } = await assignBotIfNeeded(supabase, prefilledGame, room.stake)
+          prefilledGame = updatedGame || prefilledGame
+        }
       } catch {}
 
       // If we now have at least 2 participants (players + bots), start waiting period immediately
@@ -722,6 +740,24 @@ app.post('/api/game/join', async (req, res) => {
       try {
         const { updatedGame } = await autofillBotsForGame(supabase, activeGame, stake)
         activeGame = updatedGame || activeGame
+        // Guarantee minimum participants using bots (up to room.min_players)
+        const minPlayers = room.min_players || 2
+        const humanCount = activeGame.players?.length || 0
+        const botCount = activeGame.bots?.length || 0
+        const neededBotsTotal = Math.max(0, minPlayers - humanCount)
+        if (botCount < neededBotsTotal) {
+          const { updatedGame: botFilled } = await autofillBotsForGame(supabase, activeGame, stake, neededBotsTotal)
+          activeGame = botFilled || activeGame
+        }
+      } catch {}
+
+      // Fallback: ensure at least one bot if participants < 2
+      try {
+        const participants = (activeGame.players?.length || 0) + (activeGame.bots?.length || 0)
+        if (participants < 2) {
+          const { updatedGame } = await assignBotIfNeeded(supabase, activeGame, stake)
+          activeGame = updatedGame || activeGame
+        }
       } catch {}
 
       // If we have 2+ participants (players + bots) and game is waiting, start 30-second waiting period (only once)

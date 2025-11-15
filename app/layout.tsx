@@ -1,6 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import DeepLinkRouter from './components/DeepLinkRouter'
+import { Suspense } from 'react'
 
 export const metadata: Metadata = {
   title: 'BingoX - BingoX Bingo',
@@ -9,6 +10,11 @@ export const metadata: Metadata = {
     icon: '/favicon.ico',
   },
 }
+
+// Ensure Node.js runtime for server components using Supabase and other Node APIs
+export const runtime = 'nodejs'
+// Avoid static prerender errors caused by hooks like useSearchParams across pages
+export const dynamic = 'force-dynamic'
 
 export default function RootLayout({
   children,
@@ -35,8 +41,12 @@ export default function RootLayout({
         )}
       </head>
       <body className="antialiased">
-        <DeepLinkRouter />
-        {children}
+        <Suspense fallback={null}>
+          <DeepLinkRouter />
+        </Suspense>
+        <Suspense fallback={null}>
+          {children}
+        </Suspense>
       </body>
     </html>
   )

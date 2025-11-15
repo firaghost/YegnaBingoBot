@@ -111,7 +111,7 @@ class BotEngine {
     const checkRange: [number, number] = profile.check_bingo_interval_ms || [300, 800]
     // Bias delay by win probability: higher prob => lower delay
     const wp = Math.max(0, Math.min(1, bot?.win_probability ?? 0.5))
-    if (wp >= 0.999) return 80 // near-instant for guaranteed wins
+    if (wp >= 0.999) return 30 // near-instant for guaranteed wins
 
     const min = Math.max(50, checkRange[0] || 300)
     const max = Math.max(min + 1, checkRange[1] || 800)

@@ -50,6 +50,8 @@ export default function GamePage() {
   const [claimingBingo, setClaimingBingo] = useState(false)
   const [gameConfig, setGameConfig] = useState<any>(null)
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
+  // Bot profile cache for display (id -> { name, avatar })
+  const [botProfiles, setBotProfiles] = useState<Record<string, { name: string; avatar?: string | null }>>({})
   
   // Enhanced waiting room states
   const [inviteToastVisible, setInviteToastVisible] = useState(false)
@@ -77,6 +79,31 @@ export default function GamePage() {
       if (stored != null) setSoundEnabled(stored === 'true')
     } catch {}
   }, [])
+
+  // Resolve bot names when bot IDs change
+  useEffect(() => {
+    const loadBotProfiles = async () => {
+      try {
+        const botIds = (gameState?.bots || []).filter(Boolean)
+        if (!botIds.length) return
+        const { data } = await supabase
+          .from('bots')
+          .select('id,name,avatar')
+          .in('id', botIds)
+        if (data && Array.isArray(data)) {
+          setBotProfiles((prev) => {
+            const next = { ...prev }
+            data.forEach((b: any) => {
+              next[b.id] = { name: b.name, avatar: b.avatar }
+            })
+            return next
+          })
+        }
+      } catch {}
+    }
+    loadBotProfiles()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(gameState?.bots || [])])
 
   // Persist sound preference
   useEffect(() => {
@@ -1107,7 +1134,9 @@ export default function GamePage() {
   const gameStatus = gameState?.status || 'waiting'
   const calledNumbers = gameState?.called_numbers || []
   const latestNumber = gameState?.latest_number
-  const players = gameState?.players?.length || 0
+  const humanPlayers = gameState?.players?.length || 0
+  const botPlayers = gameState?.bots?.length || 0
+  const players = humanPlayers
   
   // Debug logging
   console.log('🎮 Game render state:', {
@@ -1121,8 +1150,8 @@ export default function GamePage() {
   const stake = roomData?.stake || 10
   // Calculate FULL prize pool (before commission)
   // Commission is deducted when winner receives the prize
-  const currentPlayers = gameState?.players?.length || 1
-  const prizePool = currentPlayers * stake
+  const currentParticipants = (gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || 1
+  const prizePool = currentParticipants * stake
   const netPrizePool = Math.round(prizePool * (1 - commissionRate) * 100) / 100
 
   return (
@@ -1213,7 +1242,7 @@ export default function GamePage() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{gameState?.players?.length || 1}</div>
+                  <div className="text-2xl font-bold">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || 1}</div>
                   <div className="text-white/80 text-sm">/ {roomData?.max_players || 8}</div>
                 </div>
               </div>
@@ -1234,7 +1263,7 @@ export default function GamePage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                       <Users className="w-4 h-4" />
-                      <span>Players ({gameState?.players?.length || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
+                      <span>Players ({(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
                     </div>
                   </div>
 
@@ -1242,19 +1271,32 @@ export default function GamePage() {
                   {(gameState?.players && gameState.players.length > 0) ? (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {(() => {
-                        // Create a combined list of all players with proper indexing
-                        const allPlayers: Array<{username: string, isCurrentUser: boolean, playerNumber: number}> = []
-                        
-                        // Add all players from gameState
+                        // Create a combined list of all participants (humans + bots)
+                        type P = { username: string; isCurrentUser: boolean; playerNumber: number; isBot?: boolean }
+                        const allPlayers: P[] = []
+
+                        // Humans first
                         gameState.players.forEach((playerId: string, index: number) => {
                           const isCurrentUser = playerId === user?.id
                           allPlayers.push({
                             username: getDisplayName(playerId, isCurrentUser),
-                            isCurrentUser: isCurrentUser,
+                            isCurrentUser,
                             playerNumber: index + 1
                           })
                         })
-                        
+
+                        // Then bots (display with their names, no bot label)
+                        const startIndex = allPlayers.length
+                        ;(gameState.bots || []).forEach((botId: string, i: number) => {
+                          const name = botProfiles[botId]?.name || `Player ${startIndex + i + 1}`
+                          allPlayers.push({
+                            username: name,
+                            isCurrentUser: false,
+                            playerNumber: startIndex + i + 1,
+                            isBot: true
+                          })
+                        })
+
                         return allPlayers.map((player, index) => (
                           <div 
                             key={index} 
@@ -1320,12 +1362,12 @@ export default function GamePage() {
                         </div>
                       )}
                     </div>
-                  ) : ((waitingRoomState?.currentPlayers || gameState?.players?.length || 0) < 2) ? (
+                  ) : (((waitingRoomState?.currentPlayers || 0) < 2) && (((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) < 2)) ? (
                     <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-3">
                       <div className="flex items-center justify-center gap-2">
                         <Users className="w-4 h-4 text-yellow-600" />
                         <span className="font-medium text-yellow-700">
-                          Waiting for players... ({waitingRoomState?.currentPlayers || gameState?.players?.length || 0}/2)
+                          Waiting for players... ({(waitingRoomState?.currentPlayers || 0) || ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0))}/2)
                         </span>
                       </div>
                     </div>
@@ -1563,7 +1605,7 @@ export default function GamePage() {
                       <div className="text-center">
                         <div className="text-sm text-blue-600 mb-2">Latest Number</div>
                         <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white mx-auto">
-                          {gameState.latest_number.number}
+                          {gameState.latest_number.letter}{gameState.latest_number.number}
                         </div>
                         <div className="text-lg font-bold text-blue-600 mt-2">
                           {gameState.latest_number.letter}{gameState.latest_number.number}
@@ -1621,6 +1663,8 @@ export default function GamePage() {
             <div className="text-center text-sm text-slate-700 font-medium py-2">
               <span>Stake: <span className="font-bold text-amber-600">{formatCurrency(stake)}</span></span>
               <span className="mx-3 text-slate-300">|</span>
+              <span>Players: <span className="font-bold text-slate-900">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</span></span>
+              <span className="mx-3 text-slate-300">|</span>
               <span>Net Win Pool: <span className="font-bold text-emerald-600">{formatCurrency(typeof gameState?.net_prize === 'number' ? gameState.net_prize : netPrizePool)}</span></span>
             </div>
 
@@ -1634,7 +1678,7 @@ export default function GamePage() {
                   {latestNumber ? (
                     <div className="text-center">
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-blue-100">
-                        {latestNumber.number}
+                        {latestNumber.letter}{latestNumber.number}
                       </div>
                     </div>
                   ) : (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { autofillBotsForGame, assignBotIfNeeded } from '@/server/bot-service'
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
 
@@ -130,12 +131,34 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`✅ Created new game: ${newGame.id}`)
-        return NextResponse.json({
-          success: true,
-          gameId: newGame.id,
-          game: newGame,
-          action: 'created'
-        })
+
+        // Auto-fill bots for new game using admin config (default_bots_per_room)
+        try {
+          const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
+          const participants = (updatedGame.players?.length || 0) + (updatedGame.bots?.length || 0)
+          // If we have at least 2 participants, start waiting_for_players
+          if (participants >= 2 && updatedGame.status === 'waiting') {
+            await supabase.from('games').update({
+              status: 'waiting_for_players',
+              countdown_time: 30,
+              waiting_started_at: new Date().toISOString()
+            }).eq('id', updatedGame.id)
+          }
+          return NextResponse.json({
+            success: true,
+            gameId: updatedGame.id,
+            game: updatedGame,
+            action: 'created'
+          })
+        } catch (e) {
+          console.warn('autofillBotsForGame failed after create:', e)
+          return NextResponse.json({
+            success: true,
+            gameId: newGame.id,
+            game: newGame,
+            action: 'created'
+          })
+        }
       }
     }
 
@@ -176,8 +199,24 @@ export async function POST(request: NextRequest) {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
 
-      // If we have 2+ players and game is still in waiting status, start 30-second waiting period
-      if (updatedPlayers.length >= 2 && (newStatus === 'waiting' || activeGame.status === 'waiting')) {
+      // Ensure bots are present and top-up to admin default
+      let gameAfterBots = updatedGame
+      try {
+        const { updatedGame: withDefaultBots } = await autofillBotsForGame(supabase, updatedGame, stake)
+        gameAfterBots = withDefaultBots || updatedGame
+        // If still less than 2 participants, assign at least one bot
+        const participantsNow = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
+        if (participantsNow < 2) {
+          const { updatedGame: ensured } = await assignBotIfNeeded(supabase, gameAfterBots, stake)
+          gameAfterBots = ensured || gameAfterBots
+        }
+      } catch (e) {
+        console.warn('Bot auto-fill error after join:', e)
+      }
+
+      // If we have 2+ participants (humans + bots) and game is waiting, start 30-second waiting period
+      const participants = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
+      if (participants >= 2 && (gameAfterBots.status === 'waiting' || gameAfterBots.status === 'waiting_for_players')) {
         console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
         
         // Update status to waiting_for_players with 30-second timer
@@ -234,7 +273,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         gameId: activeGame.id,
-        game: finalGameState || updatedGame,
+        game: finalGameState || gameAfterBots,
         action: 'joined'
       })
     }

@@ -201,7 +201,8 @@ export function useSocket() {
         status: data.status || 'active',
         countdown_time: 0,
         players: data.players?.map((p: any) => p.username) || [],
-        bots: [],
+        // keep previously known bots if snapshot doesn't provide them
+        bots: prev?.bots || [],
         called_numbers: data.numbersCalled || [],
         latest_number: data.currentNumber ? {
           letter: data.currentNumber > 60 ? 'O' : data.currentNumber > 45 ? 'G' : data.currentNumber > 30 ? 'N' : data.currentNumber > 15 ? 'I' : 'B',

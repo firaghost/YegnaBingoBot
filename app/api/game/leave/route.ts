@@ -68,6 +68,22 @@ export async function POST(request: NextRequest) {
         .eq('id', gameId)
 
       console.log(`🏁 All players left during ${game.status}, game ended`)
+      // Stop number calling and force-sync cache on the socket server
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        await fetch(`${baseUrl}/api/game/stop-calling`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+        await fetch(`${baseUrl}/api/cache/force-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+      } catch (e) {
+        console.warn('Failed to stop number calling after all left:', e)
+      }
       return NextResponse.json({
         success: true,
         message: 'All players left, game ended'
@@ -162,6 +178,23 @@ export async function POST(request: NextRequest) {
 
       console.log(`💰 Auto-win prize: ${netPrize} ETB (after ${commissionRate}% commission)`)
 
+      // Stop number calling and force-sync cache
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        await fetch(`${baseUrl}/api/game/stop-calling`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+        await fetch(`${baseUrl}/api/cache/force-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+      } catch (e) {
+        console.warn('Failed to stop number calling after auto-win:', e)
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Player left, remaining player wins',
@@ -183,6 +216,23 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', gameId)
 
+      // Stop number calling and force-sync cache
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        await fetch(`${baseUrl}/api/game/stop-calling`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+        await fetch(`${baseUrl}/api/cache/force-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+      } catch (e) {
+        console.warn('Failed to stop number calling after end-of-game:', e)
+      }
+
       return NextResponse.json({
         success: true,
         message: 'All players left, game ended'
@@ -197,6 +247,18 @@ export async function POST(request: NextRequest) {
         prize_pool: game.stake * remainingPlayers
       })
       .eq('id', gameId)
+
+    // Force-sync cache with the new state to prevent stale intervals
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      await fetch(`${baseUrl}/api/cache/force-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameId })
+      })
+    } catch (e) {
+      console.warn('Failed to force-sync cache after player leave:', e)
+    }
 
     return NextResponse.json({
       success: true,

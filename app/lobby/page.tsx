@@ -144,13 +144,13 @@ export default function LobbyPage() {
             // Get active games for this room to count waiting players
             const { data: activeGames } = await supabase
               .from('games')
-              .select('players, status')
+              .select('players, bots, status')
               .eq('room_id', room.id)
-              .in('status', ['waiting', 'countdown'])
+              .in('status', ['waiting', 'waiting_for_players', 'countdown'])
               .order('created_at', { ascending: false })
               .limit(1)
 
-            const waitingPlayers = activeGames?.[0]?.players?.length || 0
+            const waitingPlayers = (activeGames?.[0]?.players?.length || 0) + (activeGames?.[0]?.bots?.length || 0)
             
             // Calculate dynamic NET prize pool based on waiting players (after commission)
             const netMultiplier = 1 - commissionRate
@@ -236,13 +236,13 @@ export default function LobbyPage() {
     try {
       const { data: activeGames } = await supabase
         .from('games')
-        .select('players, status')
+        .select('players, bots, status')
         .eq('room_id', roomId)
-        .in('status', ['waiting', 'countdown'])
+        .in('status', ['waiting', 'waiting_for_players', 'countdown'])
         .order('created_at', { ascending: false })
         .limit(1)
 
-      const waitingPlayers = activeGames?.[0]?.players?.length || 0
+      const waitingPlayers = (activeGames?.[0]?.players?.length || 0) + (activeGames?.[0]?.bots?.length || 0)
 
       // Update the specific room in state
       setRooms(prevRooms => 

@@ -638,6 +638,102 @@ bot.action('help', async (ctx) => {
 })
 
 // ============================================
+// INLINE MODE HANDLERS (for @Bot queries)
+// ============================================
+
+bot.on('inline_query', async (ctx) => {
+  try {
+    const q = (ctx.inlineQuery?.query || '').trim().toLowerCase()
+
+    const joinKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '📢 Join Channel', url: 'https://t.me/BingoXofficial' },
+          { text: '🎮 Play Now', web_app: { url: MINI_APP_URL } as any }
+        ]
+      ]
+    }
+
+    const results: any[] = []
+
+    if (!q || q === 'rooms') {
+      results.push({
+        type: 'article',
+        id: 'rooms',
+        title: 'Rooms',
+        description: 'View available game rooms',
+        input_message_content: {
+          message_text: '🎮 Open the mini app to view all rooms.',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    if (!q || q === 'levels') {
+      results.push({
+        type: 'article',
+        id: 'levels',
+        title: 'Levels',
+        description: 'Game difficulty levels',
+        input_message_content: {
+          message_text: '🎯 Levels: Easy, Medium, Hard. Higher levels grant more XP!',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    if (!q || q === 'channel') {
+      results.push({
+        type: 'article',
+        id: 'channel',
+        title: 'Join Channel',
+        description: 'Official announcements and bonuses',
+        input_message_content: {
+          message_text: '📢 Join our official channel: https://t.me/BingoXofficial',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    if (!q || q === 'mystats') {
+      results.push({
+        type: 'article',
+        id: 'mystats',
+        title: 'My Stats',
+        description: 'Open profile and stats',
+        input_message_content: {
+          message_text: '📊 Open the mini app to view your stats and profile.',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    // Fallback/help card
+    if (results.length === 0) {
+      results.push({
+        type: 'article',
+        id: 'help',
+        title: 'Help',
+        description: 'Try: rooms, levels, channel, mystats',
+        input_message_content: {
+          message_text: 'Type: rooms, levels, channel, mystats',
+          parse_mode: 'Markdown'
+        },
+        reply_markup: joinKeyboard
+      })
+    }
+
+    await ctx.answerInlineQuery(results, { cache_time: 1 })
+  } catch (e) {
+    console.error('inline_query error:', e)
+  }
+})
+
+// ============================================
 // ERROR HANDLING
 // ============================================
 
