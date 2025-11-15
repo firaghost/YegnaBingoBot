@@ -376,7 +376,7 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       let message = '🏆 *Top 10 Players*\n\n'
-      leaderboard.forEach((player, index) => {
+      leaderboard.forEach((player: any, index: number) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         message += `${medal} ${player.username}\n`
         message += `   💰 ${player.total_winnings} ETB | 🎯 ${player.games_won} wins\n\n`
@@ -409,7 +409,7 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       let message = '🏆 *Top 10 Players*\n\n'
-      leaderboard.forEach((player, index) => {
+      leaderboard.forEach((player: any, index: number) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         message += `${medal} ${player.username} - ${player.total_winnings} ETB\n`
       })
@@ -600,7 +600,7 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       let message = '🎮 *Available Game Rooms:*\n\n'
-      rooms.forEach(room => {
+      rooms.forEach((room: any) => {
         const emoji = room.stake <= 10 ? '🎯' : room.stake <= 50 ? '⚡' : '💎'
         message += `${emoji} *${room.name}*\n`
         message += `   Stake: ${room.stake} ETB\n`

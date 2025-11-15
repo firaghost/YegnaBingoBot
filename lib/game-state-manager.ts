@@ -408,14 +408,15 @@ export class GameStateManager {
     // Set player as disconnected
     player.status = 'disconnected'
     player.last_seen = new Date()
-    player.reconnect_deadline = new Date(Date.now() + 30000) // 30 second grace period
+    const graceMs = this.getReconnectGraceMs()
+    player.reconnect_deadline = new Date(Date.now() + graceMs)
 
-    console.log(`🔌 Player ${username} disconnected from room ${roomId}, grace period: 30s`)
+    console.log(`🔌 Player ${username} disconnected from room ${roomId}, grace period: ${Math.round(graceMs / 1000)}s`)
 
     // Start reconnect timer
     const reconnectTimer = setTimeout(() => {
       this.removeDisconnectedPlayer(roomId, username)
-    }, 30000)
+    }, graceMs)
 
     game.reconnect_timers.set(username, reconnectTimer)
     
@@ -686,6 +687,16 @@ export class GameStateManager {
       case 'hard': return 1000   // 1 second
       default: return 2000
     }
+  }
+
+  /**
+   * Get reconnect grace period in ms (supports test-time override)
+   */
+  private getReconnectGraceMs(): number {
+    const env = process.env.TEST_RECONNECT_GRACE_MS
+    const parsed = env ? parseInt(env, 10) : NaN
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+    return 30000
   }
 
   /**

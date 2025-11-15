@@ -377,19 +377,23 @@ export class WaitingRoomManager {
     // Clear existing countdown if any
     this.clearCountdown(roomId)
 
-    let seconds = 10
+    // Support test-time override for countdown duration
+    const testCountdownEnv = process.env.TEST_COUNTDOWN_TIME
+    const testCountdown = testCountdownEnv ? parseInt(testCountdownEnv, 10) : NaN
+    const seconds = Number.isFinite(testCountdown) && testCountdown > 0 ? testCountdown : 10
+    let remaining = seconds
     console.log(`🕐 Starting countdown for room ${roomId}: ${seconds} seconds`)
 
     const countdown = setInterval(() => {
-      callback(seconds)
+      callback(remaining)
       
-      if (seconds <= 0) {
+      if (remaining <= 0) {
         this.clearCountdown(roomId)
         onComplete()
         return
       }
       
-      seconds--
+      remaining--
     }, 1000)
 
     roomCountdowns.set(roomId, countdown)
@@ -438,54 +442,160 @@ export class WaitingRoomManager {
   }
 
   /**
+   * Seed bots to fill a room up to max capacity
+   */
+  async seedBotsToRoom(roomId: string): Promise<void> {
+    try {
+      const room = await this.getRoom(roomId)
+      const botsNeeded = room.max_players - room.active_player_count
+
+      if (botsNeeded <= 0) {
+        console.log(`✅ Room ${roomId} is full, no bots needed`)
+        return
+      }
+
+      console.log(`🤖 Seeding ${botsNeeded} bots to room ${roomId}`)
+
+      // Fetch available bots
+      const { data: bots, error: botError } = await this.supabase
+        .from('bots')
+        .select('id, name, difficulty')
+        .eq('active', true)
+        .limit(botsNeeded)
+
+      if (botError || !bots || bots.length === 0) {
+        console.warn(`⚠️ No active bots available for room ${roomId}`)
+        return
+      }
+
+      // Add each bot to the room
+      for (const bot of bots) {
+        try {
+          const { error: insertError } = await this.supabase
+            .from('room_players')
+            .insert({
+              room_id: roomId,
+              username: bot.name,
+              socket_id: `bot_${bot.id}`,
+              status: 'active',
+              is_bot: true,
+              bot_id: bot.id
+            })
+
+          if (!insertError) {
+            console.log(`✅ Added bot ${bot.name} to room ${roomId}`)
+          }
+        } catch (error) {
+          console.error(`Error adding bot ${bot.name} to room:`, error)
+        }
+      }
+
+      // Update room player count
+      await this.updateRoomPlayerCount(roomId)
+    } catch (error) {
+      console.error('Error seeding bots to room:', error)
+    }
+  }
+
+  /**
    * Start a game for a room
    */
   async startGame(roomId: string): Promise<GameSession> {
     try {
       const room = await this.getRoom(roomId)
 
-      // Create game session
-      const { data: gameSession, error } = await this.supabase
-        .from('game_sessions')
-        .insert({
-          room_id: roomId,
-          game_level: room.game_level,
-          status: 'in_progress',
-          started_at: new Date().toISOString(),
-          total_players: room.active_player_count,
-          active_players: room.active_player_count,
-          game_data: {
-            level_settings: await this.getLevelSettings(room.game_level),
-            players: room.players.map(p => ({
-              username: p.username,
-              socket_id: p.socket_id,
-              joined_at: p.joined_at
-            }))
-          }
-        })
-        .select()
-        .single()
+      // Seed bots to fill the room if needed
+      if (room.active_player_count < room.max_players) {
+        await this.seedBotsToRoom(roomId)
+        // Refresh room data after seeding bots
+        const updatedRoom = await this.getRoom(roomId)
+        
+        // Create game session with updated player count
+        const { data: gameSession, error } = await this.supabase
+          .from('game_sessions')
+          .insert({
+            room_id: roomId,
+            game_level: room.game_level,
+            status: 'in_progress',
+            started_at: new Date().toISOString(),
+            total_players: updatedRoom.active_player_count,
+            active_players: updatedRoom.active_player_count,
+            game_data: {
+              level_settings: await this.getLevelSettings(room.game_level),
+              players: updatedRoom.players.map(p => ({
+                username: p.username,
+                socket_id: p.socket_id,
+                joined_at: p.joined_at
+              }))
+            }
+          })
+          .select()
+          .single()
 
-      if (error) {
-        console.error('Error creating game session:', error)
-        throw new Error('Failed to create game session')
+        if (error) {
+          console.error('Error creating game session:', error)
+          throw new Error('Failed to create game session')
+        }
+
+        // Update room status
+        await this.supabase
+          .from('rooms')
+          .update({ 
+            status: 'in_progress',
+            game_started_at: new Date().toISOString()
+          })
+          .eq('id', roomId)
+
+        // Clear countdown and cache
+        this.clearCountdown(roomId)
+        activeRooms.delete(roomId)
+
+        console.log(`🎮 Started game for room ${roomId} with ${updatedRoom.active_player_count} players (${updatedRoom.players.length - room.active_player_count} bots added)`)
+        return gameSession
+      } else {
+        // Room already full, proceed normally
+        const { data: gameSession, error } = await this.supabase
+          .from('game_sessions')
+          .insert({
+            room_id: roomId,
+            game_level: room.game_level,
+            status: 'in_progress',
+            started_at: new Date().toISOString(),
+            total_players: room.active_player_count,
+            active_players: room.active_player_count,
+            game_data: {
+              level_settings: await this.getLevelSettings(room.game_level),
+              players: room.players.map(p => ({
+                username: p.username,
+                socket_id: p.socket_id,
+                joined_at: p.joined_at
+              }))
+            }
+          })
+          .select()
+          .single()
+
+        if (error) {
+          console.error('Error creating game session:', error)
+          throw new Error('Failed to create game session')
+        }
+
+        // Update room status
+        await this.supabase
+          .from('rooms')
+          .update({ 
+            status: 'in_progress',
+            game_started_at: new Date().toISOString()
+          })
+          .eq('id', roomId)
+
+        // Clear countdown and cache
+        this.clearCountdown(roomId)
+        activeRooms.delete(roomId)
+
+        console.log(`🎮 Started game for room ${roomId}`)
+        return gameSession
       }
-
-      // Update room status
-      await this.supabase
-        .from('rooms')
-        .update({ 
-          status: 'in_progress',
-          game_started_at: new Date().toISOString()
-        })
-        .eq('id', roomId)
-
-      // Clear countdown and cache
-      this.clearCountdown(roomId)
-      activeRooms.delete(roomId)
-
-      console.log(`🎮 Started game for room ${roomId}`)
-      return gameSession
     } catch (error) {
       console.error('Error starting game:', error)
       throw error

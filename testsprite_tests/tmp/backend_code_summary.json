@@ -1,0 +1,345 @@
+{
+  "tech_stack": [
+    "TypeScript",
+    "Next.js 14",
+    "Node.js",
+    "Supabase (PostgreSQL)",
+    "Socket.IO",
+    "Express (integrated game server)"
+  ],
+  "features": [
+    {
+      "name": "Game Join API",
+      "description": "Join an existing game or create a new one. Handles player joining, bot auto-fill, prize pool updates, and game state transitions.",
+      "files": [
+        "app/api/game/join/route.ts",
+        "lib/game-state-manager.ts",
+        "server/bot-service.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/game/join",
+        "method": "POST",
+        "description": "Join or create a game session",
+        "requestBody": {
+          "type": "object",
+          "required": ["roomId", "userId"],
+          "properties": {
+            "roomId": {
+              "type": "string",
+              "description": "UUID of the game room"
+            },
+            "userId": {
+              "type": "string",
+              "description": "UUID of the player"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully joined or created game",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "gameId": { "type": "string" },
+                "game": { "type": "object" },
+                "action": { "type": "string", "enum": ["created", "joined", "already_joined", "queued"] }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required fields"
+          },
+          "404": {
+            "description": "Room not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    {
+      "name": "Game Tick API",
+      "description": "Advances game state by one step. Handles countdown progression, game start, number calling, and game end. Implements atomic operations to prevent race conditions.",
+      "files": [
+        "app/api/game/tick/route.ts",
+        "lib/game-state-manager.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/game/tick",
+        "method": "POST",
+        "description": "Advance game state by one step",
+        "requestBody": {
+          "type": "object",
+          "required": ["gameId"],
+          "properties": {
+            "gameId": {
+              "type": "string",
+              "description": "UUID of the game"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Game state advanced",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "action": { "type": "string", "enum": ["countdown", "start", "call_number", "end", "skip", "none"] },
+                "countdown_time": { "type": "number" },
+                "latest_number": {
+                  "type": "object",
+                  "properties": {
+                    "letter": { "type": "string" },
+                    "number": { "type": "number" }
+                  }
+                },
+                "total_called": { "type": "number" },
+                "message": { "type": "string" }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing gameId"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    {
+      "name": "Game Complete API",
+      "description": "Mark a game as complete and update player statistics. Handles XP awards, rank progression, leaderboard updates, and win/loss tracking.",
+      "files": [
+        "app/api/game/complete/route.ts",
+        "lib/level-handlers.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/game/complete",
+        "method": "POST",
+        "description": "Complete a game and update player stats",
+        "requestBody": {
+          "type": "object",
+          "required": ["userId", "result", "levelName"],
+          "properties": {
+            "userId": {
+              "type": "number",
+              "description": "Telegram ID of the player"
+            },
+            "result": {
+              "type": "string",
+              "enum": ["win", "lose"],
+              "description": "Game result"
+            },
+            "levelName": {
+              "type": "string",
+              "enum": ["easy", "medium", "hard"],
+              "description": "Difficulty level"
+            },
+            "gameId": {
+              "type": "string",
+              "description": "Optional UUID of the game"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Game completed successfully",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "result": { "type": "string" },
+                "level": { "type": "string" },
+                "xpGained": { "type": "number" },
+                "newXP": { "type": "number" },
+                "newWins": { "type": "number" },
+                "rankUp": { "type": "boolean" },
+                "leaderboard": {
+                  "type": "object",
+                  "properties": {
+                    "weekly": { "type": "number" },
+                    "monthly": { "type": "number" }
+                  }
+                },
+                "message": { "type": "string" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid result or level"
+          },
+          "404": {
+            "description": "User or level not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    {
+      "name": "Leaderboard Get API",
+      "description": "Retrieve leaderboard rankings for weekly or monthly periods. Supports pagination and user position lookup.",
+      "files": [
+        "app/api/leaderboard/route.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/leaderboard",
+        "method": "GET",
+        "description": "Get leaderboard rankings",
+        "queryParameters": {
+          "limit": {
+            "type": "number",
+            "default": 10,
+            "description": "Number of results to return"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["weekly", "monthly"],
+            "default": "weekly",
+            "description": "Leaderboard period"
+          },
+          "userId": {
+            "type": "string",
+            "description": "Optional user ID to get user's position"
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Leaderboard retrieved",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "leaderboard": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "rank": { "type": "number" },
+                      "username": { "type": "string" },
+                      "xp": { "type": "number" },
+                      "wins": { "type": "number" },
+                      "level_progress": { "type": "number" }
+                    }
+                  }
+                },
+                "userPosition": { "type": "object" },
+                "totalParticipants": { "type": "number" },
+                "period": { "type": "string" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid period"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    {
+      "name": "Leaderboard Admin API",
+      "description": "Admin operations on leaderboard. Supports reset and recalculation of rankings. Requires admin API key.",
+      "files": [
+        "app/api/leaderboard/route.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/leaderboard",
+        "method": "POST",
+        "description": "Admin operations on leaderboard",
+        "requestBody": {
+          "type": "object",
+          "required": ["action", "period", "adminKey"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["reset", "recalculate"],
+              "description": "Admin action to perform"
+            },
+            "period": {
+              "type": "string",
+              "enum": ["weekly", "monthly"],
+              "description": "Leaderboard period"
+            },
+            "adminKey": {
+              "type": "string",
+              "description": "Admin API key for authentication"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation successful",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "success": { "type": "boolean" },
+                "message": { "type": "string" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid action or period"
+          },
+          "401": {
+            "description": "Unauthorized - invalid admin key"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    {
+      "name": "Game State Manager",
+      "description": "Core in-memory and database-backed game state management. Handles atomic winner validation, player tracking, reconnect grace periods, and auto-end logic.",
+      "files": [
+        "lib/game-state-manager.ts"
+      ],
+      "api_doc": {
+        "module": "GameStateManager",
+        "methods": [
+          {
+            "name": "initializeGame",
+            "description": "Initialize a new game session",
+            "parameters": {
+              "roomId": "string",
+              "gameLevel": "easy|medium|hard",
+              "players": "Array<{username, socket_id, user_id}>"
+            }
+          },
+          {
+            "name": "validateBingoClaim",
+            "description": "Validate bingo claim with atomic first-come-first-serve logic",
+            "parameters": {
+              "roomId": "string",
+              "claim": "BingoClaim"
+            }
+          },
+          {
+            "name": "handlePlayerDisconnect",
+            "description": "Handle player disconnect with reconnect grace period",
+            "parameters": {
+              "roomId": "string",
+              "username": "string"
+            }
+          },
+          {
+            "name": "handlePlayerReconnect",
+            "description": "Handle player reconnect within grace period",
+            "parameters": {
+              "roomId": "string",
+              "username": "string",
+              "socketId": "string"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

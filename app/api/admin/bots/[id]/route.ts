@@ -15,7 +15,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (typeof body.name === 'string') patch.name = body.name
   if (typeof body.avatar === 'string' || body.avatar === null) patch.avatar = body.avatar
   if (typeof body.active === 'boolean') patch.active = body.active
-  if (['easy','medium','hard'].includes(body.difficulty)) patch.difficulty = body.difficulty
+  if (['easy','medium','hard','unbeatable'].includes(body.difficulty)) patch.difficulty = body.difficulty
   if (['always_waiting','only_when_assigned'].includes(body.waiting_mode)) patch.waiting_mode = body.waiting_mode
   if (typeof body.win_probability === 'number') patch.win_probability = Math.max(0, Math.min(1, body.win_probability))
   if (body.behavior_profile) patch.behavior_profile = body.behavior_profile

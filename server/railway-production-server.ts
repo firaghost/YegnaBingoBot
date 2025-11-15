@@ -299,7 +299,7 @@ async function cleanupFinishedGames() {
 
     let cleanedCount = 0
     if (finishedGames && finishedGames.length > 0) {
-      finishedGames.forEach(game => {
+      finishedGames.forEach((game: any) => {
         if (gameIntervals.has(game.id)) {
           stopNumberCalling(game.id)
           cleanedCount++

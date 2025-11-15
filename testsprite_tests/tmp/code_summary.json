@@ -1,0 +1,171 @@
+{
+  "tech_stack": [
+    "TypeScript",
+    "Next.js 14",
+    "React 18",
+    "Supabase",
+    "Socket.io",
+    "TailwindCSS",
+    "Telegraf (Telegram Bot)",
+    "Express"
+  ],
+  "features": [
+    {
+      "name": "Telegram Authentication",
+      "description": "User authentication via Telegram Web App with auto-login for development",
+      "files": [
+        "app/login/page.tsx",
+        "lib/hooks/useAuth.ts",
+        "lib/auth.ts"
+      ],
+      "api_doc": {
+        "endpoint": "/api/auth/telegram",
+        "method": "POST",
+        "description": "Authenticate user with Telegram credentials",
+        "requestBody": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "number" },
+            "username": { "type": "string" },
+            "first_name": { "type": "string" },
+            "last_name": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "name": "Game Lobby",
+      "description": "Main lobby page where users can see available games and join",
+      "files": [
+        "app/lobby/page.tsx",
+        "app/api/games/list/route.ts",
+        "app/api/game/join/route.ts"
+      ],
+      "api_doc": {
+        "endpoints": [
+          {
+            "path": "/api/games/list",
+            "method": "GET",
+            "description": "Get list of available games"
+          },
+          {
+            "path": "/api/game/join",
+            "method": "POST",
+            "description": "Join a game room"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Game Room",
+      "description": "Real-time bingo game with socket.io synchronization",
+      "files": [
+        "app/game/[roomId]/page.tsx",
+        "lib/hooks/useSocket.ts",
+        "app/api/game/claim-bingo/route.ts"
+      ],
+      "api_doc": {
+        "endpoints": [
+          {
+            "path": "/api/game/claim-bingo",
+            "method": "POST",
+            "description": "Claim bingo win and validate"
+          }
+        ],
+        "socketEvents": [
+          "join_game",
+          "leave_game",
+          "mark_number",
+          "claim_bingo",
+          "game_state_update",
+          "number_drawn"
+        ]
+      }
+    },
+    {
+      "name": "Waiting Room",
+      "description": "Waiting room for games to start with countdown timer",
+      "files": [
+        "server/waiting-room-app.ts",
+        "app/api/game/waiting-room/route.ts"
+      ],
+      "api_doc": {
+        "socketEvents": [
+          "join_waiting_room",
+          "leave_waiting_room",
+          "waiting_room_update",
+          "game_start_countdown"
+        ]
+      }
+    },
+    {
+      "name": "Wallet & Transactions",
+      "description": "User wallet management with deposit and withdrawal",
+      "files": [
+        "app/wallet/page.tsx",
+        "app/api/wallet/balance/route.ts",
+        "app/api/wallet/deposit/route.ts",
+        "app/api/wallet/withdraw/route.ts"
+      ],
+      "api_doc": {
+        "endpoints": [
+          {
+            "path": "/api/wallet/balance",
+            "method": "GET",
+            "description": "Get user wallet balance"
+          },
+          {
+            "path": "/api/wallet/deposit",
+            "method": "POST",
+            "description": "Deposit funds to wallet"
+          },
+          {
+            "path": "/api/wallet/withdraw",
+            "method": "POST",
+            "description": "Withdraw funds from wallet"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Leaderboard",
+      "description": "Global leaderboard showing top players",
+      "files": [
+        "app/leaderboard/page.tsx",
+        "app/api/leaderboard/route.ts"
+      ],
+      "api_doc": {
+        "endpoints": [
+          {
+            "path": "/api/leaderboard",
+            "method": "GET",
+            "description": "Get leaderboard rankings"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Admin Portal",
+      "description": "Admin management portal for game configuration and monitoring",
+      "files": [
+        "app/mgmt-portal-x7k9p2/page.tsx",
+        "app/api/admin/config/route.ts",
+        "app/api/admin/games/route.ts"
+      ],
+      "api_doc": {
+        "endpoints": [
+          {
+            "path": "/api/admin/config",
+            "method": "GET",
+            "description": "Get admin configuration"
+          },
+          {
+            "path": "/api/admin/games",
+            "method": "GET",
+            "description": "Get all games for admin"
+          }
+        ]
+      }
+    }
+  ]
+}

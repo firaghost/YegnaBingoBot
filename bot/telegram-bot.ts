@@ -146,7 +146,7 @@ bot.command('rooms', async (ctx) => {
 
     let message = '🎮 *Available Game Rooms:*\n\n'
     
-    rooms.forEach(room => {
+    rooms.forEach((room: any) => {
       const emoji = room.stake <= 10 ? '🎯' : room.stake <= 50 ? '⚡' : '💎'
       message += `${emoji} *${room.name}*\n`
       message += `   Entry: ${room.stake} ETB\n`

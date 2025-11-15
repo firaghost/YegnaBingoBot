@@ -36,7 +36,7 @@ export default function AdminGamesPage() {
       if (error) throw error
 
       // Get player counts from the players array in games table
-      const gamesWithPlayers = (data || []).map((game) => ({
+      const gamesWithPlayers = (data || []).map((game: any) => ({
         ...game,
         player_count: game.players?.length || 0
       }))

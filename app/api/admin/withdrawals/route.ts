@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
     // Manually fetch user data for each withdrawal
     const withdrawalsWithUsers = await Promise.all(
-      (withdrawals || []).map(async (withdrawal) => {
+      (withdrawals || []).map(async (withdrawal: any) => {
         const { data: user } = await supabase
           .from('users')
           .select('username, telegram_id')

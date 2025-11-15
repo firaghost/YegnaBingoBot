@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     // This ensures only ONE tick can process at a time
     const { data: game, error: gameError } = await supabase
       .rpc('get_game_for_update', { game_id: gameId })
-      .single<Game>()
+      .single()
 
     if (gameError || !game) {
       // Game not found or locked by another tick

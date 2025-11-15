@@ -13,7 +13,7 @@ export async function GET() {
 
     // Get current player counts for each room
     const roomsWithPlayers = await Promise.all(
-      (rooms || []).map(async (room) => {
+      (rooms || []).map(async (room: any) => {
         const { count } = await supabase
           .from('games')
           .select('*', { count: 'exact', head: true })

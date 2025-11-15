@@ -23,7 +23,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🎯 **Available Game Levels:**\n\n'
       
-      levels.forEach(level => {
+      levels.forEach((level: any) => {
         const emoji = level.name === 'easy' ? '🟢' : level.name === 'medium' ? '🟡' : '🔴'
         const interval = (level.call_interval / 1000).toFixed(1)
         
@@ -80,7 +80,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Weekly Leaderboard**\n\n'
       
-      weeklyBoard.forEach((player, index) => {
+      weeklyBoard.forEach((player: any, index: number) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         
@@ -312,7 +312,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Monthly Leaderboard**\n\n'
       
-      monthlyBoard.forEach((player, index) => {
+      monthlyBoard.forEach((player: any, index: number) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         
@@ -365,7 +365,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🏆 **Weekly Leaderboard**\n\n'
       
-      weeklyBoard.forEach((player, index) => {
+      weeklyBoard.forEach((player: any, index: number) => {
         const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`
         const rankEmoji = getRankEmoji(player.level_progress)
         
@@ -450,7 +450,7 @@ export function setupLevelHandlers(bot: Telegraf) {
 
       let message = '🎯 **Available Game Levels:**\n\n'
       
-      levels.forEach(level => {
+      levels.forEach((level: any) => {
         const emoji = level.name === 'easy' ? '🟢' : level.name === 'medium' ? '🟡' : '🔴'
         const interval = (level.call_interval / 1000).toFixed(1)
         

@@ -59,7 +59,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const gamesWithPlayerCount = games?.map(game => ({
+    const gamesWithPlayerCount = games?.map((game: any) => ({
       ...game,
       player_count: game.players?.length || 0,
       age_minutes: Math.floor((Date.now() - new Date(game.created_at).getTime()) / (1000 * 60))

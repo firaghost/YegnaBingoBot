@@ -163,7 +163,7 @@ export async function getAllConfig(): Promise<Partial<AdminConfig>> {
 
     const config: any = {}
     
-    data.forEach((item) => {
+    data.forEach((item: { config_key: string; config_value: any }) => {
       // Convert snake_case to camelCase
       const camelKey = item.config_key.replace(/_([a-z])/g, (_: string, letter: string) => letter.toUpperCase())
       
@@ -195,6 +195,12 @@ export async function getGameConfig(level: 'easy' | 'medium' | 'hard') {
   
   const levelCap = level.charAt(0).toUpperCase() + level.slice(1)
   
+  // Test overrides: allow speeding up waiting/countdown via env vars during tests
+  const testWaitingEnv = process.env.TEST_WAITING_TIME
+  const testCountdownEnv = process.env.TEST_COUNTDOWN_TIME
+  const testWaiting = testWaitingEnv ? parseInt(testWaitingEnv, 10) : undefined
+  const testCountdown = testCountdownEnv ? parseInt(testCountdownEnv, 10) : undefined
+
   return {
     stake: config[`stake${levelCap}`] || 10,
     maxPlayers: config[`gameMaxPlayers${levelCap}`] || 8,
@@ -202,8 +208,8 @@ export async function getGameConfig(level: 'easy' | 'medium' | 'hard') {
     prizePool: config[`prizePool${levelCap}`] || 100,
     commissionRate: config.gameCommissionRate || 0.1,
     minPlayers: config.gameMinPlayers || 2,
-    waitingTime: config.gameWaitingTime || 30,
-    countdownTime: config.gameCountdownTime || 10
+    waitingTime: (Number.isFinite(testWaiting as number) ? (testWaiting as number) : (config.gameWaitingTime || 30)),
+    countdownTime: (Number.isFinite(testCountdown as number) ? (testCountdown as number) : (config.gameCountdownTime || 10))
   }
 }
 

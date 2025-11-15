@@ -63,7 +63,7 @@ export default function LobbyPage() {
         event: '*', 
         schema: 'public', 
         table: 'rooms' 
-      }, (payload) => {
+      }, (payload: any) => {
         console.log('🏠 Room update:', payload)
         handleRoomUpdate(payload)
       })
@@ -71,7 +71,7 @@ export default function LobbyPage() {
         event: '*', 
         schema: 'public', 
         table: 'games' 
-      }, (payload) => {
+      }, (payload: any) => {
         console.log('🎮 Game update:', payload)
         handleGameUpdate(payload)
       })
@@ -133,13 +133,13 @@ export default function LobbyPage() {
       if (error) throw error
       
       // Remove duplicates by ID and enhance with waiting players info
-      const uniqueRooms = (data || []).filter((room, index, self) => 
-        index === self.findIndex(r => r.id === room.id)
+      const uniqueRooms = (data || []).filter((room: any, index: any, self: any) => 
+        index === self.findIndex((r: any) => r.id === room.id)
       )
 
       // Get waiting players for each room
       const enhancedRooms = await Promise.all(
-        uniqueRooms.map(async (room) => {
+        uniqueRooms.map(async (room: any) => {
           try {
             // Get active games for this room to count waiting players
             const { data: activeGames } = await supabase

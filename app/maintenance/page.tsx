@@ -100,6 +100,7 @@ export default function MaintenancePage() {
 
         {/* Maintenance Message */}
         <h2 className="text-2xl font-bold text-white mb-4">Under Maintenance</h2>
+        <h2 className="text-2xl font-bold text-white mb-4">በ ጥገና ላይ</h2>
         <p className="text-gray-300 mb-8 leading-relaxed">
           {maintenanceMessage}
         </p>

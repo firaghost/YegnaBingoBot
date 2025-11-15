@@ -5,7 +5,7 @@ export type BotJSON = {
   name: string
   avatar?: string | null
   win_probability: number
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty: 'easy' | 'medium' | 'hard' | 'unbeatable'
   behavior_profile: any
 } | null
 
@@ -25,7 +25,7 @@ async function getDefaultBotsPerRoom(supabase: SupabaseClient): Promise<number> 
   }
 }
 
-export async function selectActiveBotJSON(supabase: SupabaseClient, difficulty?: 'easy'|'medium'|'hard', waitingMode: 'always_waiting'|'only_when_assigned' = 'always_waiting'): Promise<BotJSON> {
+export async function selectActiveBotJSON(supabase: SupabaseClient, difficulty?: 'easy'|'medium'|'hard'|'unbeatable', waitingMode: 'always_waiting'|'only_when_assigned' = 'always_waiting'): Promise<BotJSON> {
   try {
     const { data, error } = await (supabase as any).rpc('select_active_bot_json', {
       p_difficulty: difficulty ?? null,

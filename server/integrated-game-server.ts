@@ -46,12 +46,17 @@ class GameTransitionManager {
       try {
         console.log(`🔄 Transitioning room ${roomId} from waiting to in-game`)
 
-        // Get players from waiting room
-        const players = room.players.map((p: any) => ({
+        // Refresh room to get latest players including bots
+        const refreshedRoom = await waitingRoomManager.getRoom(roomId)
+        
+        // Get all players from waiting room (including bots)
+        const players = refreshedRoom.players.map((p: any) => ({
           username: p.username,
           socket_id: p.socket_id,
           user_id: p.telegram_id // Map telegram_id to user_id
         }))
+
+        console.log(`📋 Room ${roomId} has ${players.length} total players (humans + bots)`)
 
         // Start the actual game
         await inGameSocketServer.startGame(roomId, room.game_level, players)
@@ -63,7 +68,7 @@ class GameTransitionManager {
           message: 'Game starting! Transitioning to game mode...'
         })
 
-        console.log(`✅ Successfully transitioned room ${roomId} to in-game mode`)
+        console.log(`✅ Successfully transitioned room ${roomId} to in-game mode with ${players.length} players`)
 
       } catch (error) {
         console.error(`❌ Failed to transition room ${roomId} to in-game:`, error)

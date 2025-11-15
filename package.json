@@ -22,6 +22,9 @@
     "test:ingame": "tsx test/ingame-test-suite.ts",
     "test:atomic-winner": "tsx test/atomic-winner-test.ts",
     "test:atomic-unit": "tsx test/atomic-winner-unit-test.ts",
+    "test:backend": "tsx scripts/run-all-tests.ts",
+    "test:all": "tsx scripts/run-all-tests.ts",
+    "test:generate": "tsx scripts/testsprite-runner.ts",
     "lint": "next lint",
     "bot": "tsx bot/index.ts"
   },

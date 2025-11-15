@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "telegram authentication post request",
+    "description": "Test the /api/auth/telegram POST endpoint to verify user authentication with valid Telegram credentials, ensuring correct user data retrieval and session management."
+  },
+  {
+    "id": "TC002",
+    "title": "get available games list",
+    "description": "Test the /api/games/list GET endpoint to retrieve the list of available games, verifying correct game data and availability status."
+  },
+  {
+    "id": "TC003",
+    "title": "join game post request validation",
+    "description": "Test the /api/game/join POST endpoint to validate user eligibility, game state, and balance before allowing the user to join a game room."
+  },
+  {
+    "id": "TC004",
+    "title": "claim bingo post request validation",
+    "description": "Test the /api/game/claim-bingo POST endpoint to verify correct validation of bingo claims, including all win patterns and rejection of invalid claims."
+  },
+  {
+    "id": "TC005",
+    "title": "get user wallet balance",
+    "description": "Test the /api/wallet/balance GET endpoint to retrieve the user's wallet balance accurately."
+  },
+  {
+    "id": "TC006",
+    "title": "deposit funds to wallet",
+    "description": "Test the /api/wallet/deposit POST endpoint to ensure secure and accurate deposit transactions updating the user's wallet balance."
+  },
+  {
+    "id": "TC007",
+    "title": "withdraw funds from wallet",
+    "description": "Test the /api/wallet/withdraw POST endpoint to verify secure withdrawal transactions with proper balance checks and updates."
+  },
+  {
+    "id": "TC008",
+    "title": "get leaderboard rankings",
+    "description": "Test the /api/leaderboard GET endpoint to retrieve the global leaderboard rankings, ensuring correct sorting and timely updates."
+  },
+  {
+    "id": "TC009",
+    "title": "get admin configuration",
+    "description": "Test the /api/admin/config GET endpoint to verify retrieval of current admin configurations accurately."
+  },
+  {
+    "id": "TC010",
+    "title": "get all games for admin",
+    "description": "Test the /api/admin/games GET endpoint to retrieve all games data for admin monitoring and management."
+  }
+]

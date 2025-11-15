@@ -44,13 +44,13 @@ export default function SystemStatusPage() {
         .select('amount, type, status, created_at')
 
       const totalUsers = users?.length || 0
-      const activeUsers = users?.filter(u => u.status === 'active').length || 0
+      const activeUsers = users?.filter((u: any) => u.status === 'active').length || 0
       const totalGames = games?.length || 0
-      const activeGames = games?.filter(g => g.status === 'active').length || 0
+      const activeGames = games?.filter((g: any) => g.status === 'active').length || 0
       const totalTransactions = transactions?.length || 0
       const totalRevenue = transactions
-        ?.filter(t => t.type === 'stake' && t.status === 'completed')
-        ?.reduce((sum, t) => sum + (t.amount || 0), 0) || 0
+        ?.filter((t: any) => t.type === 'stake' && t.status === 'completed')
+        ?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0
 
       setStats({
         totalUsers,

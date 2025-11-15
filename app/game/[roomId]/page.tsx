@@ -806,7 +806,7 @@ export default function GamePage() {
             .select('username')
             .eq('id', gameState.winner_id)
             .maybeSingle()
-            .then(async ({ data }) => {
+            .then(async ({ data }: any) => {
               if (data?.username) {
                 setWinnerName(data.username)
                 return
@@ -914,7 +914,7 @@ export default function GamePage() {
               .select('username')
               .eq('id', freshGame.winner_id)
               .single()
-              .then(({ data }) => {
+              .then(({ data }: any) => {
                 if (data) setWinnerName(data.username)
               })
             
@@ -995,7 +995,7 @@ export default function GamePage() {
             .select('username')
             .eq('id', freshGame.winner_id)
             .single()
-            .then(({ data }) => {
+            .then(({ data }: any) => {
               if (data) setWinnerName(data.username)
             })
           

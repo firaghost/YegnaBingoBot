@@ -1,0 +1,16 @@
+{
+  "status": "commited",
+  "type": "backend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3001",
+  "backendAuthType": "public",
+  "executionArgs": {
+    "projectName": "YegnaBingoBot",
+    "projectPath": "c:\\Users\\coop\\Desktop\\YegnaBingoBot",
+    "testIds": [],
+    "additionalInstruction": "Generate comprehensive backend API tests with three components:\n\n1. API-LEVEL TESTS (50 test cases):\n   - POST /api/game/join: 10 tests (valid join, race conditions, error cases)\n   - POST /api/game/tick: 10 tests (countdown, number calling, state transitions)\n   - POST /api/game/complete: 10 tests (win/loss, XP awards, rank progression)\n   - GET /api/leaderboard: 10 tests (rankings, pagination, user position)\n   - POST /api/leaderboard (admin): 10 tests (reset, recalculate, auth)\n\n2. LOAD TESTING (concurrent operations):\n   - 100 concurrent players joining games\n   - 50 simultaneous game ticks\n   - 200 concurrent leaderboard requests\n   - Measure response times, throughput, and error rates\n   - Generate performance metrics\n\n3. COVERAGE REPORT:\n   - Statement coverage\n   - Branch coverage\n   - Function coverage\n   - Line coverage\n   - Identify untested code paths\n\nOutput format: Jest/Vitest tests with coverage reporting. Generate detailed metrics for performance SLAs.",
+    "envs": {
+      "API_KEY": "sk-user-5XKP3bJjvvXltCGy-7jdWx3QhiPEqaoiatMgKykwvpPYFNnPQwSWIjue077TUDr9jWodmvpnvb4p-QTDtShFSdOqFd7-i4K3cPteESiUnu7_sT_cFOwxaJ5WLNbqMmA8LcQ"
+    }
+  }
+}

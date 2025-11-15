@@ -8,7 +8,7 @@ type Bot = {
   name: string
   avatar?: string | null
   active: boolean
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty: 'easy' | 'medium' | 'hard' | 'unbeatable'
   behavior_profile: any
   win_probability: number
   waiting_mode: 'always_waiting' | 'only_when_assigned'
@@ -28,7 +28,7 @@ export default function AdminBotsPage() {
   // Filters
   const [q, setQ] = useState('')
   const [filterActive, setFilterActive] = useState<'all'|'active'|'inactive'>('all')
-  const [filterDifficulty, setFilterDifficulty] = useState<'all'|'easy'|'medium'|'hard'>('all')
+  const [filterDifficulty, setFilterDifficulty] = useState<'all'|'easy'|'medium'|'hard'|'unbeatable'>('all')
   const [filterWaiting, setFilterWaiting] = useState<'all'|'always_waiting'|'only_when_assigned'>('all')
 
   // Drawer for create/edit
@@ -36,7 +36,7 @@ export default function AdminBotsPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
-    difficulty: 'medium' as 'easy'|'medium'|'hard',
+    difficulty: 'medium' as 'easy'|'medium'|'hard'|'unbeatable',
     win_probability: 0.5,
     waiting_mode: 'always_waiting' as 'always_waiting'|'only_when_assigned',
     active: true,
@@ -272,6 +272,7 @@ export default function AdminBotsPage() {
                 <option value="easy">Easy</option>
                 <option value="medium">Medium</option>
                 <option value="hard">Hard</option>
+                <option value="unbeatable">Unbeatable</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">
@@ -369,6 +370,7 @@ export default function AdminBotsPage() {
                     <option value="easy">easy</option>
                     <option value="medium">medium</option>
                     <option value="hard">hard</option>
+                    <option value="unbeatable">unbeatable</option>
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
