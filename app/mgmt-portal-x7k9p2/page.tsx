@@ -405,6 +405,18 @@ export default function AdminDashboard() {
             </div>
           </Link>
 
+          <Link href="/mgmt-portal-x7k9p2/bots" className="bg-pink-600 hover:bg-pink-700 rounded-lg p-4 text-white transition-all group">
+            <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                <span className="text-2xl">🤖</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-sm sm:text-base">Bots</h3>
+                <p className="text-pink-100 text-xs opacity-80">Manage bot players</p>
+              </div>
+            </div>
+          </Link>
+
           <Link href="/mgmt-portal-x7k9p2/settings" className="bg-gray-600 hover:bg-gray-700 rounded-lg p-4 text-white transition-all group">
             <div className="flex items-center gap-3 sm:flex-col sm:items-start sm:gap-2">
               <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -500,6 +512,10 @@ export default function AdminDashboard() {
           <Link href="/mgmt-portal-x7k9p2/settings" className="bg-white/5 hover:bg-white/10 rounded-lg p-3 sm:p-4 text-center text-white border border-white/10 transition-all">
             <div className="text-xl sm:text-2xl mb-1 sm:mb-2">⚙️</div>
             <div className="font-medium text-xs sm:text-sm">Settings</div>
+          </Link>
+          <Link href="/mgmt-portal-x7k9p2/bots" className="bg-white/5 hover:bg-white/10 rounded-lg p-3 sm:p-4 text-center text-white border border-white/10 transition-all">
+            <div className="text-xl sm:text-2xl mb-1 sm:mb-2">🤖</div>
+            <div className="font-medium text-xs sm:text-sm">Bots</div>
           </Link>
         </div>
       </div>

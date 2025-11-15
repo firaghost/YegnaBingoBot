@@ -108,8 +108,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate that the user is actually in this game
-    if (!game.players.includes(userId)) {
+    // Validate that the claimant is in this game (player or bot)
+    const isBotClaim = Array.isArray(game.bots) && game.bots.includes(userId)
+    if (!game.players.includes(userId) && !isBotClaim) {
       return NextResponse.json(
         { error: 'Player not in this game' },
         { status: 403 }
@@ -192,67 +193,52 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Use secure bingo validation function with anti-cheat protection
+    // Use secure atomic resolver with tie-break preference for 100% bots
     try {
-      console.log(`🔒 Using secure bingo validation with anti-cheat protection`)
-      
-      // Get claimed cell numbers for validation
+      console.log(`🔒 Using atomic resolver with tie-break (prefer 100% bots on ties)`)    
+      // Build claimed cell numbers for resolver
       const claimedCells: number[] = []
       for (let i = 0; i < 5; i++) {
         for (let j = 0; j < 5; j++) {
-          if (markedCells[i][j]) {
-            claimedCells.push(card[i][j])
-          }
+          if (markedCells[i][j]) claimedCells.push(card[i][j])
         }
       }
 
-      // Use atomic bingo validation function
-      const { data: validationResult, error: validationError } = await supabase
-        .rpc('validate_bingo_claim', {
+      const { data: resolveResult, error: resolveError } = await supabase
+        .rpc('resolve_bingo_claim', {
           p_game_id: gameId,
           p_user_id: userId,
           p_claimed_cells: claimedCells,
-          p_bingo_pattern: bingoPattern,
-          p_user_card: card
+          p_bingo_pattern: patternString || bingoPattern,
+          p_user_card: card,
+          p_window_ms: 120
         })
 
-      if (validationError) {
-        console.warn('⚠️ Secure validation failed, falling back to manual validation:', validationError)
-        throw new Error('Fallback to manual validation')
+      if (resolveError) {
+        console.warn('⚠️ Atomic resolver failed, falling back to previous validation:', resolveError)
+        throw new Error('Fallback to previous validation')
       }
 
-      const validation = validationResult[0]
-      
-      if (!validation.is_valid) {
-        console.log(`❌ Secure validation failed:`, validation.validation_details)
+      const resolution = resolveResult[0]
+      if (!resolution?.is_valid) {
         return NextResponse.json(
-          { 
-            error: 'Invalid bingo claim', 
-            details: validation.validation_details 
-          },
+          { error: 'Invalid bingo claim', details: resolution?.validation_details },
+          { status: 400 }
+        )
+      }
+      if (!resolution?.is_winner) {
+        return NextResponse.json(
+          { error: 'Valid bingo, but another player won first', details: resolution?.validation_details },
           { status: 400 }
         )
       }
 
-      if (!validation.is_winner) {
-        console.log(`⏰ Valid bingo but not winner:`, validation.validation_details)
-        return NextResponse.json(
-          { 
-            error: 'Valid bingo, but another player won first',
-            details: validation.validation_details
-          },
-          { status: 400 }
-        )
-      }
-
-      // Winner! The atomic function already updated the game
-      console.log(`🏆 ATOMIC WINNER! User ${userId} won with ${bingoPattern}`)
-      
+      // Winner! The atomic resolver already set winner_id; update financials and visuals
+      console.log(`🏆 ATOMIC WINNER! User ${userId} won with ${patternString || bingoPattern}`)
       console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
       console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
       console.log(`🎁 Net Prize: ${netPrize} ETB`)
 
-      // Update additional prize information
       await supabase
         .from('games')
         .update({
@@ -309,70 +295,84 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Add NET winnings to user balance (after commission)
-    const { error: balanceError } = await supabase.rpc('add_balance', {
-      user_id: userId,
-      amount: netPrize
-    })
+    // Record winner earnings
+    if (!isBotClaim) {
+      // Human winner: add to user balance and log transaction
+      const { error: balanceError } = await supabase.rpc('add_balance', {
+        user_id: userId,
+        amount: netPrize
+      })
 
-    if (balanceError) {
-      console.error('Error adding balance:', balanceError)
+      if (balanceError) {
+        console.error('Error adding balance:', balanceError)
+      }
+
+      await supabase.from('transactions').insert({
+        user_id: userId,
+        type: 'win',
+        amount: netPrize,
+        game_id: gameId,
+        status: 'completed',
+        metadata: {
+          gross_prize: game.prize_pool,
+          commission_rate: commissionRate,
+          commission_amount: commissionAmount,
+          net_prize: netPrize
+        }
+      })
+    } else {
+      // Bot winner: record bot earnings
+      try {
+        await supabase.rpc('record_bot_earning', {
+          p_bot_id: userId,
+          p_amount: netPrize,
+          p_type: 'win',
+          p_game_id: gameId
+        })
+      } catch (e) {
+        console.error('Error recording bot earning:', e)
+      }
     }
 
-    // Create transaction record with commission details
-    await supabase.from('transactions').insert({
-      user_id: userId,
-      type: 'win',
-      amount: netPrize,
-      game_id: gameId,
-      status: 'completed',
-      metadata: {
-        gross_prize: game.prize_pool,
-        commission_rate: commissionRate,
-        commission_amount: commissionAmount,
-        net_prize: netPrize
-      }
-    })
-
-    // Get room level to determine XP reward
-    const { data: room } = await supabase
-      .from('rooms')
-      .select('game_level, default_level')
-      .eq('id', game.room_id)
-      .single()
-    
-    const gameLevel = room?.game_level || room?.default_level || 'medium'
-    
-    // Get XP reward for this level
-    const { data: levelData } = await supabase
-      .from('levels')
-      .select('xp_reward')
-      .eq('name', gameLevel)
-      .single()
-    
-    const xpReward = levelData?.xp_reward || 25 // Default to medium level XP
-
-    // Update user stats with NET winnings AND XP (single function call)
-    await supabase.rpc('update_user_stats', {
-      user_id: userId,
-      won: true,
-      winnings: netPrize
-    })
-
-    // Add XP separately using RPC function
-    try {
-      const { error: xpError } = await supabase.rpc('add_user_xp', {
-        user_id: userId,
-        xp_amount: xpReward
-      })
+    // Player XP and stats only for human winners
+    if (!isBotClaim) {
+      // Get room level to determine XP reward
+      const { data: room } = await supabase
+        .from('rooms')
+        .select('game_level, default_level')
+        .eq('id', game.room_id)
+        .single()
       
-      if (xpError) {
-        console.error('Error updating XP:', xpError)
-      } else {
-        console.log(`🎯 Player ${userId} gained ${xpReward} XP for winning ${gameLevel} level game`)
+      const gameLevel = room?.game_level || room?.default_level || 'medium'
+      
+      // Get XP reward for this level
+      const { data: levelData } = await supabase
+        .from('levels')
+        .select('xp_reward')
+        .eq('name', gameLevel)
+        .single()
+      
+      const xpReward = levelData?.xp_reward || 25 // Default to medium level XP
+
+      await supabase.rpc('update_user_stats', {
+        user_id: userId,
+        won: true,
+        winnings: netPrize
+      })
+
+      try {
+        const { error: xpError } = await supabase.rpc('add_user_xp', {
+          user_id: userId,
+          xp_amount: xpReward
+        })
+        if (xpError) {
+          console.error('Error updating XP:', xpError)
+        } else {
+          console.log(`🎯 Player ${userId} gained ${xpReward} XP for winning ${gameLevel} level game`)
+        }
+      } catch (xpError) {
+        console.error('Error in XP system:', xpError)
       }
-    } catch (xpError) {
-      console.error('Error in XP system:', xpError)
     }
 
     console.log(`🎉 User ${userId} won game ${gameId}`)

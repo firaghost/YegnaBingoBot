@@ -8,14 +8,27 @@ import cors from 'cors'
 declare global {
   var io: SocketServer | undefined
 }
+
 import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
+import { assignBotIfNeeded, autofillBotsForGame } from './bot-service'
+import { BotEngine } from './bot-engine'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
 import { gameStateCache } from './game-state-cache'
 
 const app = express()
 const httpServer = createServer(app)
+
+// Lazy bot engine singleton
+let botEngineInstance: BotEngine | null = null
+async function getBotEngine(): Promise<BotEngine> {
+  if (!botEngineInstance) {
+    const { supabaseAdmin } = await import('../lib/supabase')
+    botEngineInstance = new BotEngine(supabaseAdmin)
+  }
+  return botEngineInstance
+}
 
 // Silence logs in production (keep errors). Override is possible with ENABLE_LOGS=true
 const SILENCE_LOGS = process.env.NODE_ENV === 'production' && process.env.ENABLE_LOGS !== 'true'
@@ -194,6 +207,9 @@ async function startNumberCalling(gameId: string) {
 
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${75 - remainingNumbers}/75) - SECURE`)
 
+          // Let bot engine act on this secure tick too
+          try { (await getBotEngine()).tick(gameId) } catch {}
+
           // Check if game should end
           if (remainingNumbers === 0) {
             console.log(`🏁 All numbers called for game ${gameId}`)
@@ -223,6 +239,8 @@ async function startNumberCalling(gameId: string) {
           
           const isFair = validateNumberCallFairness(gameId, callCount, callIntervalMs)
           console.log(`📢 Game ${gameId}: Called ${letter}${calledNumber} (${callCount}/75) - ${isFair ? 'Fair sequence' : 'Timing anomaly detected'}`)
+          // Let bot engine act on this tick
+          try { (await getBotEngine()).tick(gameId) } catch {}
         }
 
       } catch (error) {
@@ -480,10 +498,17 @@ app.post('/api/game/join', async (req, res) => {
         .eq('id', result.game_id)
         .single()
 
+      // Prefill bots immediately so prize_pool reflects bots before first human joins
+      let prefilledGame = newGame
+      try {
+        const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
+        prefilledGame = updatedGame || newGame
+      } catch {}
+
       return res.json({
         success: true,
         gameId: result.game_id,
-        game: newGame,
+        game: prefilledGame,
         action: 'created'
       })
     }
@@ -587,8 +612,15 @@ app.post('/api/game/join', async (req, res) => {
 
       console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${activeGame.status}, Players: ${activeGame.players.length}`)
 
-      // If we have 2+ players and game is still in waiting status, start 30-second waiting period (only once)
-      if (activeGame.players.length >= 2 && activeGame.status === 'waiting' && !activeWaitingPeriods.has(activeGame.id)) {
+      // Bot matchmaking fallback: autofill bots for this room based on admin config
+      try {
+        const { updatedGame } = await autofillBotsForGame(supabase, activeGame, stake)
+        activeGame = updatedGame || activeGame
+      } catch {}
+
+      // If we have 2+ participants (players + bots) and game is waiting, start 30-second waiting period (only once)
+      const participantCount = (activeGame.players?.length || 0) + (activeGame.bots?.length || 0)
+      if (participantCount >= 2 && activeGame.status === 'waiting' && !activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⏳ Game ${activeGame.id} has ${activeGame.players.length} players, starting 30-second waiting period...`)
         
         // Mark this game as having an active waiting period
@@ -726,10 +758,10 @@ app.post('/api/game/join', async (req, res) => {
 
     // Player already in game - check if stuck
     console.log(`🔄 Player ${userId} already in game ${activeGame.id}, rejoining`)
-    
-    // CRITICAL FIX: Check if waiting period or countdown is already active
-    // This prevents duplicate timers that cause hallucination
-    if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
+        // CRITICAL FIX: Check if waiting period or countdown is already active
+      // This prevents duplicate timers that cause hallucination
+      const participantCount2 = (activeGame.players?.length || 0) + (activeGame.bots?.length || 0)
+      if (participantCount2 >= 2 && activeGame.status === 'waiting') {
       // Check if this game already has an active waiting period
       if (activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⚠️ Game ${activeGame.id} already has active waiting period, skipping duplicate`)
