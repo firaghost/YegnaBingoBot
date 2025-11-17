@@ -355,27 +355,18 @@ if (response.ok && result.gameId) {
 
   if (result.action === 'spectate') {
     console.log('👁️ Game already active, joining as spectator...');
-    setIsSpectatorMode(true);          // <-- NEW: Set spectator mode true
     await spectateGame(result.gameId, user.username || user.id);
     console.log('👁️ Spectator join completed');
   } else {
-    setIsSpectatorMode(false);         // <-- NEW: Reset spectator mode on join
     console.log('🔌 Joining game via socket...');
     await joinGame(result.gameId, user.id);
     console.log('🔌 Socket join completed');
   }
+} else {
+  console.error('❌ Failed to join game. Response:', response.status, result);
+  console.error('❌ Full error details:', result);
+  setLoading(false);
 }
-        } else {
-          console.error('❌ Failed to join game. Response:', response.status, result)
-          console.error('❌ Full error details:', result)
-          setLoading(false)
-        }
-        
-      } catch (error) {
-        console.error('❌ Error joining room:', error)
-        setLoading(false)
-      }
-    }
 
     joinSpecificRoom()
   }, [isAuthenticated, user, connected, roomId, gameId, gameState, joinGame])
