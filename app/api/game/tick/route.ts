@@ -88,14 +88,14 @@ export async function POST(request: NextRequest) {
         message: 'Game locked or not found'
       })
     }
-    
+
     // Type assertion for safety
     const typedGame = game as Game
 
     // Handle countdown phase
     if (game.status === 'countdown') {
       const currentTime = game.countdown_time || 10
-      
+
       if (currentTime > 1) {
         // Decrement countdown (but not below 1)
         const newTime = currentTime - 1
@@ -104,9 +104,9 @@ export async function POST(request: NextRequest) {
           .update({ countdown_time: newTime })
           .eq('id', gameId)
           .eq('status', 'countdown')
-        
+
         console.log(`⏰ Countdown: ${newTime}s for game ${gameId}`)
-        
+
         return NextResponse.json({
           success: true,
           action: 'countdown',
@@ -116,12 +116,12 @@ export async function POST(request: NextRequest) {
       } else {
         // currentTime is 1 or 0, start the game
         console.log(`🎬 Starting game ${gameId}...`)
-        
+
         const numberSequence = generateNumberSequence()
         const sequenceHash = crypto.createHash('sha256')
           .update(numberSequence.join(','))
           .digest('hex')
-        
+
         const { error: updateError } = await supabase
           .from('games')
           .update({
@@ -133,14 +133,14 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', gameId)
           .eq('status', 'countdown')
-        
+
         if (updateError) {
           console.error('Error starting game:', updateError)
           throw updateError
         }
-        
+
         console.log(`✅ Game ${gameId} started with hash: ${sequenceHash.substring(0, 16)}...`)
-        
+
         return NextResponse.json({
           success: true,
           action: 'start',
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
     if (game.status === 'active') {
       const calledNumbers = game.called_numbers || []
       const numberSequence = game.number_sequence || generateNumberSequence()
-      
+
       // Check if game has a winner (stop calling numbers)
       if (game.winner_id) {
         console.log(`🏆 Game ${gameId} has a winner, stopping number calls`)
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
           message: 'Game has a winner'
         })
       }
-      
+
       // Find next uncalled number from sequence
       let nextNumber: number | null = null
       for (const num of numberSequence) {
@@ -173,11 +173,11 @@ export async function POST(request: NextRequest) {
           break
         }
       }
-      
+
       if (!nextNumber) {
         // All numbers called - wait 10 seconds for bingo claims, then finish with no winner
         console.log(`⏰ Game ${gameId} - all 75 numbers called, waiting 10s for bingo claims...`)
-        
+
         // Schedule the no-winner finish after grace period
         setTimeout(async () => {
           try {
@@ -187,12 +187,12 @@ export async function POST(request: NextRequest) {
               .select('winner_id, status')
               .eq('id', gameId)
               .single()
-            
+
             if (finalGame?.winner_id || finalGame?.status === 'finished') {
               console.log(`✅ Game ${gameId} already finished with winner`)
               return
             }
-            
+
             // No winner claimed - finish game with no winner
             await supabase
               .from('games')
@@ -203,27 +203,28 @@ export async function POST(request: NextRequest) {
               })
               .eq('id', gameId)
               .is('winner_id', null)  // Only if no winner yet
-            
+
             console.log(`🏁 Game ${gameId} finished - NO WINNER (all 75 numbers called)`)
           } catch (error) {
             console.error(`Error finishing game ${gameId} with no winner:`, error)
           }
         }, 10000)  // 10 second grace period
-        
+
         return NextResponse.json({
           success: true,
           action: 'all_numbers_called',
           message: 'All 75 numbers called, waiting for bingo claims...'
         })
       }
-      
+
+      // --- PATCHED SECTION for Atomic Race Handling ---
       // Call the next number (with race condition protection)
       const updatedNumbers = [...calledNumbers, nextNumber]
       const latestNumber = {
         letter: getBingoLetter(nextNumber),
         number: nextNumber
       }
-      
+
       // Use atomic update to prevent duplicate calls
       const { data: updatedGame, error: updateError } = await supabase
         .from('games')
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
         .is('winner_id', null) // Only update if no winner yet
         .select('called_numbers')
         .single()
-      
+
       if (updateError || !updatedGame) {
         // Another tick already updated, skip this one
         console.log(`⚠️ Race condition detected for game ${gameId}, skipping tick`)
@@ -246,7 +247,7 @@ export async function POST(request: NextRequest) {
           message: 'Another tick in progress'
         })
       }
-      
+
       // Verify the number was actually added (race condition check)
       if (updatedGame.called_numbers.length !== updatedNumbers.length) {
         console.log(`⚠️ Number already called for game ${gameId}`)
@@ -256,9 +257,9 @@ export async function POST(request: NextRequest) {
           message: 'Number already called'
         })
       }
-      
+
       console.log(`📢 [${updatedNumbers.length}/75] Called ${latestNumber.letter}${latestNumber.number} for game ${gameId}`)
-      
+
       return NextResponse.json({
         success: true,
         action: 'call_number',
@@ -266,6 +267,8 @@ export async function POST(request: NextRequest) {
         total_called: updatedNumbers.length,
         message: `Called ${latestNumber.letter}${latestNumber.number}`
       })
+      // --- END PATCHED SECTION ---
+
     }
 
     // Game is finished or in another state
