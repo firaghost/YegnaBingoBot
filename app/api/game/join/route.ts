@@ -76,13 +76,15 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runningGame) {
-      console.log(`🏃 Game is running, queueing player: ${runningGame.id}`)
-      return NextResponse.json({
-        status: 'queued',
-        message: 'Game is running, you are in queue',
-        gameId: runningGame.id
-      })
-    }
+  console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
+  return NextResponse.json({
+    success: true,
+    action: 'spectate',
+    message: 'Game is running; you are spectating this game.',
+    gameId: runningGame.id,
+    game: runningGame
+  })
+}
 
     let actualGame = activeGame;
     if (!activeGame) {
