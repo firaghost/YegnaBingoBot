@@ -403,19 +403,9 @@ useEffect(() => {
   }
 }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState]);
 
-  // Stop loading when we successfully join waiting room or become spectator
-  if (isInWaitingRoom || isSpectator || gameState) {
-    console.log('✅ Successfully connected, stopping loading');
-    setLoading(false);
-  }
-}, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState]);
+  
 
-    // Stop loading when we successfully join waiting room or become spectator
-    if (isInWaitingRoom || isSpectator || gameState) {
-      console.log('✅ Successfully connected, stopping loading')
-      setLoading(false)
-    }
-  }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState])
+    
 
   // (Preview card removed) We will show a 10x10 picker grid in waiting room instead
 
