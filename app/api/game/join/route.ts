@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { autofillBotsForGame, assignBotIfNeeded } from '@/server/bot-service'
+
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
 
@@ -35,7 +36,6 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ Found room:', room.name, 'Stake:', room.stake)
-
     const stake = room.stake
 
     // Only cleanup truly stuck games (older than 10 minutes)
@@ -45,21 +45,17 @@ export async function POST(request: NextRequest) {
         .select('id')
         .contains('players', [userId])
         .in('status', ['waiting', 'waiting_for_players', 'countdown'])
-        .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString()) // 10 minutes ago
-      
+        .lt('created_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+
       if (stuckGames && stuckGames.length > 0) {
         await supabase.rpc('force_cleanup_user_from_games', { user_uuid: userId })
         console.log(`🧹 Cleaned up user ${userId} from ${stuckGames.length} stuck games`)
       }
     } catch (cleanupError) {
       console.warn('Cleanup warning:', cleanupError)
-      // Continue even if cleanup fails
     }
 
-
     // Find active or waiting game for this room
-    console.log(`🔍 Looking for existing games in room: ${roomId}`)
-    
     let { data: activeGame, error: findError } = await supabase
       .from('games')
       .select('*')
@@ -88,108 +84,89 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    let actualGame = activeGame;
     if (!activeGame) {
-      console.log(`🆕 No existing game found, creating new game for room: ${roomId}`)
-      
-      // Double-check for race condition - another player might have just created a game
-      const { data: raceCheckGame } = await supabase
-        .from('games')
-        .select('*')
-        .eq('room_id', roomId)
-        .in('status', ['waiting', 'countdown'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      
-      if (raceCheckGame) {
-        console.log(`🏃 Race condition detected! Found game: ${raceCheckGame.id}, joining instead of creating`)
-        activeGame = raceCheckGame
-      } else {
-        // Create new game with waiting status using room settings
-        try {
-  // Attempt atomic insert; fails with unique constraint if already exists.
-  const { data: newGame, error: createError } = await supabase
-    .from('games')
-    .insert({
-      room_id: roomId,
-      status: 'waiting',
-      countdown_time: 10,
-      players: [userId],
-      // ... your other initial game values ...
-    })
-    .select()
-    .single();
-
-  if (createError?.code === '23505') {
-    // Unique constraint violation! Another player beat you.
-    const { data: raceCheckGame } = await supabase
-      .from('games')
-      .select('*')
-      .eq('room_id', roomId)
-      .in('status', ['waiting', 'countdown'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    activeGame = raceCheckGame;
-    // Continue your join logic using activeGame here!
-  } else if (createError) {
-    return NextResponse.json({ error: 'Failed to create game', details: createError.message }, { status: 500 });
-  }
-
-  // ... normal join/return logic with newGame ...
-} catch (err) {
-  console.error('Game join error (DB race)', err);
-  return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-}
-
-        console.log(`✅ Created new game: ${newGame.id}`)
-
-        // Auto-fill bots for new game using admin config (default_bots_per_room)
-        try {
-          const { updatedGame } = await autofillBotsForGame(supabase, newGame, room.stake)
-          const participants = (updatedGame.players?.length || 0) + (updatedGame.bots?.length || 0)
-          // If we have at least 2 participants, start waiting_for_players
-          if (participants >= 2 && updatedGame.status === 'waiting') {
-            await supabase.from('games').update({
-              status: 'waiting_for_players',
-              countdown_time: 30,
-              waiting_started_at: new Date().toISOString()
-            }).eq('id', updatedGame.id)
-          }
-          return NextResponse.json({
-            success: true,
-            gameId: updatedGame.id,
-            game: updatedGame,
-            action: 'created'
+      // Try atomic create; handle race and fallback
+      try {
+        const { data: newGame, error: createError } = await supabase
+          .from('games')
+          .insert({
+            room_id: roomId,
+            status: 'waiting',
+            countdown_time: 10,
+            players: [userId],
+            bots: [],
+            called_numbers: [],
+            stake,
+            prize_pool: stake,
+            started_at: new Date().toISOString(),
           })
-        } catch (e) {
-          console.warn('autofillBotsForGame failed after create:', e)
-          return NextResponse.json({
-            success: true,
-            gameId: newGame.id,
-            game: newGame,
-            action: 'created'
-          })
+          .select()
+          .single();
+
+        if (createError?.code === '23505') {
+          // Unique constraint violation/race: fetch latest "waiting"/"countdown" game
+          const { data: raceCheckGame } = await supabase
+            .from('games')
+            .select('*')
+            .eq('room_id', roomId)
+            .in('status', ['waiting', 'countdown'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          actualGame = raceCheckGame;
+          console.log(`⚡ Race: joined existing game ${actualGame?.id}`);
+        } else if (createError) {
+          return NextResponse.json({ error: 'Failed to create game', details: createError.message }, { status: 500 });
+        } else {
+          actualGame = newGame;
+          console.log(`✅ Created new game: ${actualGame?.id}`);
         }
+      } catch (err) {
+        console.error('Game join error (DB race)', err);
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      }
+    }
+
+    if (!actualGame) {
+      return NextResponse.json({ error: 'Game not found after join attempt.' }, { status: 500 });
+    }
+
+    // If the game was just created, run autofill bots, etc
+    if (!activeGame) {
+      try {
+        const { updatedGame } = await autofillBotsForGame(supabase, actualGame, stake)
+        const participants = (updatedGame.players?.length || 0) + (updatedGame.bots?.length || 0)
+        if (participants >= 2 && updatedGame.status === 'waiting') {
+          await supabase.from('games').update({
+            status: 'waiting_for_players',
+            countdown_time: 30,
+            waiting_started_at: new Date().toISOString()
+          }).eq('id', updatedGame.id)
+        }
+        return NextResponse.json({
+          success: true,
+          gameId: updatedGame.id,
+          game: updatedGame,
+          action: 'created'
+        })
+      } catch (e) {
+        console.warn('autofillBotsForGame failed after create:', e)
+        return NextResponse.json({
+          success: true,
+          gameId: actualGame.id,
+          game: actualGame,
+          action: 'created'
+        })
       }
     }
 
     // Join existing game (or rejoin if already in)
-    console.log(`👥 Joining existing game: ${activeGame.id}, current players: ${activeGame.players?.length}`)
-    
-    if (!activeGame.players.includes(userId)) {
-      console.log(`➕ Adding new player ${userId} to game ${activeGame.id}`)
-      const updatedPlayers = [...activeGame.players, userId]
-      const updatedPrizePool = activeGame.prize_pool + stake
-      
-      let newStatus = activeGame.status
-      if (activeGame.status === 'countdown') {
-        newStatus = 'countdown'  // Keep countdown if already started
-      } else {
-        newStatus = 'waiting'  // Stay waiting
-      }
-      
-      // Update game with new player
+    if (!actualGame.players.includes(userId)) {
+      const updatedPlayers = [...actualGame.players, userId];
+      const updatedPrizePool = actualGame.prize_pool + stake;
+      let newStatus = actualGame.status === 'countdown' ? 'countdown' : 'waiting';
+
       const { data: updatedGame, error: joinError } = await supabase
         .from('games')
         .update({
@@ -197,9 +174,9 @@ export async function POST(request: NextRequest) {
           prize_pool: updatedPrizePool,
           status: newStatus
         })
-        .eq('id', activeGame.id)
+        .eq('id', actualGame.id)
         .select()
-        .single()
+        .single();
 
       if (joinError) {
         console.error('Error joining game:', joinError)
@@ -209,14 +186,11 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log(`✅ Player ${userId} joined game ${activeGame.id}. Status: ${newStatus}, Players: ${updatedPlayers.length}`)
-
-      // Ensure bots are present and top-up to admin default
-      let gameAfterBots = updatedGame
+      // Bots logic
+      let gameAfterBots = updatedGame;
       try {
         const { updatedGame: withDefaultBots } = await autofillBotsForGame(supabase, updatedGame, stake)
         gameAfterBots = withDefaultBots || updatedGame
-        // If still less than 2 participants, assign at least one bot
         const participantsNow = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
         if (participantsNow < 2) {
           const { updatedGame: ensured } = await assignBotIfNeeded(supabase, gameAfterBots, stake)
@@ -226,78 +200,59 @@ export async function POST(request: NextRequest) {
         console.warn('Bot auto-fill error after join:', e)
       }
 
-      // If we have 2+ participants (humans + bots) and game is waiting, start 30-second waiting period
+      // Waiting period logic
       const participants = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
       if (participants >= 2 && (gameAfterBots.status === 'waiting' || gameAfterBots.status === 'waiting_for_players')) {
-        console.log(`⏳ Game ${activeGame.id} has ${updatedPlayers.length} players, starting 30-second waiting period...`)
-        
-        // Update status to waiting_for_players with 30-second timer
         const { error: updateError } = await supabase
           .from('games')
           .update({ 
             status: 'waiting_for_players',
-            countdown_time: 30,  // 30 seconds to wait for more players
+            countdown_time: 30,
             waiting_started_at: new Date().toISOString()
           })
-          .eq('id', activeGame.id)
-        
-        if (updateError) {
-          console.error('❌ Failed to update game status to waiting_for_players:', updateError)
-        } else {
-          console.log('✅ Game status updated to waiting_for_players')
-        }
-        
-        // Notify API to start the waiting period
-        try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
-          console.log(`🔔 Calling waiting period API: ${baseUrl}/api/socket/start-waiting-period`)
-          
-          const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              gameId: activeGame.id,
-              waitingTime: 30,
-              countdownTime: 10
+          .eq('id', actualGame.id)
+        if (!updateError) {
+          try {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
+            const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                gameId: actualGame.id,
+                waitingTime: 30,
+                countdownTime: 10
+              })
             })
-          })
-          
-          if (!response.ok) {
-            console.error('❌ Waiting period API failed:', response.status, response.statusText)
-            const errorText = await response.text()
-            console.error('❌ Error details:', errorText)
-          } else {
-            const result = await response.json()
-            console.log('✅ Waiting period started successfully:', result)
+            if (response.ok) {
+              const result = await response.json()
+              console.log('✅ Waiting period started successfully:', result)
+            } else {
+              const errorText = await response.text()
+              console.error('❌ Waiting period API failed:', response.status, response.statusText, errorText)
+            }
+          } catch (error) {
+            console.error('❌ Error calling waiting period API:', error)
           }
-        } catch (error) {
-          console.error('❌ Error calling waiting period API:', error)
         }
       }
 
-      // Get the latest game state after all updates
+      // Refresh
       const { data: finalGameState } = await supabase
         .from('games')
         .select('*')
-        .eq('id', activeGame.id)
+        .eq('id', actualGame.id)
         .single()
 
       return NextResponse.json({
         success: true,
-        gameId: activeGame.id,
+        gameId: actualGame.id,
         game: finalGameState || gameAfterBots,
         action: 'joined'
       })
     }
 
-    // Player already in game
-    console.log(`🔄 Player ${userId} already in game ${activeGame.id}, rejoining`)
-    
-    // Check if game is stuck in waiting with 2+ players
-    if (activeGame.players.length >= 2 && activeGame.status === 'waiting') {
-      console.log(`⚠️ Game ${activeGame.id} stuck in waiting with ${activeGame.players.length} players, starting waiting period...`)
-      
-      // Update status to waiting_for_players
+    // Already in game
+    if (actualGame.players.length >= 2 && actualGame.status === 'waiting') {
       await supabase
         .from('games')
         .update({ 
@@ -305,16 +260,14 @@ export async function POST(request: NextRequest) {
           countdown_time: 30,
           waiting_started_at: new Date().toISOString()
         })
-        .eq('id', activeGame.id)
-      
-      // Start the waiting period
+        .eq('id', actualGame.id)
       try {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
         await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            gameId: activeGame.id,
+            gameId: actualGame.id,
             waitingTime: 30,
             countdownTime: 10
           })
@@ -324,14 +277,13 @@ export async function POST(request: NextRequest) {
         console.error('❌ Error starting waiting period for stuck game:', error)
       }
     }
-    
+
     return NextResponse.json({
       success: true,
-      gameId: activeGame.id,
-      game: activeGame,
+      gameId: actualGame.id,
+      game: actualGame,
       action: 'already_joined'
     })
-
   } catch (error: any) {
     console.error('Error in game join:', error)
     return NextResponse.json(
