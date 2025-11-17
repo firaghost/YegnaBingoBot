@@ -106,29 +106,41 @@ export async function POST(request: NextRequest) {
         activeGame = raceCheckGame
       } else {
         // Create new game with waiting status using room settings
-        const { data: newGame, error: createError } = await supabase
-          .from('games')
-          .insert({
-            room_id: roomId,
-            status: 'waiting',
-            countdown_time: 10,
-            players: [userId], // userId should be UUID string
-            bots: [],
-            called_numbers: [],
-            stake: room.stake,
-            prize_pool: room.stake,
-            started_at: new Date().toISOString()
-          })
-          .select()
-          .single()
+        try {
+  // Attempt atomic insert; fails with unique constraint if already exists.
+  const { data: newGame, error: createError } = await supabase
+    .from('games')
+    .insert({
+      room_id: roomId,
+      status: 'waiting',
+      countdown_time: 10,
+      players: [userId],
+      // ... your other initial game values ...
+    })
+    .select()
+    .single();
 
-        if (createError) {
-          console.error('Error creating game:', createError)
-          return NextResponse.json(
-            { error: 'Failed to create game', details: createError.message },
-            { status: 500 }
-          )
-        }
+  if (createError?.code === '23505') {
+    // Unique constraint violation! Another player beat you.
+    const { data: raceCheckGame } = await supabase
+      .from('games')
+      .select('*')
+      .eq('room_id', roomId)
+      .in('status', ['waiting', 'countdown'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    activeGame = raceCheckGame;
+    // Continue your join logic using activeGame here!
+  } else if (createError) {
+    return NextResponse.json({ error: 'Failed to create game', details: createError.message }, { status: 500 });
+  }
+
+  // ... normal join/return logic with newGame ...
+} catch (err) {
+  console.error('Game join error (DB race)', err);
+  return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+}
 
         console.log(`✅ Created new game: ${newGame.id}`)
 
