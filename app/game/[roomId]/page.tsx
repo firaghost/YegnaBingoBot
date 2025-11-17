@@ -349,37 +349,56 @@ export default function GamePage() {
         
         // Remove test API calls - they're working now
 
-        console.log('🔥 About to call API with:', { roomId, userId: user.id })
-if (response.ok && result.gameId) {
-  setGameId(result.gameId);
+        useEffect(() => {
+  if (!isAuthenticated || !user || !connected || !roomId) return;
+  if (gameId || gameState) return; // Already in a game
 
-  if (result.action === 'spectate') {
-    console.log('👁️ Game already active, joining as spectator...');
-    await spectateGame(result.gameId, user.username || user.id);
-    console.log('👁️ Spectator join completed');
-  } else {
-    console.log('🔌 Joining game via socket...');
-    await joinGame(result.gameId, user.id);
-    console.log('🔌 Socket join completed');
+  const joinSpecificRoom = async () => {
+    // Remove test API calls - they're working now
+
+    console.log('🔥 About to call API with:', { roomId, userId: user.id });
+    // You need to fetch response and result here, assuming an API call, e.g.:
+    // const response = await fetch(...);
+    // const result = await response.json();
+
+    if (response.ok && result.gameId) {
+      setGameId(result.gameId);
+
+      if (result.action === 'spectate') {
+        console.log('👁️ Game already active, joining as spectator...');
+        await spectateGame(result.gameId, user.username || user.id);
+        console.log('👁️ Spectator join completed');
+      } else {
+        console.log('🔌 Joining game via socket...');
+        await joinGame(result.gameId, user.id);
+        console.log('🔌 Socket join completed');
+      }
+    } else {
+      console.error('❌ Failed to join game. Response:', response.status, result);
+      console.error('❌ Full error details:', result);
+      setLoading(false);
+    }
+  };
+
+  joinSpecificRoom();
+}, [isAuthenticated, user, connected, roomId, gameId, gameState, joinGame]);
+
+// Debug waiting room state and stop loading when connected
+useEffect(() => {
+  console.log('🔍 Waiting room state changed:', {
+    isInWaitingRoom,
+    waitingRoomState,
+    isSpectator,
+    gameStatus: gameState?.status,
+    connected
+  });
+
+  // Stop loading when we successfully join waiting room or become spectator
+  if (isInWaitingRoom || isSpectator || gameState) {
+    console.log('✅ Successfully connected, stopping loading');
+    setLoading(false);
   }
-} else {
-  console.error('❌ Failed to join game. Response:', response.status, result);
-  console.error('❌ Full error details:', result);
-  setLoading(false);
-}
-
-    joinSpecificRoom()
-  }, [isAuthenticated, user, connected, roomId, gameId, gameState, joinGame])
-
-  // Debug waiting room state and stop loading when connected
-  useEffect(() => {
-    console.log('🔍 Waiting room state changed:', {
-      isInWaitingRoom,
-      waitingRoomState,
-      isSpectator,
-      gameStatus: gameState?.status,
-      connected
-    })
+}, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState]);
 
     // Stop loading when we successfully join waiting room or become spectator
     if (isInWaitingRoom || isSpectator || gameState) {
