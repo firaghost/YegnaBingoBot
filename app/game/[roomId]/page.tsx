@@ -350,55 +350,21 @@ export default function GamePage() {
         // Remove test API calls - they're working now
 
         console.log('🔥 About to call API with:', { roomId, userId: user.id })
-        const response = await fetch(`${apiBaseUrl}/api/game/join`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            roomId: roomId,
-            userId: user.id
-          })
-        })
-        console.log('🔥 API call completed, status:', response.status)
+if (response.ok && result.gameId) {
+  setGameId(result.gameId);
 
-        let result
-        try {
-          if (!response.ok) {
-            console.error('❌ API call failed:', response.status, response.statusText)
-            const errorText = await response.text()
-            console.error('❌ Error response:', errorText)
-            setLoading(false)
-            return
-          }
-          
-          result = await response.json()
-          console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
-        } catch (parseError) {
-          console.error('❌ Failed to parse API response:', parseError)
-          try {
-            const responseText = await response.text()
-            console.log('📡 Raw response text:', responseText)
-          } catch (textError) {
-            console.error('❌ Could not read response text:', textError)
-          }
-          setLoading(false)
-          return
-        }
-        
-        if (response.ok && result.gameId) {
-          console.log('✅ Game joined successfully:', result.gameId)
-          setGameId(result.gameId)
-          
-          // Check if user should spectate
-          if (result.action === 'spectate') {
-            console.log('👁️ Game already active, joining as spectator...')
-            await spectateGame(result.gameId, user.username || user.id)
-            console.log('👁️ Spectator join completed')
-          } else {
-            // Join the game via socket as player
-            console.log('🔌 Joining game via socket...')
-            await joinGame(result.gameId, user.id)
-            console.log('🔌 Socket join completed')
-          }
+  if (result.action === 'spectate') {
+    console.log('👁️ Game already active, joining as spectator...');
+    setIsSpectatorMode(true);          // <-- NEW: Set spectator mode true
+    await spectateGame(result.gameId, user.username || user.id);
+    console.log('👁️ Spectator join completed');
+  } else {
+    setIsSpectatorMode(false);         // <-- NEW: Reset spectator mode on join
+    console.log('🔌 Joining game via socket...');
+    await joinGame(result.gameId, user.id);
+    console.log('🔌 Socket join completed');
+  }
+}
         } else {
           console.error('❌ Failed to join game. Response:', response.status, result)
           console.error('❌ Full error details:', result)
