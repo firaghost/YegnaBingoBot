@@ -354,12 +354,16 @@ export default function GamePage() {
   if (gameId || gameState) return; // Already in a game
 
   const joinSpecificRoom = async () => {
-    // Remove test API calls - they're working now
-
     console.log('🔥 About to call API with:', { roomId, userId: user.id });
-    // You need to fetch response and result here, assuming an API call, e.g.:
-    // const response = await fetch(...);
-    // const result = await response.json();
+
+    // Example actual fetch (replace the URL and payload with your real values)
+    // REQUIRED: define response and result here!
+    const response = await fetch('/api/game/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId, userId: user.id })
+    });
+    const result = await response.json();
 
     if (response.ok && result.gameId) {
       setGameId(result.gameId);
@@ -383,7 +387,6 @@ export default function GamePage() {
   joinSpecificRoom();
 }, [isAuthenticated, user, connected, roomId, gameId, gameState, joinGame]);
 
-// Debug waiting room state and stop loading when connected
 useEffect(() => {
   console.log('🔍 Waiting room state changed:', {
     isInWaitingRoom,
@@ -392,6 +395,13 @@ useEffect(() => {
     gameStatus: gameState?.status,
     connected
   });
+
+  // Stop loading when we successfully join waiting room or become spectator
+  if (isInWaitingRoom || isSpectator || gameState) {
+    console.log('✅ Successfully connected, stopping loading');
+    setLoading(false);
+  }
+}, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState]);
 
   // Stop loading when we successfully join waiting room or become spectator
   if (isInWaitingRoom || isSpectator || gameState) {
