@@ -193,7 +193,7 @@ BEGIN
   IF v_status <> 'pending' THEN RAISE EXCEPTION 'Withdrawal is not pending'; END IF;
 
   UPDATE withdrawals
-  SET status = 'approved', approved_at = NOW(), updated_at = NOW()
+  SET status = 'approved', processed_at = NOW(), updated_at = NOW()
   WHERE id = p_withdrawal_id;
 
   UPDATE users

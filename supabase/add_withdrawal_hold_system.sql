@@ -145,7 +145,7 @@ BEGIN
   -- Update withdrawal status
   UPDATE withdrawals
   SET status = 'approved',
-      approved_at = NOW(),
+      processed_at = NOW(),
       updated_at = NOW()
   WHERE id = p_withdrawal_id;
 
@@ -205,7 +205,7 @@ BEGIN
   -- Update withdrawal status
   UPDATE withdrawals
   SET status = 'rejected',
-      rejected_at = NOW(),
+      processed_at = NOW(),
       updated_at = NOW()
   WHERE id = p_withdrawal_id;
 
