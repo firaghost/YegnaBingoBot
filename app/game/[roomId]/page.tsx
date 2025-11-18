@@ -1706,6 +1706,12 @@ export default function GamePage() {
         {/* Simplified Spectator Mode - Fits on one screen */}
         {isSpectator && (
           <div className="space-y-3 animate-in fade-in duration-500">
+            {/* Waiting Message for Spectators */}
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
+              <p className="text-blue-700 font-medium">እባኮ አዲስ ጨዋታ እስኪጀምር ቲንሽ ይታገሱ፡፡</p>
+              <p className="text-sm text-blue-600 mt-1">Please wait patiently until a new game starts.</p>
+            </div>
+            
             {/* Latest Number Called - Prominent Display */}
             {gameState?.latest_number && (
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
