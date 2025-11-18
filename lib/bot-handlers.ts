@@ -49,6 +49,9 @@ export function setupBotHandlers(bot: Telegraf) {
     if (!userId) return
 
     try {
+      // Extract referral code from start parameter (e.g., /start ref_123)
+      const referralCode = ctx.payload ? ctx.payload.trim() : null
+
       // Check if user exists
       const { data: existingUser } = await supabase
         .from('users')
@@ -58,6 +61,8 @@ export function setupBotHandlers(bot: Telegraf) {
 
       if (!existingUser) {
         // New user - Show registration button
+        // Store referral code in session/context for use during registration
+        (ctx as any).referralCode = referralCode
         await ctx.reply(
           `🎰 *Welcome to BingoX!*\n\n` +
           `Hello ${firstName}! 👋\n\n` +
@@ -272,6 +277,29 @@ export function setupBotHandlers(bot: Telegraf) {
         }
         
         throw insertError
+      }
+
+      // Get the newly created user
+      const { data: newUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('telegram_id', userId.toString())
+        .single()
+
+      // Process referral bonus if referral code exists
+      const referralCode = (ctx as any).referralCode
+      if (referralCode && newUser?.id) {
+        try {
+          const { error: refError } = await supabase.rpc('process_referral_bonus', {
+            p_referred_user_id: newUser.id,
+            p_referral_code: referralCode
+          })
+          if (refError) {
+            console.error('Error processing referral bonus:', refError)
+          }
+        } catch (e) {
+          console.error('Referral bonus processing failed:', e)
+        }
       }
 
       await ctx.answerCbQuery('✅ Registration successful!')
