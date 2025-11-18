@@ -764,40 +764,82 @@ export function setupBotHandlers(bot: Telegraf) {
       return
     }
 
-    // Common actions to avoid exposing URLs on hover
+    // Common actions to open web app directly
     if (callbackData === 'play_now') {
       await ctx.answerCbQuery()
-      await ctx.reply(`🎮 Open the game:\n\`${MINI_APP_URL}\``, { parse_mode: 'Markdown' })
+      await ctx.reply('🎮 Opening game...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('🎮 Open Game', MINI_APP_URL)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'deposit_action') {
       await ctx.answerCbQuery()
-      await ctx.reply(`💸 Deposit:\n\`${MINI_APP_URL}/deposit\``, { parse_mode: 'Markdown' })
+      await ctx.reply('💸 Opening deposit page...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('💸 Deposit Now', `${MINI_APP_URL}/deposit`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'withdraw_action') {
       await ctx.answerCbQuery()
-      await ctx.reply(`💰 Withdraw:\n\`${MINI_APP_URL}/withdraw\``, { parse_mode: 'Markdown' })
+      await ctx.reply('💰 Opening withdrawal page...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('💰 Withdraw Now', `${MINI_APP_URL}/withdraw`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'account_action') {
       await ctx.answerCbQuery()
-      await ctx.reply(`👤 Your account:\n\`${MINI_APP_URL}/account\``, { parse_mode: 'Markdown' })
+      await ctx.reply('👤 Opening account page...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('👤 View Account', `${MINI_APP_URL}/account`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'history_action') {
       await ctx.answerCbQuery()
-      await ctx.reply(`📜 History:\n\`${MINI_APP_URL}/history\``, { parse_mode: 'Markdown' })
+      await ctx.reply('📜 Opening history...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('📜 View History', `${MINI_APP_URL}/history`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'leaderboard_action') {
       await ctx.answerCbQuery()
-      await ctx.reply(`🏆 Leaderboard:\n\`${MINI_APP_URL}/leaderboard\``, { parse_mode: 'Markdown' })
+      await ctx.reply('🏆 Opening leaderboard...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('🏆 View Leaderboard', `${MINI_APP_URL}/leaderboard`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData === 'join_room') {
       await ctx.answerCbQuery()
-      await ctx.reply(`🎮 Rooms:\n\`${MINI_APP_URL}/lobby\``, { parse_mode: 'Markdown' })
+      await ctx.reply('🎮 Opening game rooms...', {
+        reply_markup: {
+          inline_keyboard: [
+            [Markup.button.webApp('🎮 Join a Room', `${MINI_APP_URL}/lobby`)]
+          ]
+        }
+      })
       return
     }
     if (callbackData.startsWith('get_invite:')) {
