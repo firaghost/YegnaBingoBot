@@ -225,7 +225,43 @@ export async function POST(request: NextRequest) {
         number: nextNumber
       }
 
-      // Use atomic update to prevent duplicate calls
+      // Use atomic update with proper locking to prevent duplicate calls
+      // First, acquire a lock on the game row
+      const { data: lockedGame, error: lockError } = await supabase
+        .rpc('get_game_for_update', { game_id: gameId })
+      
+      if (lockError || !lockedGame) {
+        // Game is locked by another process, skip this tick
+        console.log(`⚠️ Game ${gameId} is locked by another process, skipping tick`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Game locked by another process'
+        })
+      }
+
+      // Double-check that the number hasn't been called while we waited for the lock
+      const currentCalledNumbers = lockedGame.called_numbers || []
+      if (currentCalledNumbers.includes(nextNumber)) {
+        console.log(`⚠️ Number ${nextNumber} already called for game ${gameId} (detected after lock)`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Number already called'
+        })
+      }
+
+      // Verify game is still active and has no winner
+      if (lockedGame.status !== 'active' || lockedGame.winner_id) {
+        console.log(`⚠️ Game ${gameId} is no longer active or has a winner, skipping tick`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Game no longer active'
+        })
+      }
+
+      // Perform the update with strict conditions
       const { data: updatedGame, error: updateError } = await supabase
         .from('games')
         .update({
@@ -235,7 +271,7 @@ export async function POST(request: NextRequest) {
         .eq('id', gameId)
         .eq('status', 'active')
         .is('winner_id', null) // Only update if no winner yet
-        .select('called_numbers')
+        .select('called_numbers, latest_number')
         .single()
 
       if (updateError || !updatedGame) {

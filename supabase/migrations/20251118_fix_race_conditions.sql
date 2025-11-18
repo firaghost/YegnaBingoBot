@@ -1,5 +1,9 @@
--- Migration: Resolve bingo claim with tie-break preference for 100% bots
--- Date: 2025-11-15
+-- Migration: Fix race conditions in game state management
+-- Date: 2025-11-18
+
+-- Enhance the resolve_bingo_claim function with better validation and atomic operations
+-- This is a copy of the updated function from 20251115_resolve_bingo_claim_with_tiebreak.sql
+-- to ensure it's applied correctly
 
 -- 1) Create dedicated lightweight log table to avoid collisions with existing bingo_claims
 CREATE TABLE IF NOT EXISTS bot_tie_window_claims (
@@ -13,8 +17,7 @@ CREATE TABLE IF NOT EXISTS bot_tie_window_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_bot_tie_window_claims_game_id_created ON bot_tie_window_claims(game_id, created_at);
 
--- 2) Resolve bingo claim with small tie window and bot preference
---    Returns is_valid + is_winner; updates games.winner_id atomically under row lock
+-- 2) Enhanced resolve_bingo_claim function with better race condition handling
 CREATE OR REPLACE FUNCTION resolve_bingo_claim(
   p_game_id uuid,
   p_user_id uuid,
@@ -185,5 +188,61 @@ BEGIN
     SELECT winner_id INTO winner FROM games WHERE id = p_game_id;
     RETURN QUERY SELECT true, false, jsonb_build_object('already_won',true,'winner',winner);
   END IF;
+END;
+$$;
+
+-- 3) Enhance get_game_for_update function (if not already updated)
+CREATE OR REPLACE FUNCTION get_game_for_update(game_id UUID)
+RETURNS TABLE (
+  id UUID,
+  room_id UUID,
+  status TEXT,
+  countdown_time INTEGER,
+  players UUID[],
+  bots UUID[],
+  called_numbers INTEGER[],
+  latest_number JSONB,
+  stake NUMERIC,
+  prize_pool NUMERIC,
+  winner_id UUID,
+  min_players INTEGER,
+  number_sequence INTEGER[],
+  number_sequence_hash TEXT,
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ,
+  commission_rate NUMERIC,
+  commission_amount NUMERIC,
+  net_prize NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    g.id,
+    g.room_id,
+    g.status,
+    g.countdown_time,
+    g.players,
+    g.bots,
+    g.called_numbers,
+    g.latest_number,
+    g.stake,
+    g.prize_pool,
+    g.winner_id,
+    g.min_players,
+    g.number_sequence,
+    g.number_sequence_hash,
+    g.started_at,
+    g.ended_at,
+    g.created_at,
+    g.commission_rate,
+    g.commission_amount,
+    g.net_prize
+  FROM games g
+  WHERE g.id = game_id
+  FOR UPDATE SKIP LOCKED; -- Skip if already locked by another transaction
 END;
 $$;

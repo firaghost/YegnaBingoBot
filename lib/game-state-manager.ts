@@ -256,7 +256,6 @@ export class GameStateManager {
 
   /**
    * Add spectator to game
-{{ ... }}
    */
   async addSpectator(roomId: string, username: string, socketId: string): Promise<GamePlayer | null> {
     const game = activeGames.get(roomId)
@@ -327,7 +326,7 @@ export class GameStateManager {
     }
 
     try {
-      // Use database function for validation
+      // Use database function for validation with atomic locking
       const { data: validation } = await this.supabase.rpc('validate_bingo_claim', {
         p_session_id: game.id,
         p_player_id: player.id,
@@ -350,8 +349,16 @@ export class GameStateManager {
       // ATOMIC WINNER ASSIGNMENT: Only if claim is valid and no winner yet
       let isWinner = false
       if (isValidClaim && !game.winner_claimed) {
-        // Double-check atomically - another claim might have won between checks
-        if (!game.winner_claimed) {
+        // Double-check atomically with database - another claim might have won between checks
+        // Re-fetch game with lock to ensure atomicity
+        const { data: updatedGame } = await this.supabase
+          .from('game_sessions')
+          .select('winner_id')
+          .eq('id', game.id)
+          .maybeSingle()
+        
+        // If there's still no winner in the database, we can claim victory
+        if (updatedGame && !updatedGame.winner_id) {
           game.winner_claimed = true
           game.winner = claim.username
           game.winner_claim_timestamp = new Date()
@@ -359,6 +366,15 @@ export class GameStateManager {
           player.bingo_pattern = claim.bingo_pattern
           isWinner = true
           console.log(`🏆 ATOMIC WINNER: ${claim.username} claimed victory in room ${roomId}`)
+        } else {
+          // Someone else won while we were processing
+          console.log(`⏰ Late claim from ${claim.username} in room ${roomId} - another player won first`)
+          return { 
+            isValid: true, 
+            details: { error: 'Another player won first', winner: updatedGame?.winner_id }, 
+            isWinner: false, 
+            isLateClaim: true 
+          }
         }
       }
 

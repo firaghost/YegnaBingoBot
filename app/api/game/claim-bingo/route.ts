@@ -204,6 +204,30 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // First, acquire a lock on the game to prevent race conditions
+      const { data: lockedGame, error: lockError } = await supabase
+        .rpc('get_game_for_update', { game_id: gameId })
+      
+      if (lockError || !lockedGame) {
+        console.warn('⚠️ Could not acquire game lock, falling back to previous validation:', lockError?.message || 'Game not found')
+        throw new Error('Fallback to previous validation')
+      }
+
+      // Double-check game state after acquiring lock
+      if (lockedGame.status !== 'active') {
+        return NextResponse.json(
+          { error: 'Game is not active', status: lockedGame.status },
+          { status: 400 }
+        )
+      }
+
+      if (lockedGame.winner_id) {
+        return NextResponse.json(
+          { error: 'Game already has a winner' },
+          { status: 400 }
+        )
+      }
+
       const { data: resolveResult, error: resolveError } = await supabase
         .rpc('resolve_bingo_claim', {
           p_game_id: gameId,
@@ -254,6 +278,27 @@ export async function POST(request: NextRequest) {
       // FALLBACK: Use original manual validation if atomic function fails
       console.log('📋 Using fallback manual bingo validation')
       
+      // Re-check game state before fallback validation
+      const { data: currentGame } = await supabase
+        .from('games')
+        .select('status, winner_id')
+        .eq('id', gameId)
+        .single()
+      
+      if (currentGame?.winner_id) {
+        return NextResponse.json(
+          { error: 'Game already has a winner' },
+          { status: 400 }
+        )
+      }
+      
+      if (currentGame?.status !== 'active') {
+        return NextResponse.json(
+          { error: 'Game is not active' },
+          { status: 400 }
+        )
+      }
+      
       const hasBingo = checkBingo(card, markedCells)
       console.log(`🎯 Bingo check result: ${hasBingo ? 'YES - VALID BINGO!' : 'NO - Not a bingo'}`)
       
@@ -269,7 +314,7 @@ export async function POST(request: NextRequest) {
       console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
       console.log(`🎁 Net Prize: ${netPrize} ETB`)
 
-      // Update game with winner (original method)
+      // Update game with winner (original method) using atomic update
       const { error: updateError } = await supabase
         .from('games')
         .update({
@@ -284,10 +329,24 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', gameId)
         .eq('status', 'active')
-        .is('winner_id', null)
+        .is('winner_id', null) // Atomic condition to prevent race conditions
 
       if (updateError) {
         console.error('Error updating game:', updateError)
+        // Check if it's a race condition (someone else won)
+        const { data: checkGame } = await supabase
+          .from('games')
+          .select('winner_id')
+          .eq('id', gameId)
+          .single()
+        
+        if (checkGame?.winner_id && checkGame.winner_id !== userId) {
+          return NextResponse.json(
+            { error: 'Another player won first' },
+            { status: 400 }
+          )
+        }
+        
         return NextResponse.json(
           { error: 'Failed to claim bingo - another player may have won' },
           { status: 500 }

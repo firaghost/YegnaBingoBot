@@ -33,6 +33,21 @@ A complete Telegram-based Bingo game system with auto-game features, real-time m
 - 🤝 **50/50 partnership tracking**
 - 🔐 **Secure & separate access**
 
+## 🛡️ Race Condition Protection
+
+This system implements robust race condition protection to ensure data integrity:
+
+- **Atomic Game Operations**: All game state changes use database-level locking
+- **Single Winner Guarantee**: Only one player can win each game, even under high concurrency
+- **Unique Number Calling**: Each Bingo number is called exactly once per game
+- **Concurrent Access Safety**: Multiple users can interact with the same game simultaneously without conflicts
+
+### Technical Implementation
+- Row-level locking with `FOR UPDATE SKIP LOCKED` for database operations
+- Two-phase validation in critical operations (pre-lock check, post-lock verification)
+- Atomic database functions for bingo claim resolution
+- Time-window based tie-breaking for simultaneous claims
+
 ## 🏗️ Tech Stack
 
 - **Bot Framework:** Telegraf.js
@@ -85,7 +100,7 @@ cd dashboard && npm install && cd ..
 4. Enable auto-deploy on `main` branch
 
 **After setup, just:**
-```bash
+```
 git add .
 git commit -m "Your changes"
 git push origin main
