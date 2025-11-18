@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { autofillBotsForGame, assignBotIfNeeded } from '@/server/bot-service'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
@@ -134,33 +133,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Game not found after join attempt.' }, { status: 500 });
     }
 
-    // If the game was just created, run autofill bots, etc
+    // If the game was just created, return it (no bots)
     if (!activeGame) {
-      try {
-        const { updatedGame } = await autofillBotsForGame(supabase, actualGame, stake)
-        const participants = (updatedGame.players?.length || 0) + (updatedGame.bots?.length || 0)
-        if (participants >= 2 && updatedGame.status === 'waiting') {
-          await supabase.from('games').update({
-            status: 'waiting_for_players',
-            countdown_time: 30,
-            waiting_started_at: new Date().toISOString()
-          }).eq('id', updatedGame.id)
-        }
-        return NextResponse.json({
-          success: true,
-          gameId: updatedGame.id,
-          game: updatedGame,
-          action: 'created'
-        })
-      } catch (e) {
-        console.warn('autofillBotsForGame failed after create:', e)
-        return NextResponse.json({
-          success: true,
-          gameId: actualGame.id,
-          game: actualGame,
-          action: 'created'
-        })
-      }
+      console.log(`✅ Created new game: ${actualGame?.id} (waiting for human players only)`)
+      return NextResponse.json({
+        success: true,
+        gameId: actualGame.id,
+        game: actualGame,
+        action: 'created'
+      })
     }
 
     // Join existing game (or rejoin if already in)
@@ -188,23 +169,9 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Bots logic
-      let gameAfterBots = updatedGame;
-      try {
-        const { updatedGame: withDefaultBots } = await autofillBotsForGame(supabase, updatedGame, stake)
-        gameAfterBots = withDefaultBots || updatedGame
-        const participantsNow = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
-        if (participantsNow < 2) {
-          const { updatedGame: ensured } = await assignBotIfNeeded(supabase, gameAfterBots, stake)
-          gameAfterBots = ensured || gameAfterBots
-        }
-      } catch (e) {
-        console.warn('Bot auto-fill error after join:', e)
-      }
-
-      // Waiting period logic
-      const participants = (gameAfterBots.players?.length || 0) + (gameAfterBots.bots?.length || 0)
-      if (participants >= 2 && (gameAfterBots.status === 'waiting' || gameAfterBots.status === 'waiting_for_players')) {
+      // Waiting period logic (only human players, no bots)
+      const participants = updatedGame.players?.length || 0
+      if (participants >= 2 && (updatedGame.status === 'waiting' || updatedGame.status === 'waiting_for_players')) {
         const { error: updateError } = await supabase
           .from('games')
           .update({ 
@@ -248,7 +215,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         gameId: actualGame.id,
-        game: finalGameState || gameAfterBots,
+        game: finalGameState || updatedGame,
         action: 'joined'
       })
     }

@@ -751,6 +751,51 @@ export default function AdminUsersPage() {
                   </div>
                 )}
 
+                {/* Wagering & Withdrawal Info */}
+                <div className="space-y-2 pt-2 border-t border-slate-700/50">
+                  <div className="text-xs font-semibold text-slate-300">Wagering & Withdrawal</div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-xs">Locked Balance</div>
+                      <div className="text-orange-400 font-bold text-sm">{formatCurrency(selectedUser.locked_balance || 0)}</div>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-xs">Pending Hold</div>
+                      <div className="text-yellow-400 font-bold text-sm">{formatCurrency(selectedUser.pending_withdrawal_hold || 0)}</div>
+                    </div>
+                  </div>
+
+                  {(selectedUser.wager_required || 0) > 0 && (
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-xs mb-1">Wagering Progress</div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-900/50 rounded-full h-2 overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+                            style={{width: `${Math.min(100, ((selectedUser.wager_progress || 0) / (selectedUser.wager_required || 1)) * 100)}%`}}
+                          ></div>
+                        </div>
+                        <div className="text-xs text-slate-300 whitespace-nowrap">
+                          {formatCurrency(selectedUser.wager_progress || 0)} / {formatCurrency(selectedUser.wager_required || 0)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedUser.last_withdrawal_at && (
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-xs mb-1">Last Withdrawal</div>
+                      <div className="text-white text-xs">
+                        {new Date(selectedUser.last_withdrawal_at).toLocaleDateString()} {new Date(selectedUser.last_withdrawal_at).toLocaleTimeString()}
+                      </div>
+                      <div className="text-slate-500 text-xs mt-1">
+                        Daily withdrawn: {formatCurrency(selectedUser.daily_withdrawn_amount || 0)} / 500 ETB
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Status */}
                 <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50 flex items-center justify-between">
                   <div>

@@ -427,29 +427,19 @@ export async function POST(request: NextRequest) {
 
     // Record winner earnings
     if (!isBotClaim) {
-      // Human winner: add to user balance and log transaction
-      const { error: balanceError } = await supabase.rpc('add_balance', {
-        user_id: userId,
-        amount: netPrize
-      })
-
-      if (balanceError) {
-        console.error('Error adding balance:', balanceError)
-      }
-
-      await supabase.from('transactions').insert({
-        user_id: userId,
-        type: 'win',
-        amount: netPrize,
-        game_id: gameId,
-        status: 'completed',
-        metadata: {
-          gross_prize: game.prize_pool,
-          commission_rate: commissionRate,
-          commission_amount: commissionAmount,
-          net_prize: netPrize
+      // Human winner: credit via wagering-aware RPC (may credit to locked_balance)
+      try {
+        const { error: creditErr } = await supabase.rpc('credit_win', {
+          p_user_id: userId,
+          p_game_id: gameId,
+          p_amount: netPrize
+        })
+        if (creditErr) {
+          console.error('Error crediting win via credit_win:', creditErr)
         }
-      })
+      } catch (e) {
+        console.error('credit_win RPC failed:', e)
+      }
     } else {
       // Bot winner: record bot earnings
       try {

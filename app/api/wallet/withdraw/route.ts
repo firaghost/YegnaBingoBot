@@ -26,6 +26,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
+    // Minimum balance requirement (must keep at least 50 ETB in account)
+    const MINIMUM_BALANCE_REQUIRED = 15
+
     // Calculate available balance (balance - pending withdrawal holds)
     const pendingHold = user.pending_withdrawal_hold || 0
     const availableBalance = user.balance - pendingHold
@@ -40,6 +43,24 @@ export async function POST(request: Request) {
             pendingWithdrawalHold: pendingHold,
             availableBalance: availableBalance,
             requestedAmount: amount
+          }
+        },
+        { status: 400 }
+      )
+    }
+
+    // Check if withdrawal would leave user with less than minimum balance
+    const balanceAfterWithdrawal = user.balance - amount
+    if (balanceAfterWithdrawal < MINIMUM_BALANCE_REQUIRED) {
+      return NextResponse.json(
+        { 
+          error: `You must keep at least ${MINIMUM_BALANCE_REQUIRED} ETB in your account`,
+          details: {
+            totalBalance: user.balance,
+            requestedAmount: amount,
+            balanceAfterWithdrawal: balanceAfterWithdrawal,
+            minimumRequired: MINIMUM_BALANCE_REQUIRED,
+            maximumCanWithdraw: user.balance - MINIMUM_BALANCE_REQUIRED
           }
         },
         { status: 400 }
