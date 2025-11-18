@@ -267,6 +267,8 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('games')
         .update({
+          status: 'finished',
+          ended_at: new Date().toISOString(),
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
           net_prize: netPrize,

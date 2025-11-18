@@ -599,6 +599,7 @@ export default function GamePage() {
   // Track previous latest number for haptic feedback
   const prevLatestNumberRef = useRef<number | null>(null)
   const lastPlayedAudioRef = useRef<number | null>(null)
+  const gameStartedRef = useRef<boolean>(false)
 
   // Play called number audio using files under /BINGO_Sound (served from public/)
   const playCallAudio = (letter: string, number: number | string) => {
@@ -754,13 +755,27 @@ export default function GamePage() {
       try {
         const { data: currentGame } = await supabase
           .from('games')
-          .select('status, winner_id, net_prize, winner_card, winner_pattern')
+          .select('*')
           .eq('id', gameId)
           .single()
         
         if (currentGame?.status === 'finished' && currentGame?.winner_id && !gameState?.winner_id) {
           console.log('📊 Poll detected game finished! Winner:', currentGame.winner_id)
-          // This will trigger the useEffect below to show dialogs
+          // Trigger the dialog for spectators/losers
+          setShowLoseDialog(true)
+          setWinAmount(typeof currentGame.net_prize === 'number' ? currentGame.net_prize : 0)
+          
+          // Fetch winner name
+          if (currentGame.winner_id) {
+            supabase
+              .from('users')
+              .select('username')
+              .eq('id', currentGame.winner_id)
+              .maybeSingle()
+              .then(({ data }: any) => {
+                if (data?.username) setWinnerName(data.username)
+              })
+          }
         }
       } catch (error) {
         console.warn('Poll error:', error)
@@ -774,8 +789,14 @@ export default function GamePage() {
   useEffect(() => {
     if (!gameState) return
 
+    // Mark game as started when status transitions to active
+    if (gameState.status === 'active' && !gameStartedRef.current) {
+      gameStartedRef.current = true
+      console.log('🎮 Game started - will only play new numbers from now on')
+    }
+
     // Haptic feedback and audio when new number is called (state-based fallback)
-    if (gameState.status === 'active' && gameState.latest_number) {
+    if (gameState.status === 'active' && gameState.latest_number && gameStartedRef.current) {
       const currentNumber = gameState.latest_number.number
       if (prevLatestNumberRef.current !== currentNumber) {
         prevLatestNumberRef.current = currentNumber
@@ -850,37 +871,35 @@ export default function GamePage() {
             })
         }
 
-        // Fetch winner pattern/card in background and update UI if available (for losers only)
-        if (!isSpectator) {
-          ;(async () => {
-            try {
-              for (let attempt = 0; attempt < 4; attempt++) {
-                const resp = await fetch('/api/game/winner', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ gameId })
-                })
-                if (resp.ok) {
-                  const data = await resp.json()
-                  if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                  if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
-                }
-                await new Promise(res => setTimeout(res, 250))
+        // Fetch winner pattern/card in background and update UI if available (for both losers and spectators)
+        ;(async () => {
+          try {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              const resp = await fetch('/api/game/winner', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+              })
+              if (resp.ok) {
+                const data = await resp.json()
+                if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
               }
-              if (!fallbackWinnerPattern && gameId) {
-                const { data } = await supabase
-                  .from('games')
-                  .select('winner_card,winner_pattern')
-                  .eq('id', gameId)
-                  .single()
-                if (data?.winner_pattern) {
-                  if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                  setFallbackWinnerPattern(data.winner_pattern as string)
-                }
+              await new Promise(res => setTimeout(res, 250))
+            }
+            if (!fallbackWinnerPattern && gameId) {
+              const { data } = await supabase
+                .from('games')
+                .select('winner_card,winner_pattern')
+                .eq('id', gameId)
+                .single()
+              if (data?.winner_pattern) {
+                if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                setFallbackWinnerPattern(data.winner_pattern as string)
               }
-            } catch {}
-          })()
-        }
+            }
+          } catch {}
+        })()
       }
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
@@ -1301,7 +1320,16 @@ export default function GamePage() {
             onClick={() => {
               setSoundEnabled((s) => {
                 const next = !s
-                if (next) {
+                if (!next) {
+                  // On muting, immediately stop all playing audio
+                  audioCacheRef.current.forEach((audio) => {
+                    try {
+                      audio.pause()
+                      audio.currentTime = 0
+                    } catch {}
+                  })
+                  console.log('🔇 All audio stopped immediately')
+                } else {
                   // On enabling, try replaying pending or the latest number
                   const pending = pendingAudioRef.current
                   if (pending) {
@@ -1339,8 +1367,8 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Enhanced Waiting Room System */}
-        {(gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
+        {/* Enhanced Waiting Room System - Not for spectators */}
+        {!isSpectator && (gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
           <div className="space-y-4 animate-in fade-in duration-500">
             
             {/* Invite Toast */}
@@ -1712,33 +1740,32 @@ export default function GamePage() {
               </div>
             </div>
 
-            {/* Players List - Compact */}
-            {gameState && (
+            {/* Called Numbers List - Compact */}
+            {gameState?.called_numbers && gameState.called_numbers.length > 0 && (
               <div className="bg-slate-50 rounded-xl p-3">
-                <h4 className="font-bold text-slate-900 text-sm mb-2">Players</h4>
-                <div className="flex flex-wrap gap-2">
-                  {gameState.players?.map((playerId: string) => (
-                    <div key={playerId} className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {getDisplayName(playerId, playerId === user?.id)}
-                    </div>
-                  ))}
-                  {gameState.bots?.map((botId: string, botIndex: number) => (
-                    <div key={botId} className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                      {botProfiles[botId]?.name || `Bot ${botIndex + 1}`}
-                    </div>
-                  ))}
+                <h4 className="font-bold text-slate-900 text-sm mb-2">Called Numbers ({gameState.called_numbers.length}/75)</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...gameState.called_numbers].reverse().map((num, index) => {
+                    const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
+                    const colorClass = 
+                      letter === 'B' ? 'bg-red-100 text-red-700' :
+                      letter === 'I' ? 'bg-blue-100 text-blue-700' :
+                      letter === 'N' ? 'bg-emerald-100 text-emerald-700' :
+                      letter === 'G' ? 'bg-amber-100 text-amber-700' :
+                      'bg-purple-100 text-purple-700'
+                    return (
+                      <div
+                        key={index}
+                        className={`${colorClass} px-2 py-1 rounded-lg text-xs font-bold`}
+                      >
+                        {letter}{num}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Back to Lobby Button */}
-            <button
-              onClick={() => router.push('/lobby')}
-              className="w-full bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Lobby
-            </button>
           </div>
         )}
 
@@ -1754,8 +1781,8 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Active Game */}
-        {gameStatus === 'active' && (
+        {/* Active Game - Only for players, not spectators */}
+        {gameStatus === 'active' && !isSpectator && (
           <div className="space-y-3 pb-4">
             {/* Stake & Prize Info - Clean header */}
             <div className="text-center text-sm text-slate-700 font-medium py-2">
@@ -1943,39 +1970,42 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Lose Dialog - Only for Players (not Spectators) */}
-        {showLoseDialog && !isSpectator && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl relative">
-              {/* Close Button */}
-              <button
-                onClick={() => setShowLoseDialog(false)}
-                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
-              >
-                <XCircle className="w-6 h-6" />
-              </button>
-
-              {/* Sad Face Icon */}
+        {/* Game Ended Dialog - For Both Losers and Spectators */}
+        {showLoseDialog && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl my-auto">
+              {/* Header based on user type */}
               <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center">
-                  <Frown className="w-12 h-12 text-red-500" />
+                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
+                  isSpectator ? 'bg-emerald-100' : 'bg-red-100'
+                }`}>
+                  {isSpectator ? (
+                    <Trophy className="w-12 h-12 text-emerald-600" />
+                  ) : (
+                    <Frown className="w-12 h-12 text-red-500" />
+                  )}
                 </div>
               </div>
 
-              <h2 className="text-3xl font-bold text-center mb-4 text-slate-900">You Lost This Round</h2>
+              <h2 className="text-3xl font-bold text-center mb-4 text-slate-900">
+                {isSpectator ? 'Game Ended' : 'You Lost This Round'}
+              </h2>
               
-              <p className="text-center text-slate-600 mb-2">
-                Stake lost: <span className="font-bold text-red-600">{formatCurrency(stake)}</span>. Better luck next time!
-              </p>
+              {!isSpectator && (
+                <p className="text-center text-slate-600 mb-4">
+                  Stake lost: <span className="font-bold text-red-600">{formatCurrency(stake)}</span>
+                </p>
+              )}
 
               {winnerName && (
                 <div className="text-center mb-6">
-                  <p className="text-slate-700 mb-1">
-                    The winner is: <span className="font-bold text-amber-600">{winnerName}</span>
+                  <p className="text-slate-600 mb-2">
+                    {isSpectator ? 'The winner is:' : 'Winner:'}
                   </p>
+                  <p className="text-2xl font-bold text-amber-600">{winnerName}</p>
                   {winAmount > 0 && (
-                    <p className="text-slate-700">
-                      They won: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
+                    <p className="text-slate-600 mt-2">
+                      Prize: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
                     </p>
                   )}
                 </div>
@@ -2076,68 +2106,39 @@ export default function GamePage() {
               })()}
 
               <p className="text-center text-sm text-slate-500 mb-6">
-                Auto-redirecting to waiting room in 8 seconds...
+                {isSpectator ? 'Redirecting to waiting room in 3 seconds...' : 'Auto-redirecting to waiting room in 8 seconds...'}
               </p>
 
               {/* Action Buttons */}
               <div className="space-y-3">
-                <button 
-                  onClick={() => router.push(`/game/${roomId}`)}
-                  className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Trophy className="w-5 h-5" />
-                  Play Again
-                </button>
+                {!isSpectator && (
+                  <button 
+                    onClick={() => router.push(`/game/${roomId}`)}
+                    className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Trophy className="w-5 h-5" />
+                    Play Again
+                  </button>
+                )}
                 
                 <button 
-                  onClick={() => router.push('/lobby')}
-                  className="w-full bg-slate-700 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                  onClick={() => {
+                    if (isSpectator) {
+                      router.push('/lobby')
+                    } else {
+                      router.push('/lobby')
+                    }
+                  }}
+                  className={`w-full py-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                    isSpectator 
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                      : 'bg-slate-700 hover:bg-slate-800 text-white'
+                  }`}
                 >
                   <ArrowLeft className="w-5 h-5" />
-                  Back to Lobby
+                  Go to Lobby
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Game Ended Dialog - For Spectators */}
-        {showLoseDialog && isSpectator && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
-              {/* Trophy Icon */}
-              <div className="flex justify-center mb-6">
-                <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <Trophy className="w-12 h-12 text-emerald-600" />
-                </div>
-              </div>
-
-              <h2 className="text-3xl font-bold mb-4 text-slate-900">Game Ended</h2>
-              
-              {winnerName && (
-                <div className="mb-6">
-                  <p className="text-slate-600 mb-2">The winner is:</p>
-                  <p className="text-2xl font-bold text-amber-600">{winnerName}</p>
-                  {winAmount > 0 && (
-                    <p className="text-slate-600 mt-2">
-                      Prize: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <p className="text-sm text-slate-500 mb-6">
-                Redirecting to waiting room in 3 seconds...
-              </p>
-
-              {/* Action Button */}
-              <button 
-                onClick={() => router.push(`/game/${roomId}`)}
-                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <ArrowLeft className="w-5 h-5" />
-                Back to Waiting Room
-              </button>
             </div>
           </div>
         )}
@@ -2148,7 +2149,9 @@ export default function GamePage() {
             <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
               <h2 className="text-2xl font-bold text-center mb-4 text-slate-900">Leave Game?</h2>
               <p className="text-center text-slate-600 mb-8">
-                {gameState?.status === 'waiting' 
+                {isSpectator
+                  ? 'Are you sure you want to leave?'
+                  : gameState?.status === 'waiting' 
                   ? 'Are you sure you want to leave?' 
                   : `Are you sure you want to leave the current game? You will lose your stake of ${formatCurrency(stake)}.`}
               </p>
