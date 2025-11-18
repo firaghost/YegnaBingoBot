@@ -865,6 +865,8 @@ export default function GamePage() {
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
     if (!user) return
+    // Spectators cannot interact with the board
+    if (isSpectator) return
     
     // Safety check for markedCells
     if (!markedCells.length || !markedCells[row]) return
@@ -886,6 +888,12 @@ export default function GamePage() {
 
   // Handle BINGO button click
   const handleBingoClick = async () => {
+    // Spectators cannot claim
+    if (isSpectator) {
+      setBingoError('You are spectating this game. Join next round to play and claim BINGO.')
+      setTimeout(() => setBingoError(null), 3000)
+      return
+    }
     // Prevent multiple simultaneous claims
     if (claimingBingo) return
     
@@ -1802,19 +1810,20 @@ export default function GamePage() {
                     row.map((num, ci) => {
                     const isMarked = markedCells[ri] && markedCells[ri][ci]
                     const isCalled = calledNumbers.includes(num) && num !== 0
+                    const isMarkedVisual = isMarked || (isSpectator && isCalled)
                     const isFree = num === 0
 
                     return (
                       <button
                         key={`${ri}-${ci}`}
                         onClick={() => handleCellClick(ri, ci)}
-                        disabled={!isCalled && !isFree}
+                        disabled={isSpectator || (!isCalled && !isFree)}
                         className={`
                           aspect-square flex items-center justify-center text-base font-bold
                           transition-all duration-200 border-r border-b border-slate-200
                           ${ci === 4 ? 'border-r-0' : ''}
                           ${ri === 4 ? 'border-b-0' : ''}
-                          ${isMarked
+                          ${isMarkedVisual
                             ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full m-1 shadow-lg cursor-default'
                             : isCalled
                             ? 'bg-white text-slate-700 rounded-full m-1 ring-2 ring-blue-300 hover:bg-blue-50 cursor-pointer hover:scale-105 active:scale-95'
@@ -1840,28 +1849,30 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* BINGO Button - Beautiful */}
-            <button
-              onClick={handleBingoClick}
-              disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
-              className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
-                markedCells.length && checkBingoWin(markedCells) && !claimingBingo
-                  ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
-                  : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
-              }`}
-            >
-              {claimingBingo ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Claiming...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-5 h-5" />
-                  <span>BINGO!</span>
-                </>
-              )}
-            </button>
+            {/* BINGO Button - only for players (not spectators) */}
+            {!isSpectator && (
+              <button
+                onClick={handleBingoClick}
+                disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
+                className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
+                  markedCells.length && checkBingoWin(markedCells) && !claimingBingo
+                    ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
+                    : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
+                }`}
+              >
+                {claimingBingo ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Claiming...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    <span>BINGO!</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 

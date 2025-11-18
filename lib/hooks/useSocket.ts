@@ -588,7 +588,8 @@ export function useSocket() {
 
   // Emit through Socket.IO for instant broadcast (does not affect DB state)
   try {
-    if (socketRef.current) {
+    const enableSocketClaim = false // Disable to prevent conflicting flows with DB atomic resolver
+    if (enableSocketClaim && socketRef.current) {
       console.log('📡 Emitting bingo_claim via socket for instant broadcast')
       socketRef.current.emit('bingo_claim', {
         username: userId,
@@ -654,6 +655,63 @@ export function useSocket() {
 
     // Mark as spectator immediately so UI can render without waiting for next tick
     setIsSpectator(true)
+
+    // Clean up existing Supabase channel if any
+    if (channelRef.current) {
+      try { await channelRef.current.unsubscribe() } catch {}
+      channelRef.current = null
+    }
+
+    // Subscribe to DB updates for spectators as well (so they see finish state)
+    try {
+      let lastUpdate = 0
+      const UPDATE_THROTTLE = 500
+      const gameChannel = supabase
+        .channel(`spectate-game:${roomId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'games',
+            filter: `id=eq.${roomId}`
+          },
+          (payload: any) => {
+            const now = Date.now()
+            if (now - lastUpdate < UPDATE_THROTTLE) return
+            lastUpdate = now
+            const game = payload.new as any
+            setGameState(prev => ({
+              ...prev,
+              id: game.id,
+              room_id: game.room_id,
+              status: game.status,
+              countdown_time: game.countdown_time || 0,
+              players: game.players || [],
+              bots: game.bots || [],
+              called_numbers: game.called_numbers || [],
+              latest_number: game.latest_number || null,
+              stake: game.stake,
+              prize_pool: game.prize_pool,
+              winner_id: game.winner_id,
+              min_players: game.min_players || 2,
+              commission_rate: game.commission_rate ?? undefined,
+              commission_amount: game.commission_amount ?? undefined,
+              net_prize: game.net_prize ?? undefined,
+              winner_card: game.winner_card || null,
+              winner_pattern: game.winner_pattern || null
+            }))
+          }
+        )
+        .subscribe((status: any) => {
+          console.log('📡 Spectator subscription status:', status)
+        })
+
+      channelRef.current = gameChannel
+      setChannel(gameChannel)
+    } catch (e) {
+      console.warn('⚠️ Failed to subscribe spectator to DB updates:', e)
+    }
 
     // Fetch initial game state snapshot from DB for spectators
     try {

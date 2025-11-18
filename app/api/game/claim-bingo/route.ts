@@ -63,7 +63,8 @@ export async function POST(request: NextRequest) {
 
     // Force sync cache to database before validation (critical operation)
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'yegnabingobot-production.up.railway.app'
+      const rawBase = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+      const baseUrl = rawBase.startsWith('http') ? rawBase : `https://${rawBase}`
       await fetch(`${baseUrl}/api/cache/force-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

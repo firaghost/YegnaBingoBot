@@ -110,6 +110,58 @@ export function setupBotHandlers(bot: Telegraf) {
     }
   })
 
+  // Inline mode: share invite link to any chat/group
+  bot.on('inline_query', async (ctx) => {
+    try {
+      const userId = ctx.from?.id ? String(ctx.from.id) : undefined
+      if (!userId) {
+        await ctx.answerInlineQuery([], { is_personal: true, cache_time: 0 })
+        return
+      }
+
+      // Ensure we have bot username to build deep link
+      let botUsername = BOT_USERNAME || ((ctx as any).botInfo?.username as string) || ''
+      if (!botUsername) {
+        try {
+          const me = await ctx.telegram.getMe()
+          botUsername = me.username || ''
+          if (botUsername) BOT_USERNAME = botUsername
+        } catch {}
+      }
+
+      const code = `ref_${userId}`
+      const referralLink = buildReferralLink(userId, botUsername)
+
+      const textLines: string[] = []
+      textLines.push('🎉 Invite Friends & Earn!')
+      if (referralLink) {
+        textLines.push('\n🔗 Your link:')
+        textLines.push('`' + referralLink + '`')
+      }
+      textLines.push(`\n🧾 Your code: \`${code}\``)
+
+      const results = [
+        {
+          type: 'article',
+          id: 'invite-share-' + userId,
+          title: 'Share your BingoX invite',
+          description: 'Send your personal referral link to this chat',
+          input_message_content: {
+            message_text: textLines.join('\n'),
+            parse_mode: 'Markdown'
+          }
+        } as any
+      ]
+
+      await ctx.answerInlineQuery(results, { is_personal: true, cache_time: 0 })
+    } catch (e) {
+      console.error('inline_query error:', e)
+      try {
+        await ctx.answerInlineQuery([], { is_personal: true, cache_time: 0 })
+      } catch {}
+    }
+  })
+
   // Handle registration callback
   bot.action('register', async (ctx) => {
     const userId = ctx.from?.id
@@ -360,11 +412,8 @@ export function setupBotHandlers(bot: Telegraf) {
     parts.push(`\n💵 Earnings: ${refEarnings.toFixed(2)} ETB`)
 
     const keyboardRows: any[] = []
-    if (referralLink) {
-      keyboardRows.push([Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)])
-    } else {
-      keyboardRows.push([Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)])
-    }
+    // Share via inline mode to any user/group without exposing URLs on hover
+    keyboardRows.push([Markup.button.switchToChat('🔗 Share Invite', 'invite')])
     keyboardRows.push([Markup.button.webApp('🎮 Play Now', MINI_APP_URL)])
 
     await ctx.reply(parts.join(''), {
