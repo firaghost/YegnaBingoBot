@@ -1166,10 +1166,45 @@ export default function GamePage() {
       <div className="bg-white border-b border-slate-200">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <button 
-            onClick={() => {
+            onClick={async () => {
               if (gameStatus === 'active' || gameStatus === 'countdown') {
                 setShowLeaveDialog(true)
               } else {
+                // Explicitly leave the game when clicking X button (same logic as Back to Lobby)
+                if (gameId && user?.id) {
+                  console.log('🚪 Player explicitly leaving game via X button')
+                  try {
+                    await fetch('/api/game/leave', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        gameId: gameId,
+                        userId: user.id
+                      })
+                    })
+                  } catch (error) {
+                    console.error('Error leaving game:', error)
+                  }
+                }
+                
+                if (isInWaitingRoom) {
+                  leaveWaitingRoom()
+                  // Also call the leave API to properly clean up the game from DB
+                  if (gameId && user?.id) {
+                    try {
+                      await fetch('/api/game/leave', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          gameId: gameId,
+                          userId: user.id
+                        })
+                      })
+                    } catch (error) {
+                      console.error('Error leaving waiting room game:', error)
+                    }
+                  }
+                }
                 router.push('/lobby')
               }
             }} 
