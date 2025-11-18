@@ -275,7 +275,9 @@ export function setupBotHandlers(bot: Telegraf) {
       }
 
       await ctx.answerCbQuery('✅ Registration successful!')
-      await ctx.editMessageText(
+      
+      // Ask for phone number after successful registration
+      await ctx.reply(
         `🎉 *Registration Successful!*\n\n` +
         `Welcome to BingoX, ${firstName}! 🎰\n\n` +
         `🎁 You've received ${registrationBonus.toFixed(2)} ETB bonus!\n\n` +
@@ -283,15 +285,21 @@ export function setupBotHandlers(bot: Telegraf) {
         `💰 Balance: 0.00 ETB\n` +
         `🎁 Bonus: ${registrationBonus.toFixed(2)} ETB\n` +
         `📊 Total: ${registrationBonus.toFixed(2)} ETB\n\n` +
-        `You can start playing right away!\n` +
-        `Tap "Play Now" to choose a room! 🎮`,
+        `📱 *Next Step: Share Your Phone Number*\n\n` +
+        `To enhance your experience and for security purposes, please share your phone number with us.\n\n` +
+        `This will help us:\n` +
+        `• Secure your account\n` +
+        `• Contact you for important updates\n` +
+        `• Process withdrawals faster`,
         {
           parse_mode: 'Markdown',
-          ...Markup.inlineKeyboard([
-            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-            [Markup.button.callback('💰 Balance', 'balance')],
-            [Markup.button.callback('❓ Help', 'help')]
-          ])
+          reply_markup: {
+            keyboard: [
+              [Markup.button.contactRequest('📱 Share Phone Number')],
+            ],
+            one_time_keyboard: true,
+            resize_keyboard: true
+          }
         }
       )
     } catch (error: any) {
@@ -323,16 +331,29 @@ export function setupBotHandlers(bot: Telegraf) {
         return
       }
 
-      // Remove the custom keyboard
+      // Remove the custom keyboard and show Play Now button
       await ctx.reply(
         `✅ Thank you for sharing your phone number!\n\n` +
         `Your phone number has been securely saved.\n\n` +
-        `You can now enjoy all features of BingoX!`,
+        `You can now enjoy all features of BingoX! 🎮`,
         {
           parse_mode: 'Markdown',
           reply_markup: {
             remove_keyboard: true
           }
+        }
+      )
+      
+      // Show Play Now button after phone is saved
+      await ctx.reply(
+        `🎮 *Ready to Play?*\n\nTap the button below to start playing!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+            [Markup.button.callback('💰 Balance', 'balance')],
+            [Markup.button.callback('❓ Help', 'help')]
+          ])
         }
       )
     } catch (error) {
@@ -451,15 +472,63 @@ export function setupBotHandlers(bot: Telegraf) {
 
   // Play command
   bot.command('play', async (ctx) => {
-    await ctx.reply(
-      `🎮 *Ready to Play?*\n\nTap the button below to start playing!`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
-        ])
+    const userId = ctx.from?.id
+    
+    try {
+      // Check if user has phone number
+      const { data: user } = await supabase
+        .from('users')
+        .select('phone')
+        .eq('telegram_id', userId?.toString())
+        .maybeSingle()
+      
+      if (!user?.phone) {
+        // User hasn't shared phone number yet - ask them to share it
+        await ctx.reply(
+          `📱 *Phone Number Required*\n\n` +
+          `To play, please share your phone number with us.\n\n` +
+          `This helps us:\n` +
+          `• Secure your account\n` +
+          `• Process withdrawals\n` +
+          `• Send important updates\n\n` +
+          `Tap the button below to share:`,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              keyboard: [
+                [Markup.button.contactRequest('📱 Share Phone Number')],
+              ],
+              one_time_keyboard: true,
+              resize_keyboard: true
+            }
+          }
+        )
+        return
       }
-    )
+      
+      // User has phone number - allow them to play
+      await ctx.reply(
+        `🎮 *Ready to Play?*\n\nTap the button below to start playing!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          ])
+        }
+      )
+    } catch (error) {
+      console.error('Error in play command:', error)
+      // Fallback: show Play Now button even if there's an error
+      await ctx.reply(
+        `🎮 *Ready to Play?*\n\nTap the button below to start playing!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          ])
+        }
+      )
+    }
   })
 
   // Invite/referral command
@@ -874,14 +943,61 @@ export function setupBotHandlers(bot: Telegraf) {
 
     // Common actions to open web app directly
     if (callbackData === 'play_now') {
-      await ctx.answerCbQuery()
-      await ctx.reply('🎮 Opening game...', {
-        reply_markup: {
-          inline_keyboard: [
-            [Markup.button.webApp('🎮 Open Game', MINI_APP_URL)]
-          ]
+      const userId = ctx.from?.id
+      
+      try {
+        // Check if user has phone number
+        const { data: user } = await supabase
+          .from('users')
+          .select('phone')
+          .eq('telegram_id', userId?.toString())
+          .maybeSingle()
+        
+        if (!user?.phone) {
+          // User hasn't shared phone number yet - ask them to share it
+          await ctx.answerCbQuery()
+          await ctx.reply(
+            `📱 *Phone Number Required*\n\n` +
+            `To play, please share your phone number with us.\n\n` +
+            `This helps us:\n` +
+            `• Secure your account\n` +
+            `• Process withdrawals\n` +
+            `• Send important updates\n\n` +
+            `Tap the button below to share:`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                keyboard: [
+                  [Markup.button.contactRequest('📱 Share Phone Number')],
+                ],
+                one_time_keyboard: true,
+                resize_keyboard: true
+              }
+            }
+          )
+          return
         }
-      })
+        
+        // User has phone number - allow them to play
+        await ctx.answerCbQuery()
+        await ctx.reply('🎮 Opening game...', {
+          reply_markup: {
+            inline_keyboard: [
+              [Markup.button.webApp('🎮 Open Game', MINI_APP_URL)]
+            ]
+          }
+        })
+      } catch (error) {
+        console.error('Error in play_now callback:', error)
+        await ctx.answerCbQuery()
+        await ctx.reply('🎮 Opening game...', {
+          reply_markup: {
+            inline_keyboard: [
+              [Markup.button.webApp('🎮 Open Game', MINI_APP_URL)]
+            ]
+          }
+        })
+      }
       return
     }
     if (callbackData === 'deposit_action') {

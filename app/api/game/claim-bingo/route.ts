@@ -5,9 +5,67 @@ import { getConfig } from '@/lib/admin-config'
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
 
-// Check if a bingo card has a valid bingo
+// Validate that a bingo card is legitimate and follows proper structure
+function validateBingoCard(card: number[][]): { valid: boolean; error?: string } {
+  // Check card structure
+  if (!Array.isArray(card) || card.length !== 5) {
+    return { valid: false, error: 'Card must be 5x5 grid' }
+  }
 
+  const seenNumbers = new Set<number>()
+
+  for (let row = 0; row < 5; row++) {
+    if (!Array.isArray(card[row]) || card[row].length !== 5) {
+      return { valid: false, error: 'Each row must have 5 cells' }
+    }
+
+    for (let col = 0; col < 5; col++) {
+      const num = card[row][col]
+
+      // Center cell must be 0 (free space)
+      if (row === 2 && col === 2) {
+        if (num !== 0) {
+          return { valid: false, error: 'Center cell must be 0 (free space)' }
+        }
+        continue
+      }
+
+      // All other cells must be numbers 1-75
+      if (!Number.isInteger(num) || num < 1 || num > 75) {
+        return { valid: false, error: `Invalid number ${num} - must be 1-75` }
+      }
+
+      // Check column range (B=1-15, I=16-30, N=31-45, G=46-60, O=61-75)
+      const minForCol = col * 15 + 1
+      const maxForCol = col * 15 + 15
+
+      if (num < minForCol || num > maxForCol) {
+        return { 
+          valid: false, 
+          error: `Number ${num} in column ${col} is outside valid range ${minForCol}-${maxForCol}` 
+        }
+      }
+
+      // Check for duplicates (excluding free space)
+      if (seenNumbers.has(num)) {
+        return { valid: false, error: `Duplicate number ${num} in card` }
+      }
+      seenNumbers.add(num)
+    }
+  }
+
+  return { valid: true }
+}
+
+// Check if a bingo card has a valid bingo
 function checkBingo(card: number[][], markedCells: boolean[][]): boolean {
+  // First validate the card structure
+  const cardValidation = validateBingoCard(card)
+  if (!cardValidation.valid) {
+    console.error(`❌ Invalid card structure: ${cardValidation.error}`)
+    return false
+  }
+
   // Check rows
   for (let i = 0; i < 5; i++) {
     if (markedCells[i].every(cell => cell)) return true
@@ -57,6 +115,16 @@ export async function POST(request: NextRequest) {
     if (!gameId || !userId || !card) {
       return NextResponse.json(
         { error: 'Missing required fields: gameId, userId, card' },
+        { status: 400 }
+      )
+    }
+
+    // Validate card structure immediately to prevent exploit attempts
+    const cardValidation = validateBingoCard(card)
+    if (!cardValidation.valid) {
+      console.error(`❌ SECURITY: Invalid card submitted by user ${userId}: ${cardValidation.error}`)
+      return NextResponse.json(
+        { error: 'Invalid bingo card structure', details: cardValidation.error },
         { status: 400 }
       )
     }

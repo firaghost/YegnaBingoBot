@@ -122,6 +122,57 @@ export default function LobbyPage() {
     fetchRooms()
   }, [commissionRate, commissionLoaded])
 
+  // Handle contact share from Telegram
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.Telegram?.WebApp) return
+
+    const handleContactShare = async (contact: any) => {
+      try {
+        console.log('📱 Contact shared:', contact)
+        
+        // If user exists and has phone number, refresh user data
+        if (user && contact?.phone_number) {
+          // Update user in database
+          const { error } = await supabase
+            .from('users')
+            .update({ phone: contact.phone_number })
+            .eq('id', user.id)
+          
+          if (!error) {
+            console.log('✅ Phone number saved:', contact.phone_number)
+            // Refresh user data to show updated phone
+            const { data: updatedUser } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', user.id)
+              .single()
+            
+            if (updatedUser) {
+              // Update localStorage to trigger auth refresh
+              localStorage.setItem('user_id', updatedUser.id)
+              // Reload page to refresh user data
+              window.location.reload()
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error handling contact share:', error)
+      }
+    }
+
+    // Listen for contact share event
+    const webApp = (window.Telegram.WebApp as any)
+    if (webApp.onEvent) {
+      webApp.onEvent('contactRequested', handleContactShare)
+    }
+
+    return () => {
+      if (webApp.offEvent) {
+        webApp.offEvent('contactRequested', handleContactShare)
+      }
+    }
+  }, [user])
+
   const fetchRooms = async () => {
     try {
       const { data, error } = await supabase
@@ -317,6 +368,41 @@ export default function LobbyPage() {
         <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Game Rooms
         </h2>
+
+        {/* Phone Number Required Banner */}
+        {isAuthenticated && user && !user.phone && (
+          <div className="mb-4 sm:mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-6">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base sm:text-lg font-semibold text-amber-900 mb-1">
+                  📱 Phone Number Required
+                </h3>
+                <p className="text-sm text-amber-800 mb-4">
+                  To play games and withdraw your winnings, please share your phone number with us. This helps us secure your account and process transactions faster.
+                </p>
+                <button
+                  onClick={() => {
+                    if (window.Telegram?.WebApp) {
+                      (window.Telegram.WebApp as any).requestContact?.()
+                    } else {
+                      alert('Please use Telegram to share your phone number')
+                    }
+                  }}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2 sm:py-2.5 px-4 rounded-lg transition-colors text-sm"
+                >
+                  📱 Share Phone Number
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!isAuthenticated && (
           <div className="mb-4 sm:mb-6 bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 text-center">

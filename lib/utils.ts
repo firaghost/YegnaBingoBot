@@ -18,21 +18,32 @@ export function getBingoLetter(number: number): string {
 /**
  * Fisher-Yates shuffle algorithm (Knuth shuffle)
  * International standard for fair random shuffling
+ * Uses cryptographically secure randomness
  */
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
+    let j: number
+    
     // Use crypto.getRandomValues for better randomness in browser
-    const randomBuffer = new Uint32Array(1)
     if (typeof window !== 'undefined' && window.crypto) {
+      const randomBuffer = new Uint32Array(1)
       window.crypto.getRandomValues(randomBuffer)
-      const j = randomBuffer[0] % (i + 1)
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      j = randomBuffer[0] % (i + 1)
     } else {
-      // Fallback for server-side
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      // Server-side: use crypto module for cryptographically secure randomness
+      try {
+        const crypto = require('crypto')
+        const randomBytes = crypto.randomBytes(4)
+        j = randomBytes.readUInt32BE(0) % (i + 1)
+      } catch {
+        // Fallback only if crypto is not available (should not happen in Node.js)
+        console.warn('⚠️ Crypto module not available, using Math.random() fallback for card generation')
+        j = Math.floor(Math.random() * (i + 1))
+      }
     }
+    
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -41,9 +52,16 @@ function shuffleArray<T>(array: T[]): T[] {
  * Generate Bingo Card using international standard
  * B: 1-15, I: 16-30, N: 31-45, G: 46-60, O: 61-75
  * Uses Fisher-Yates shuffle for provably fair distribution
+ * Uses cryptographically secure randomness for fairness
  */
 export function generateBingoCard(): number[][] {
   const card: number[][] = Array(5).fill(null).map(() => Array(5).fill(0))
+  
+  // Log generation environment for audit
+  const isClientSide = typeof window !== 'undefined'
+  if (typeof console !== 'undefined') {
+    console.log(`🎴 Generating bingo card (${isClientSide ? 'client-side' : 'server-side'} with secure randomness)`)
+  }
   
   // Generate numbers for each column using Fisher-Yates shuffle
   for (let col = 0; col < 5; col++) {
@@ -53,7 +71,7 @@ export function generateBingoCard(): number[][] {
     // Create array of all possible numbers for this column
     const columnNumbers = Array.from({ length: 15 }, (_, i) => min + i)
     
-    // Shuffle using Fisher-Yates
+    // Shuffle using Fisher-Yates with cryptographic randomness
     const shuffled = shuffleArray(columnNumbers)
     
     // Take first 5 numbers for this column
