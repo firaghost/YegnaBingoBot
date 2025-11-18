@@ -48,7 +48,7 @@ function getLevelInfo(xp: number = 0, level_progress?: string) {
   }
 }
 import BottomNav from '@/app/components/BottomNav'
-import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck, LuVolume2, LuVolumeX } from 'react-icons/lu'
+import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck, LuVolume2, LuVolumeX, LuPhone } from 'react-icons/lu'
 
 interface Transaction {
   id: string
@@ -83,6 +83,9 @@ export default function AccountPage() {
   const [showUsernameModal, setShowUsernameModal] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [updatingUsername, setUpdatingUsername] = useState(false)
+  const [showPhoneModal, setShowPhoneModal] = useState(false)
+  const [newPhone, setNewPhone] = useState('')
+  const [updatingPhone, setUpdatingPhone] = useState(false)
   const [supportInfo, setSupportInfo] = useState({
     email: 'support@bingox.com',
     telegram: '@bingox_support',
@@ -418,6 +421,12 @@ export default function AccountPage() {
                     </svg>
                   </button>
                 </div>
+                {user.phone && (
+                  <div className="flex items-center gap-1 text-sm text-slate-500 mt-1">
+                    <LuPhone className="w-4 h-4" />
+                    <span>{user.phone}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-4 text-sm text-slate-500">
                   <span>Telegram ID: {user.telegram_id}</span>
                   {(() => {

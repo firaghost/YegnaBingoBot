@@ -11,6 +11,7 @@ declare global {
             last_name?: string
             username?: string
             language_code?: string
+            phone_number?: string // Add phone number field
           }
         }
         ready: () => void

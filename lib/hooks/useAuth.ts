@@ -22,6 +22,7 @@ export interface AuthUser {
   total_wins?: number
   created_at: string
   updated_at: string
+  phone?: string // Add phone number field
 }
 
 export function useAuth() {
@@ -113,7 +114,9 @@ export function useAuth() {
             games_won: 0,
             total_winnings: 0,
             referral_code: telegramId,
-            daily_streak: 0
+            daily_streak: 0,
+            // Add phone number if available in Telegram WebApp data
+            phone: telegramData.phone_number
           })
           .select()
           .single()

@@ -82,27 +82,52 @@ export function setupBotHandlers(bot: Telegraf) {
           }
         )
       } else {
-        // Existing user
-        await ctx.reply(
-          `👋 *Welcome back, ${username}!*\n\n` +
-          `Ready to play some bingo?\n\n` +
-          `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
-          `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n` +
-          `🎮 Games Played: ${existingUser.games_played}\n` +
-          `🏆 Games Won: ${existingUser.games_won}\n` +
-          `🔥 Daily Streak: ${existingUser.daily_streak || 0} days\n\n` +
-          `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
-          `Tap the button below to start playing!`,
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
-              [Markup.button.callback('Balance', 'balance')],
-              [Markup.button.callback('Leaderboard', 'leaderboard')],
-              [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
-            ])
-          }
-        )
+        // Existing user - Check if we need their phone number
+        if (!existingUser.phone) {
+          // Ask for phone number
+          await ctx.reply(
+            `📱 *We need your phone number*\n\n` +
+            `To enhance your experience and for security purposes, please share your phone number with us.\n\n` +
+            `This will help us:\n` +
+            `• Secure your account\n` +
+            `• Contact you for important updates\n` +
+            `• Process withdrawals faster\n\n` +
+            `Click the button below to share your phone number:`,
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                keyboard: [
+                  [Markup.button.contactRequest('Share Phone Number')],
+                  
+                ],
+                one_time_keyboard: true,
+                resize_keyboard: true
+              }
+            }
+          )
+        } else {
+          // Existing user with phone number
+          await ctx.reply(
+            `👋 *Welcome back, ${username}!*\n\n` +
+            `Ready to play some bingo?\n\n` +
+            `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
+            `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n` +
+            `🎮 Games Played: ${existingUser.games_played}\n` +
+            `🏆 Games Won: ${existingUser.games_won}\n` +
+            `🔥 Daily Streak: ${existingUser.daily_streak || 0} days\n\n` +
+            `📢 *Join our channel:* ${CHANNEL_URL}\n\n` +
+            `Tap the button below to start playing!`,
+            {
+              parse_mode: 'Markdown',
+              ...Markup.inlineKeyboard([
+                [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+                [Markup.button.callback('Balance', 'balance')],
+                [Markup.button.callback('Leaderboard', 'leaderboard')],
+                [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
+              ])
+            }
+          )
+        }
       }
     } catch (error) {
       console.error('Error in start command:', error)
@@ -212,7 +237,9 @@ export function setupBotHandlers(bot: Telegraf) {
           games_won: 0,
           total_winnings: 0,
           referral_code: userId.toString(),
-          daily_streak: 0
+          daily_streak: 0,
+          // Add phone number if available in the context (not typically available for privacy reasons)
+          phone: (ctx.from as any)?.phone_number
         })
 
       if (insertError) {
@@ -271,6 +298,72 @@ export function setupBotHandlers(bot: Telegraf) {
       console.error('Error in registration:', error)
       await ctx.answerCbQuery(`❌ Registration failed: ${error.message || 'Please try again'}`)
     }
+  })
+
+  // Handle contact information (phone number sharing)
+  bot.on('contact', async (ctx) => {
+    const userId = ctx.from?.id
+    const phoneNumber = ctx.message?.contact?.phone_number
+
+    if (!userId || !phoneNumber) {
+      await ctx.reply('Sorry, we couldn\'t get your phone number. You can continue using the app without it.')
+      return
+    }
+
+    try {
+      // Update user's phone number in the database
+      const { error } = await supabase
+        .from('users')
+        .update({ phone: phoneNumber })
+        .eq('telegram_id', userId.toString())
+
+      if (error) {
+        console.error('Error updating phone number:', error)
+        await ctx.reply('Sorry, there was an error saving your phone number. You can continue using the app without it.')
+        return
+      }
+
+      // Remove the custom keyboard
+      await ctx.reply(
+        `✅ Thank you for sharing your phone number!\n\n` +
+        `Your phone number has been securely saved.\n\n` +
+        `You can now enjoy all features of BingoX!`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            remove_keyboard: true
+          }
+        }
+      )
+    } catch (error) {
+      console.error('Error handling contact:', error)
+      await ctx.reply('Sorry, there was an error processing your phone number. You can continue using the app without it.')
+    }
+  })
+
+  // Handle skip phone number request
+  bot.hears('Skip for Now', async (ctx) => {
+    await ctx.reply(
+      `You've chosen to skip sharing your phone number.\n\n` +
+      `You can still enjoy most features of BingoX!\n` +
+      `If you change your mind, you can update your phone number in your account settings.`,
+      {
+        reply_markup: {
+          remove_keyboard: true
+        }
+      }
+    )
+    
+    // Show the main menu
+    await ctx.reply(
+      `🎮 *Ready to Play?*\n\nTap the button below to start playing!`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
   })
 
   // Balance callback
@@ -441,9 +534,24 @@ export function setupBotHandlers(bot: Telegraf) {
   bot.command(['levels', 'level'], async (ctx) => {
     await ctx.reply(
       `🎯 *Game Difficulty Levels*\n\n` +
-      `**Easy** \n   • Speed: 1 second intervals\n   • XP Reward: 10 XP per win\n   • Perfect for beginners\n\n` +
-      `**Medium** \n   • Speed: 2 second intervals\n   • XP Reward: 25 XP per win\n   • Balanced risk/reward\n\n` +
-      `**Hard** \n   • Speed: 3 second intervals\n   • XP Reward: 50 XP per win\n   • Higher stakes, bigger wins\n\n` +
+      `**Easy** 
+   • Speed: 1 second intervals
+   • XP Reward: 10 XP per win
+   • Perfect for beginners
+
+` +
+      `**Medium** 
+   • Speed: 2 second intervals
+   • XP Reward: 25 XP per win
+   • Balanced risk/reward
+
+` +
+      `**Hard** 
+   • Speed: 3 second intervals
+   • XP Reward: 50 XP per win
+   • Higher stakes, bigger wins
+
+` +
       `📢 *Join our channel:* ${CHANNEL_URL}`,
       {
         parse_mode: 'Markdown',
