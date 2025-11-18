@@ -464,6 +464,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Update stats for all players in the game
+    try {
+      // Get all players from the game object (stored as array in games table)
+      const allPlayers = game.players || []
+      
+      if (allPlayers && allPlayers.length > 0) {
+        // Update stats for all losers (non-winners)
+        for (const playerId of allPlayers) {
+          if (playerId !== userId) {
+            // This is a loser - update their stats with won: false
+            await supabase.rpc('update_user_stats', {
+              user_id: playerId,
+              won: false,
+              winnings: 0
+            })
+            console.log(`📊 Updated loser stats for user ${playerId}`)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating loser stats:', error)
+    }
+
     // Player XP and stats only for human winners
     if (!isBotClaim) {
       // Get room level to determine XP reward

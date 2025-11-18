@@ -16,11 +16,13 @@ RETURNS TABLE(
 DECLARE
   v_bonus NUMERIC;
   v_main NUMERIC;
+  v_pending_hold NUMERIC;
+  v_available_main NUMERIC;
   v_needed NUMERIC := p_amount;
 BEGIN
   -- Lock user row to ensure atomic update
-  SELECT COALESCE(bonus_balance, 0), COALESCE(balance, 0)
-    INTO v_bonus, v_main
+  SELECT COALESCE(bonus_balance, 0), COALESCE(balance, 0), COALESCE(pending_withdrawal_hold, 0)
+    INTO v_bonus, v_main, v_pending_hold
   FROM users
   WHERE id = p_user_id
   FOR UPDATE;
@@ -29,8 +31,13 @@ BEGIN
     RAISE EXCEPTION 'User not found';
   END IF;
 
-  IF v_bonus + v_main < p_amount THEN
-    RAISE EXCEPTION 'Insufficient total balance';
+  -- Calculate available main balance (excluding pending withdrawal holds)
+  v_available_main := v_main - v_pending_hold;
+
+  -- Check if user has sufficient total available balance (bonus + available main)
+  IF v_bonus + v_available_main < p_amount THEN
+    RAISE EXCEPTION 'Insufficient available balance. Total: % ETB, Pending Hold: % ETB, Available: % ETB, Requested: % ETB', 
+      v_main + v_bonus, v_pending_hold, v_bonus + v_available_main, p_amount;
   END IF;
 
   -- Deduct from bonus first

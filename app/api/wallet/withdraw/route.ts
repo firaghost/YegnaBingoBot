@@ -26,10 +26,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Check if user has sufficient balance
-    if (user.balance < amount) {
+    // Calculate available balance (balance - pending withdrawal holds)
+    const pendingHold = user.pending_withdrawal_hold || 0
+    const availableBalance = user.balance - pendingHold
+
+    // Check if user has sufficient available balance
+    if (availableBalance < amount) {
       return NextResponse.json(
-        { error: 'Insufficient balance' },
+        { 
+          error: 'Insufficient available balance',
+          details: {
+            totalBalance: user.balance,
+            pendingWithdrawalHold: pendingHold,
+            availableBalance: availableBalance,
+            requestedAmount: amount
+          }
+        },
         { status: 400 }
       )
     }
