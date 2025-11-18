@@ -49,8 +49,11 @@ export function setupBotHandlers(bot: Telegraf) {
     if (!userId) return
 
     try {
-      // Extract referral code from start parameter (e.g., /start ref_123)
-      const referralCode = ctx.payload ? ctx.payload.trim() : null
+      // Extract referral code from start parameter, removing optional ref_ prefix
+      const rawPayload = ctx.payload ? ctx.payload.trim() : null
+      const referralCode = rawPayload?.startsWith('ref_')
+        ? rawPayload.substring(4)
+        : rawPayload || null
 
       // Check if user exists
       const { data: existingUser } = await supabase
@@ -61,8 +64,7 @@ export function setupBotHandlers(bot: Telegraf) {
 
       if (!existingUser) {
         // New user - Show registration button
-        // Store referral code in session/context for use during registration
-        (ctx as any).referralCode = referralCode
+        const registerAction = referralCode ? `register:${referralCode}` : 'register'
         await ctx.reply(
           `🎰 *Welcome to BingoX!*\n\n` +
           `Hello ${firstName}! 👋\n\n` +
@@ -80,7 +82,7 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('Register Now', 'register')],
+              [Markup.button.callback('Register Now', registerAction)],
               [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
               [Markup.button.callback('Help', 'help')]
             ])
@@ -165,8 +167,7 @@ export function setupBotHandlers(bot: Telegraf) {
       const textLines: string[] = []
       textLines.push('🎉 Invite Friends & Earn!')
       if (referralLink) {
-        textLines.push('\n🔗 Your link:')
-        textLines.push('`' + referralLink + '`')
+        textLines.push('\n🔗 [Tap to join](' + referralLink + ')')
       }
       textLines.push(`\n🧾 Your code: \`${code}\``)
 
@@ -192,11 +193,15 @@ export function setupBotHandlers(bot: Telegraf) {
     }
   })
 
-  // Handle registration callback
-  bot.action('register', async (ctx) => {
+  // Handle registration callback (supports optional referral code parameter)
+  bot.action(/^register(?::(.+))?$/, async (ctx) => {
     const userId = ctx.from?.id
     const username = ctx.from?.username || ctx.from?.first_name || 'Player'
     const firstName = ctx.from?.first_name || 'Player'
+
+    const referralCode = Array.isArray((ctx as any).match) && (ctx as any).match[1]
+      ? ((ctx as any).match[1] as string).trim()
+      : null
 
     if (!userId) return
 
@@ -287,7 +292,6 @@ export function setupBotHandlers(bot: Telegraf) {
         .single()
 
       // Process referral bonus if referral code exists
-      const referralCode = (ctx as any).referralCode
       if (referralCode && newUser?.id) {
         try {
           const { error: refError } = await supabase.rpc('process_referral_bonus', {
