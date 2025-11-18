@@ -9,14 +9,37 @@ const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXoffi
 const supabase = supabaseAdmin
 
 // Bot username for deep links (must be set in env in serverless/webhook mode)
-const BOT_USERNAME = process.env.BOT_USERNAME || ''
+function normalizeUsername(u?: string) {
+  return (u || '').trim().replace(/^@+/, '')
+}
+let BOT_USERNAME = normalizeUsername(
+  process.env.BOT_USERNAME ||
+  (process.env as any).NEXT_PUBLIC_BOT_USERNAME ||
+  (process.env as any).TELEGRAM_BOT_USERNAME ||
+  ''
+)
 
-function buildReferralLink(telegramId?: string): string {
+function buildReferralLink(telegramId?: string, botUsername?: string): string {
   const code = telegramId || ''
-  return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=ref_${code}` : ''
+  const username = botUsername || BOT_USERNAME
+  return username ? `https://t.me/${username}?start=ref_${code}` : ''
 }
 
 export function setupBotHandlers(bot: Telegraf) {
+  // Capture bot username at runtime from bot instance
+  ;(async () => {
+    try {
+      const me = await bot.telegram.getMe()
+      if (me?.username) {
+        BOT_USERNAME = normalizeUsername(me.username)
+        console.log(`✅ Bot username set to: ${BOT_USERNAME}`)
+      } else {
+        console.log('ℹ️ getMe() returned no username')
+      }
+    } catch (e) {
+      console.error('Failed to get bot username:', e)
+    }
+  })()
   // Start command - Register user
   bot.command('start', async (ctx) => {
     const userId = ctx.from?.id
@@ -299,8 +322,18 @@ export function setupBotHandlers(bot: Telegraf) {
     const userId = ctx.from?.id
     if (!userId) return
 
-    const referralLink = buildReferralLink(String(userId))
     const code = `ref_${String(userId)}`
+    let botUsername = BOT_USERNAME || ((ctx as any).botInfo?.username as string) || ''
+    if (!botUsername) {
+      try {
+        const me = await ctx.telegram.getMe()
+        botUsername = me.username || ''
+        if (botUsername) BOT_USERNAME = botUsername
+      } catch (e) {
+        console.error('getMe failed for invite:', e)
+      }
+    }
+    const referralLink = buildReferralLink(String(userId), botUsername)
 
     let totalRefs = 0
     let refEarnings = 0
@@ -720,7 +753,16 @@ export function setupBotHandlers(bot: Telegraf) {
     }
     if (callbackData.startsWith('get_invite:')) {
       const code = callbackData.split(':')[1] || ''
-      const uname = BOT_USERNAME
+      let uname = BOT_USERNAME || ((ctx as any).botInfo?.username as string) || ''
+      if (!uname) {
+        try {
+          const me = await ctx.telegram.getMe()
+          uname = me.username || ''
+          if (uname) BOT_USERNAME = uname
+        } catch (e) {
+          console.error('getMe failed for get_invite:', e)
+        }
+      }
       if (uname) {
         const url = `https://t.me/${uname}?start=${code}`
         await ctx.reply(`🔗 Your invite link:\n\`${url}\``, { parse_mode: 'Markdown' })
