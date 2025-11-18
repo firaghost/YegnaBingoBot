@@ -13,7 +13,7 @@ const BOT_USERNAME = process.env.BOT_USERNAME || ''
 
 function buildReferralLink(telegramId?: string): string {
   const code = telegramId || ''
-  return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=ref_${code}` : MINI_APP_URL
+  return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=ref_${code}` : ''
 }
 
 export function setupBotHandlers(bot: Telegraf) {
@@ -316,21 +316,28 @@ export function setupBotHandlers(bot: Telegraf) {
       console.error('Invite stats fetch failed:', e)
     }
 
-    await ctx.reply(
-      `🎉 *Invite Friends & Earn!*\n\n` +
-      `Share your personal link and earn a bonus when your friend registers.\n\n` +
-      `🔗 Your link:\n\`${referralLink}\`\n\n` +
-      `🧾 Your code: \`${code}\`\n\n` +
-      `👥 Total Referrals: ${totalRefs}\n` +
-      `💵 Earnings: ${refEarnings.toFixed(2)} ETB`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)],
-          [Markup.button.callback('🎮 Play Now', 'play_now')]
-        ])
-      }
-    )
+    const parts: string[] = []
+    parts.push(`🎉 *Invite Friends & Earn!*\n`)
+    parts.push(`\nShare your personal link and earn a bonus when your friend registers.\n`)
+    if (referralLink) {
+      parts.push(`\n🔗 Your link:\n\`${referralLink}\``)
+    }
+    parts.push(`\n\n🧾 Your code: \`${code}\``)
+    parts.push(`\n\n👥 Total Referrals: ${totalRefs}`)
+    parts.push(`\n💵 Earnings: ${refEarnings.toFixed(2)} ETB`)
+
+    const keyboardRows: any[] = []
+    if (referralLink) {
+      keyboardRows.push([Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)])
+    } else {
+      keyboardRows.push([Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)])
+    }
+    keyboardRows.push([Markup.button.callback('🎮 Play Now', 'play_now')])
+
+    await ctx.reply(parts.join(''), {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard(keyboardRows)
+    })
   })
 
   // Channel command
