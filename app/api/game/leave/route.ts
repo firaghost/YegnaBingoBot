@@ -90,34 +90,50 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // If player leaves during waiting/waiting_for_players and only 1 player remains, reset to waiting
+    // If player leaves during waiting/waiting_for_players and only 1 player remains, END the game (don't keep it open)
     if (remainingPlayers === 1 && ['waiting', 'waiting_for_players', 'countdown'].includes(game.status)) {
-      console.log(`⏪ Game ${gameId} reset to waiting - only 1 player remaining`)
+      console.log(`🏁 Game ${gameId} ending - only 1 player remaining in waiting room`)
       
-      // Clear any active countdown timer since we're back to 1 player
+      // Clear any active countdown timer
       try {
         clearGameTimer(gameId)
       } catch (error) {
         console.warn('Could not clear game timer:', error)
       }
       
+      // End the game instead of keeping it open
       await supabase
         .from('games')
         .update({
-          status: 'waiting',
-          players: updatedPlayers,
-          prize_pool: game.stake * remainingPlayers,
-          countdown_time: 0,
-          waiting_started_at: null,
-          countdown_started_at: null
+          status: 'finished',
+          ended_at: new Date().toISOString(),
+          players: updatedPlayers
         })
         .eq('id', gameId)
 
-      console.log(`⏳ 1 player remains in waiting state, keeping game open`)
+      console.log(`🏁 Game ended - single player cannot continue in waiting room`)
+      
+      // Stop number calling and force-sync cache
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+        await fetch(`${baseUrl}/api/game/stop-calling`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+        await fetch(`${baseUrl}/api/cache/force-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId })
+        })
+      } catch (e) {
+        console.warn('Failed to stop number calling after single player left:', e)
+      }
+
       return NextResponse.json({
         success: true,
-        message: 'Player left, waiting for more players',
-        refunded: false // No refund needed in waiting room
+        message: 'Game ended - insufficient players',
+        refunded: false
       })
     }
 

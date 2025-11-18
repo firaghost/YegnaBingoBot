@@ -55,18 +55,6 @@ export async function POST(request: NextRequest) {
       console.warn('Cleanup warning:', cleanupError)
     }
 
-    // Find active or waiting game for this room
-    let { data: activeGame, error: findError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('room_id', roomId)
-      .in('status', ['waiting', 'countdown'])
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    console.log(`🎮 Found existing game:`, activeGame ? `${activeGame.id} (status: ${activeGame.status}, players: ${activeGame.players?.length})` : 'None')
-
     // Check if there's an active game (player should be queued)
     const { data: runningGame } = await supabase
       .from('games')
@@ -76,15 +64,27 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runningGame) {
-  console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
-  return NextResponse.json({
-    success: true,
-    action: 'spectate',
-    message: 'Game is running; you are spectating this game.',
-    gameId: runningGame.id,
-    game: runningGame
-  })
-}
+      console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
+      return NextResponse.json({
+        success: true,
+        action: 'spectate',
+        message: 'Game is running; you are spectating this game.',
+        gameId: runningGame.id,
+        game: runningGame
+      })
+    }
+
+    // Find active or waiting game for this room
+    let { data: activeGame, error: findError } = await supabase
+      .from('games')
+      .select('*')
+      .eq('room_id', roomId)
+      .in('status', ['waiting', 'waiting_for_players', 'countdown'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    console.log(`🎮 Found existing game:`, activeGame ? `${activeGame.id} (status: ${activeGame.status}, players: ${activeGame.players?.length})` : 'None')
 
     let actualGame = activeGame;
     if (!activeGame) {

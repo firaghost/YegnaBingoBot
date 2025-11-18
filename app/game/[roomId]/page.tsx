@@ -423,12 +423,18 @@ export default function GamePage() {
       connected
     })
 
+    // Extract gameId from waitingRoomState if available
+    if (isInWaitingRoom && waitingRoomState?.gameId && !gameId) {
+      console.log('📌 Setting gameId from waiting room state:', waitingRoomState.gameId)
+      setGameId(waitingRoomState.gameId)
+    }
+
     // Stop loading when we successfully join waiting room or become spectator
     if (isInWaitingRoom || isSpectator || gameState) {
       console.log('✅ Successfully connected, stopping loading')
       setLoading(false)
     }
-  }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState])
+  }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState, gameId])
 
   // (Preview card removed) We will show a 10x10 picker grid in waiting room instead
 
@@ -1512,6 +1518,21 @@ export default function GamePage() {
                     
                     if (isInWaitingRoom) {
                       leaveWaitingRoom()
+                      // Also call the leave API to properly clean up the game from DB
+                      if (gameId && user?.id) {
+                        try {
+                          await fetch('/api/game/leave', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              gameId: gameId,
+                              userId: user.id
+                            })
+                          })
+                        } catch (error) {
+                          console.error('Error leaving waiting room game:', error)
+                        }
+                      }
                     }
                     router.push('/lobby')
                   }}

@@ -68,7 +68,7 @@ export function useSocket() {
 
     // Waiting Room Events
     socket.on('room_assigned', (data) => {
-      console.log('🏠 Assigned to waiting room:', data.roomId)
+      console.log('🏠 Assigned to waiting room:', data.roomId, 'GameId:', data.gameId)
       setIsInWaitingRoom(true)
       setWaitingRoomState(data)
     })
