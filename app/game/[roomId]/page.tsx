@@ -447,20 +447,20 @@ export default function GamePage() {
     }
   }, [roomData?.prize_pool])
 
-  // Handle game over for spectators - auto redirect to lobby
+  // Handle game over for spectators - auto redirect to waiting room
   useEffect(() => {
     if (isSpectator && gameState?.status === 'finished') {
-      console.log('🏁 Game finished, spectator will be redirected to lobby')
+      console.log('🏁 Game finished, spectator will be redirected to waiting room')
       
-      // Wait 3 seconds then redirect to lobby
+      // Wait 3 seconds then redirect to waiting room
       const redirectTimer = setTimeout(() => {
-        console.log('🔄 Redirecting spectator to lobby')
-        router.push('/lobby')
+        console.log('🔄 Redirecting spectator to waiting room')
+        router.push(`/game/${roomId}`)
       }, 3000)
 
       return () => clearTimeout(redirectTimer)
     }
-  }, [isSpectator, gameState?.status, router])
+  }, [isSpectator, gameState?.status, router, roomId])
 
 
   // Cleanup socket connection on unmount only
@@ -932,7 +932,7 @@ export default function GamePage() {
             
             // Auto-redirect after 8 seconds
             setTimeout(() => {
-              router.push('/lobby')
+              router.push(`/game/${roomId}`)
             }, 8000)
           }
         }
@@ -1012,7 +1012,7 @@ export default function GamePage() {
           
           // Auto-redirect after 8 seconds
           setTimeout(() => {
-            router.push('/lobby')
+            router.push(`/game/${roomId}`)
           }, 8000)
         }
       } else {
@@ -1687,109 +1687,18 @@ export default function GamePage() {
                     </div>
                   )}
 
-                  {/* Players and Their Markings */}
+                  {/* Players Count */}
                   <div className="bg-slate-50 rounded-xl p-4">
                     <h4 className="font-bold text-slate-900 mb-3">Players ({(gameState.players?.length || 0) + (gameState.bots?.length || 0)})</h4>
-                    <div className="space-y-4">
-                      {/* Player Bingo Cards */}
+                    <div className="flex flex-wrap gap-2">
                       {gameState.players?.map((playerId: string, playerIndex: number) => (
-                        <div key={playerId} className="border border-slate-200 rounded-lg p-3">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-bold">
-                              {getRandomEmoji(playerId).slice(0, 1)}
-                            </div>
-                            <span className="font-medium">
-                              {getDisplayName(playerId, playerId === user?.id)} {playerId === user?.id ? '(You)' : ''}
-                            </span>
-                          </div>
-                          
-                          {/* Simplified Bingo Card for Spectator View */}
-                          <div className="bg-white rounded-lg p-2 border">
-                            <div className="grid grid-cols-5 gap-1 mb-1">
-                              {['B', 'I', 'N', 'G', 'O'].map((letter, i) => (
-                                <div key={i} className="text-center text-xs font-bold text-slate-500">{letter}</div>
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-5 gap-1">
-                              {Array.from({ length: 25 }).map((_, cellIndex) => {
-                                const row = Math.floor(cellIndex / 5)
-                                const col = cellIndex % 5
-                                const isFree = row === 2 && col === 2
-                                const isMarked = isFree || (gameState.called_numbers?.some(num => {
-                                  // In spectator mode, we show all called numbers as marked
-                                  return gameState.called_numbers.includes(
-                                    bingoCard[row] ? bingoCard[row][col] : 0
-                                  )
-                                }) ?? false)
-                                
-                                return (
-                                  <div
-                                    key={cellIndex}
-                                    className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
-                                      isMarked 
-                                        ? 'bg-blue-500 text-white' 
-                                        : isFree 
-                                          ? 'bg-slate-200 text-slate-600' 
-                                          : 'bg-white text-slate-400 border border-slate-200'
-                                    }`}
-                                  >
-                                    {isFree ? '★' : (bingoCard[row] ? bingoCard[row][col] : '')}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
+                        <div key={playerId} className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                          {getDisplayName(playerId, playerId === user?.id)} {playerId === user?.id ? '(You)' : ''}
                         </div>
                       ))}
-                      
-                      {/* Bot Players */}
                       {gameState.bots?.map((botId: string, botIndex: number) => (
-                        <div key={botId} className="border border-slate-200 rounded-lg p-3">
-                          <div className="flex items-center gap-2 mb-3">
-                            <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-sm font-bold">
-                              🤖
-                            </div>
-                            <span className="font-medium">
-                              {botProfiles[botId]?.name || `Bot ${botIndex + 1}`}
-                            </span>
-                          </div>
-                          
-                          {/* Simplified Bingo Card for Bot */}
-                          <div className="bg-white rounded-lg p-2 border">
-                            <div className="grid grid-cols-5 gap-1 mb-1">
-                              {['B', 'I', 'N', 'G', 'O'].map((letter, i) => (
-                                <div key={i} className="text-center text-xs font-bold text-slate-500">{letter}</div>
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-5 gap-1">
-                              {Array.from({ length: 25 }).map((_, cellIndex) => {
-                                const row = Math.floor(cellIndex / 5)
-                                const col = cellIndex % 5
-                                const isFree = row === 2 && col === 2
-                                const isMarked = isFree || (gameState.called_numbers?.some(num => {
-                                  // In spectator mode, we show all called numbers as marked
-                                  return gameState.called_numbers.includes(
-                                    bingoCard[row] ? bingoCard[row][col] : 0
-                                  )
-                                }) ?? false)
-                                
-                                return (
-                                  <div
-                                    key={cellIndex}
-                                    className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
-                                      isMarked 
-                                        ? 'bg-purple-500 text-white' 
-                                        : isFree 
-                                          ? 'bg-slate-200 text-slate-600' 
-                                          : 'bg-white text-slate-400 border border-slate-200'
-                                    }`}
-                                  >
-                                    {isFree ? '★' : (bingoCard[row] ? bingoCard[row][col] : '')}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
+                        <div key={botId} className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                          {botProfiles[botId]?.name || `Bot ${botIndex + 1}`}
                         </div>
                       ))}
                     </div>
@@ -2034,8 +1943,8 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Lose Dialog */}
-        {showLoseDialog && (
+        {/* Lose Dialog - Only for Players (not Spectators) */}
+        {showLoseDialog && !isSpectator && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl relative">
               {/* Close Button */}
@@ -2167,27 +2076,68 @@ export default function GamePage() {
               })()}
 
               <p className="text-center text-sm text-slate-500 mb-6">
-                Auto-redirecting in 8 seconds...
+                Auto-redirecting to waiting room in 8 seconds...
               </p>
 
               {/* Action Buttons */}
               <div className="space-y-3">
                 <button 
-                  onClick={handleFindNewGame}
-                  disabled={findingNewGame}
-                  className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  onClick={() => router.push(`/game/${roomId}`)}
+                  className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
                 >
                   <Trophy className="w-5 h-5" />
-                  {findingNewGame ? 'Finding...' : 'Play Again'}
+                  Play Again
                 </button>
                 
-                <Link href="/lobby" className="block">
-                  <button className="w-full bg-slate-700 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2">
-                    <ArrowLeft className="w-5 h-5" />
-                    Close
-                  </button>
-                </Link>
+                <button 
+                  onClick={() => router.push('/lobby')}
+                  className="w-full bg-slate-700 text-white py-4 rounded-xl font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                  Back to Lobby
+                </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Game Ended Dialog - For Spectators */}
+        {showLoseDialog && isSpectator && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
+              {/* Trophy Icon */}
+              <div className="flex justify-center mb-6">
+                <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Trophy className="w-12 h-12 text-emerald-600" />
+                </div>
+              </div>
+
+              <h2 className="text-3xl font-bold mb-4 text-slate-900">Game Ended</h2>
+              
+              {winnerName && (
+                <div className="mb-6">
+                  <p className="text-slate-600 mb-2">The winner is:</p>
+                  <p className="text-2xl font-bold text-amber-600">{winnerName}</p>
+                  {winAmount > 0 && (
+                    <p className="text-slate-600 mt-2">
+                      Prize: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className="text-sm text-slate-500 mb-6">
+                Redirecting to waiting room in 3 seconds...
+              </p>
+
+              {/* Action Button */}
+              <button 
+                onClick={() => router.push(`/game/${roomId}`)}
+                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-5 h-5" />
+                Back to Waiting Room
+              </button>
             </div>
           </div>
         )}
