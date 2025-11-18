@@ -529,6 +529,8 @@ export default function GamePage() {
   
   useEffect(() => {
     if (!gameState || !user || !gameId || !roomData) return
+    // Do not deduct for spectators
+    if (isSpectator) return
     if (stakeDeducted) return // Already deducted
     
     // Deduct stake when game starts (countdown or active)
@@ -596,7 +598,7 @@ export default function GamePage() {
       
       deductStake()
     }
-  }, [gameState?.status, user, gameId, roomData, stakeDeducted])
+  }, [gameState?.status, user, gameId, roomData, stakeDeducted, isSpectator])
 
   // Track previous latest number for haptic feedback
   const prevLatestNumberRef = useRef<number | null>(null)

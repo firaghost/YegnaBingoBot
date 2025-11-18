@@ -96,7 +96,7 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('🎮 Play Now', 'play_now')],
+              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
               [Markup.button.callback('Balance', 'balance')],
               [Markup.button.callback('Leaderboard', 'leaderboard')],
               [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
@@ -136,7 +136,7 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.callback('🎮 Play Now', 'play_now')],
+              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
               [Markup.button.callback('💰 Balance', 'balance')],
               [Markup.button.callback('❓ Help', 'help')]
             ])
@@ -183,7 +183,7 @@ export function setupBotHandlers(bot: Telegraf) {
             {
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
-                [Markup.button.callback('🎮 Play Now', 'play_now')],
+                [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
                 [Markup.button.callback('💰 Balance', 'balance')],
                 [Markup.button.callback('❓ Help', 'help')]
               ])
@@ -209,7 +209,7 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🎮 Play Now', 'play_now')],
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
             [Markup.button.callback('💰 Balance', 'balance')],
             [Markup.button.callback('❓ Help', 'help')]
           ])
@@ -253,7 +253,7 @@ export function setupBotHandlers(bot: Telegraf) {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('💸 Deposit', 'deposit_action')],
             [Markup.button.callback('💰 Withdraw', 'withdraw_action')],
-            [Markup.button.callback('🎮 Play Game', 'play_now')]
+            [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)]
           ])
         }
       )
@@ -294,7 +294,7 @@ export function setupBotHandlers(bot: Telegraf) {
           ...Markup.inlineKeyboard([
             [Markup.button.callback('💸 Deposit', 'deposit_action')],
             [Markup.button.callback('💰 Withdraw', 'withdraw_action')],
-            [Markup.button.callback('🎮 Play Now', 'play_now')]
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
           ])
         }
       )
@@ -311,7 +311,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🎮 Play Now', 'play_now')]
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
         ])
       }
     )
@@ -365,7 +365,7 @@ export function setupBotHandlers(bot: Telegraf) {
     } else {
       keyboardRows.push([Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)])
     }
-    keyboardRows.push([Markup.button.callback('🎮 Play Now', 'play_now')])
+    keyboardRows.push([Markup.button.webApp('🎮 Play Now', MINI_APP_URL)])
 
     await ctx.reply(parts.join(''), {
       parse_mode: 'Markdown',
@@ -382,7 +382,7 @@ export function setupBotHandlers(bot: Telegraf) {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
-          [Markup.button.callback('🎮 Play Now', 'play_now')]
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
         ])
       }
     )
@@ -399,7 +399,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🎮 Play Now', 'play_now')],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
@@ -436,7 +436,7 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🎮 Play Game', 'play_now')],
+            [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)],
             [Markup.button.callback('📊 Full Stats', 'account_action')],
             [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
           ])
@@ -472,7 +472,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🏆 View Full Leaderboard', 'leaderboard_action')]
+          [Markup.button.webApp('🏆 View Full Leaderboard', `${MINI_APP_URL}/leaderboard`)]
         ])
       })
     } catch (error) {
@@ -505,7 +505,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🏆 Full Leaderboard', 'leaderboard_action')],
+          [Markup.button.webApp('🏆 Full Leaderboard', `${MINI_APP_URL}/leaderboard`)],
           [Markup.button.callback('Back', 'back_to_start')]
         ])
       })
@@ -541,7 +541,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🎮 Play Now', 'play_now')],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
@@ -567,7 +567,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🎮 Play Now', 'play_now')],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
           [Markup.button.callback('🔙 Back', 'back_to_start')]
         ])
       }
@@ -661,7 +661,7 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('🎮 Play Game', 'play_now')],
+            [Markup.button.webApp('🎮 Play Game', MINI_APP_URL)],
             [Markup.button.callback('📊 Full Stats', 'account_action')]
           ])
         }
@@ -697,7 +697,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.callback('🎮 Join a Room', 'join_room')]
+          [Markup.button.webApp('🎮 Join a Room', `${MINI_APP_URL}/lobby`)]
         ])
       })
     } catch (error) {

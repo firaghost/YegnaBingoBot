@@ -445,7 +445,28 @@ app.post('/api/game/join', async (req, res) => {
       console.warn('Cleanup warning:', cleanupError)
     }
 
-    // Find active or waiting game for this room
+    // First: if there is a running game in this room, spectate it
+    const { data: runningGame } = await supabase
+      .from('games')
+      .select('*')
+      .eq('room_id', roomId)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (runningGame) {
+      console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
+      return res.json({
+        success: true,
+        action: 'spectate',
+        message: 'Game is running; you are spectating this game.',
+        gameId: runningGame.id,
+        game: runningGame
+      })
+    }
+
+    // Find a waiting/countdown game for this room
     console.log(`🔍 Looking for existing games in room: ${roomId}`)
     
     let { data: activeGame, error: findError } = await supabase
@@ -1280,43 +1301,55 @@ const io = new SocketServer(httpServer, {
 
 // Make socket server globally available for number calling
 global.io = io
-
 // Track active players per game
 const activePlayers = new Map<string, Set<string>>() // gameId -> Set of socketIds
 
 // Add global socket event handlers for game room joining
 io.on('connection', (socket) => {
   console.log(`🔌 Global: Client connected ${socket.id}`)
-  
+
   // Handle join-game event (hyphenated format from frontend)
   socket.on('join-game', ({ gameId, userId }: any) => {
     console.log(`👤 Global: User ${userId} joining game room ${gameId}`)
     socket.join(`game-${gameId}`)
     socket.join(gameId) // Join both formats for compatibility
-    
+
     // Track this player as active in the game
     if (!activePlayers.has(gameId)) {
       activePlayers.set(gameId, new Set())
     }
     activePlayers.get(gameId)!.add(socket.id)
-    
+
     console.log(`✅ Global: User ${userId} joined rooms: game-${gameId} and ${gameId}`)
     console.log(`👥 Active players in game ${gameId}: ${activePlayers.get(gameId)?.size || 0}`)
   })
-  
+
+  // Handle spectate-game event (spectators should not be counted as active players)
+  socket.on('spectate-game', ({ gameId, username }: any) => {
+    try {
+      console.log(`👁️ Global: Spectator ${username || socket.id} joining game room ${gameId}`)
+      socket.join(`game-${gameId}`)
+      socket.join(gameId)
+      // Intentionally NOT adding to activePlayers
+      console.log(`✅ Global: Spectator joined rooms: game-${gameId} and ${gameId}`)
+    } catch (e) {
+      console.warn('⚠️ spectate-game error:', e)
+    }
+  })
+
   // Handle player disconnect
   socket.on('disconnect', async (reason) => {
     console.log(`🔌 Player disconnected: ${socket.id}, reason: ${reason}`)
     
     // Check all games to see if this player was in any
-    activePlayers.forEach(async (players, gameId) => {
+    activePlayers.forEach(async (players, gId) => {
       if (players.has(socket.id)) {
         players.delete(socket.id)
-        console.log(`👋 Player ${socket.id} left game ${gameId}. Remaining: ${players.size}`)
+        console.log(`👋 Player ${socket.id} left game ${gId}. Remaining: ${players.size}`)
         
         // If no players left in an active game, stop it
-        if (players.size === 0 && gameIntervals.has(gameId)) {
-          console.log(`⚠️ All players left game ${gameId}, stopping game...`)
+        if (players.size === 0 && gameIntervals.has(gId)) {
+          console.log(`⚠️ All players left game ${gId}, stopping game...`)
           
           try {
             const { supabaseAdmin } = await import('../lib/supabase')
@@ -1329,17 +1362,17 @@ io.on('connection', (socket) => {
                 ended_at: new Date().toISOString(),
                 winner_id: null
               })
-              .eq('id', gameId)
+              .eq('id', gId)
             
             // Stop number calling
-            stopNumberCalling(gameId)
+            stopNumberCalling(gId)
             
             // Clean up tracking
-            activePlayers.delete(gameId)
+            activePlayers.delete(gId)
             
-            console.log(`✅ Game ${gameId} stopped due to all players leaving`)
+            console.log(`✅ Game ${gId} stopped due to all players leaving`)
           } catch (error) {
-            console.error(`❌ Error stopping abandoned game ${gameId}:`, error)
+            console.error(`❌ Error stopping abandoned game ${gId}:`, error)
           }
         }
       }

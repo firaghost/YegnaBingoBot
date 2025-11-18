@@ -307,10 +307,21 @@ export function useSocket() {
         console.log('💡 Auto-joining as spectator')
         // Automatically join as spectator if game is in progress
         setTimeout(() => {
-          socket.emit('join_spectator', {
-            username: 'TestUser_677',
-            roomId: data.roomId
-          })
+          try {
+            if (data?.roomId) {
+              // Prefer global spectate for DB-backed games
+              socket.emit('spectate-game', {
+                gameId: data.roomId,
+                username: 'Spectator'
+              })
+            } else {
+              // Fallback to legacy spectator join
+              socket.emit('join_spectator', {
+                username: 'Spectator',
+                roomId: data.roomId
+              })
+            }
+          } catch {}
         }, 1000)
       }
     })
@@ -624,10 +635,56 @@ export function useSocket() {
     console.log(`👁️ Joining as spectator: ${roomId}`)
     
     if (socketRef.current) {
-      socketRef.current.emit('join_spectator', {
-        username,
-        roomId
-      })
+      // Join global broadcast rooms for DB-backed games (does not affect active player count)
+      try {
+        socketRef.current.emit('spectate-game', {
+          gameId: roomId,
+          username
+        })
+      } catch {}
+
+      // Legacy compatibility with in-game server spectator flow
+      try {
+        socketRef.current.emit('join_spectator', {
+          username,
+          roomId
+        })
+      } catch {}
+    }
+
+    // Mark as spectator immediately so UI can render without waiting for next tick
+    setIsSpectator(true)
+
+    // Fetch initial game state snapshot from DB for spectators
+    try {
+      const { data: game } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', roomId)
+        .single()
+      if (game) {
+        setGameState({
+          id: game.id,
+          room_id: game.room_id,
+          status: game.status,
+          countdown_time: game.countdown_time || 0,
+          players: game.players || [],
+          bots: game.bots || [],
+          called_numbers: game.called_numbers || [],
+          latest_number: game.latest_number || null,
+          stake: game.stake,
+          prize_pool: game.prize_pool,
+          winner_id: game.winner_id,
+          min_players: game.min_players || 2,
+          commission_rate: game.commission_rate ?? undefined,
+          commission_amount: game.commission_amount ?? undefined,
+          net_prize: game.net_prize ?? undefined,
+          winner_card: game.winner_card || null,
+          winner_pattern: game.winner_pattern || null
+        })
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to fetch spectator initial state:', e)
     }
   }
 
