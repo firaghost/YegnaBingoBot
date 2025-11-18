@@ -607,6 +607,11 @@ export default function GamePage() {
       console.log('🔇 Sound disabled, skipping audio')
       return
     }
+    // Don't play audio if game is finished
+    if (gameState?.status === 'finished') {
+      console.log('🏁 Game finished, not playing audio')
+      return
+    }
     const L = String(letter || '').toUpperCase()
     const N = typeof number === 'number' ? number : parseInt(String(number), 10)
     if (!Number.isFinite(N)) {
@@ -796,6 +801,7 @@ export default function GamePage() {
     }
 
     // Haptic feedback and audio when new number is called (state-based fallback)
+    // Only play audio for NEW numbers, not historical ones
     if (gameState.status === 'active' && gameState.latest_number && gameStartedRef.current) {
       const currentNumber = gameState.latest_number.number
       if (prevLatestNumberRef.current !== currentNumber) {
@@ -806,8 +812,12 @@ export default function GamePage() {
           navigator.vibrate(100) // Vibrate for 100ms
         }
 
+        // Only play audio if this is a NEW number (not in the called_numbers array yet)
+        // This prevents playing audio for historical numbers when late joining
+        const isNewNumber = !gameState.called_numbers?.includes(currentNumber)
+        
         // Play the pre-recorded audio for the called number if not already played via event
-        if (lastPlayedAudioRef.current !== currentNumber) {
+        if (isNewNumber && lastPlayedAudioRef.current !== currentNumber) {
           const currentLetter = gameState.latest_number.letter
           playCallAudio(currentLetter, currentNumber)
           lastPlayedAudioRef.current = currentNumber
