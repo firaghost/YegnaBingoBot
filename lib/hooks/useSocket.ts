@@ -291,6 +291,21 @@ export function useSocket() {
       setGameState(prev => prev ? { ...prev, status: 'finished', winner_id: data.winner } : null)
     })
 
+    // Listen for game finish event (broadcast to all players when someone claims bingo)
+    socket.on('game_finished', (data) => {
+      console.log('🏁 Game finished event received:', data)
+      setGameState(prev => prev ? {
+        ...prev,
+        status: 'finished',
+        winner_id: data.winner_id,
+        winner_card: data.winner_card || prev.winner_card || null,
+        winner_pattern: data.winner_pattern || prev.winner_pattern || null,
+        net_prize: data.net_prize ?? prev.net_prize,
+        commission_amount: data.commission_amount ?? prev.commission_amount,
+        commission_rate: data.commission_rate ?? prev.commission_rate
+      } : null)
+    })
+
     socket.on('no_winner', (data) => {
       console.log('🏁 No winner announcement:', data.message)
       setGameState(prev => prev ? { ...prev, status: 'finished', winner_id: null } : null)
@@ -427,7 +442,7 @@ export function useSocket() {
 
     // Subscribe to game updates with throttling
     let lastUpdate = 0
-    const UPDATE_THROTTLE = 500 // Only update every 500ms max
+    const UPDATE_THROTTLE = 100 // Only update every 100ms max (faster for game finish)
 
       const gameChannel = supabase
         .channel(`game:${gameId}`)

@@ -745,6 +745,31 @@ export default function GamePage() {
     }
   }, [gameState?.status, bingoCard.length])
 
+  // Poll for game finish state (fallback for losers/spectators if realtime is slow)
+  useEffect(() => {
+    if (!gameId || !user || gameState?.status === 'finished' || showLoseDialog || showWinDialog) return
+    
+    // Only poll if we're not the one claiming (to catch when others claim)
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data: currentGame } = await supabase
+          .from('games')
+          .select('status, winner_id, net_prize, winner_card, winner_pattern')
+          .eq('id', gameId)
+          .single()
+        
+        if (currentGame?.status === 'finished' && currentGame?.winner_id && !gameState?.winner_id) {
+          console.log('📊 Poll detected game finished! Winner:', currentGame.winner_id)
+          // This will trigger the useEffect below to show dialogs
+        }
+      } catch (error) {
+        console.warn('Poll error:', error)
+      }
+    }, 500)
+    
+    return () => clearInterval(pollInterval)
+  }, [gameId, user, gameState?.status, gameState?.winner_id, showLoseDialog, showWinDialog])
+
   // Handle game state updates from Socket.IO
   useEffect(() => {
     if (!gameState) return
@@ -795,16 +820,16 @@ export default function GamePage() {
         console.log('🎉 You won!', net)
         setShowWinDialog(true)
       } else {
-        // User lost
+        // User lost or spectating
         setWinAmount(net)
 
-        console.log('😢 You lost. Winner:', gameState.winner_id)
+        console.log(isSpectator ? '👁️ Spectating - game ended' : '😢 You lost. Winner:', gameState.winner_id)
 
-        // Show the lose dialog immediately; fetch details in background
+        // Show the appropriate dialog
         setShowLoseDialog(true)
 
         // Fetch winner name (best-effort): try by id then by username
-        if (gameState.winner_id) {
+        if (gameState.winner_id && !winnerName) {
           supabase
             .from('users')
             .select('username')
@@ -825,35 +850,37 @@ export default function GamePage() {
             })
         }
 
-        // Fetch winner pattern/card in background and update UI if available
-        ;(async () => {
-          try {
-            for (let attempt = 0; attempt < 4; attempt++) {
-              const resp = await fetch('/api/game/winner', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId })
-              })
-              if (resp.ok) {
-                const data = await resp.json()
-                if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
+        // Fetch winner pattern/card in background and update UI if available (for losers only)
+        if (!isSpectator) {
+          ;(async () => {
+            try {
+              for (let attempt = 0; attempt < 4; attempt++) {
+                const resp = await fetch('/api/game/winner', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameId })
+                })
+                if (resp.ok) {
+                  const data = await resp.json()
+                  if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                  if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
+                }
+                await new Promise(res => setTimeout(res, 250))
               }
-              await new Promise(res => setTimeout(res, 250))
-            }
-            if (!fallbackWinnerPattern && gameId) {
-              const { data } = await supabase
-                .from('games')
-                .select('winner_card,winner_pattern')
-                .eq('id', gameId)
-                .single()
-              if (data?.winner_pattern) {
-                if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                setFallbackWinnerPattern(data.winner_pattern as string)
+              if (!fallbackWinnerPattern && gameId) {
+                const { data } = await supabase
+                  .from('games')
+                  .select('winner_card,winner_pattern')
+                  .eq('id', gameId)
+                  .single()
+                if (data?.winner_pattern) {
+                  if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
+                  setFallbackWinnerPattern(data.winner_pattern as string)
+                }
               }
-            }
-          } catch {}
-        })()
+            } catch {}
+          })()
+        }
       }
     }
   }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
@@ -1023,7 +1050,50 @@ export default function GamePage() {
       setClaimingBingo(false)
     } else {
       console.log('✅ BINGO claimed successfully!')
-      // The useEffect will handle showing the win dialog when game state updates
+      // Immediately fetch the updated game state to show dialogs to all players
+      try {
+        const { data: updatedGame } = await supabase
+          .from('games')
+          .select('*')
+          .eq('id', gameId)
+          .single()
+        
+        if (updatedGame && updatedGame.status === 'finished' && updatedGame.winner_id) {
+          console.log('🎯 Game finished! Winner:', updatedGame.winner_id)
+          
+          const gross = updatedGame.prize_pool
+          const net = typeof updatedGame.net_prize === 'number' 
+            ? updatedGame.net_prize 
+            : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+          setWinAmount(net)
+          
+          if (updatedGame.winner_id === user.id) {
+            // Current user won
+            console.log('🎉 You won!')
+            if (!bingoAudioPlayedRef.current) {
+              playBingoAudio()
+              bingoAudioPlayedRef.current = true
+            }
+            setShowWinDialog(true)
+          } else {
+            // Current user lost
+            console.log('😢 You lost. Winner:', updatedGame.winner_id)
+            setShowLoseDialog(true)
+            
+            // Fetch winner name
+            supabase
+              .from('users')
+              .select('username')
+              .eq('id', updatedGame.winner_id)
+              .single()
+              .then(({ data }: any) => {
+                if (data) setWinnerName(data.username)
+              })
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching updated game state:', error)
+      }
     }
   }
 
@@ -1595,150 +1665,80 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Enhanced Spectator Mode */}
+        {/* Simplified Spectator Mode - Fits on one screen */}
         {isSpectator && (
-          <div className="space-y-4 animate-in fade-in duration-500">
-            {/* Spectator Header */}
-            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-4 text-white shadow-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                    <Star className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Spectator Mode</h2>
-                    <p className="text-white/80 text-sm">Watching live game</p>
+          <div className="space-y-3 animate-in fade-in duration-500">
+            {/* Latest Number Called - Prominent Display */}
+            {gameState?.latest_number && (
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
+                <div className="text-center">
+                  <div className="text-sm font-medium mb-2 opacity-90">Latest Number Called</div>
+                  <div className="text-6xl font-black">
+                    {gameState.latest_number.letter}{gameState.latest_number.number}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold">LIVE</div>
-                  <div className="text-white/80 text-sm">Game in progress</div>
+              </div>
+            )}
+
+            {/* Game Info - Compact */}
+            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+              <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                <div>
+                  <div className="text-slate-600 text-xs font-semibold">Players</div>
+                  <div className="text-lg font-bold text-slate-900">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</div>
+                </div>
+                <div>
+                  <div className="text-slate-600 text-xs font-semibold">Called</div>
+                  <div className="text-lg font-bold text-slate-900">{gameState?.called_numbers?.length || 0}/75</div>
+                </div>
+                <div>
+                  <div className="text-slate-600 text-xs font-semibold">Prize Pool</div>
+                  <div className="text-lg font-bold text-emerald-600">{formatCurrency(typeof gameState?.net_prize === 'number' ? gameState.net_prize : netPrizePool)}</div>
+                </div>
+              </div>
+
+              {/* Game Progress Bar */}
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-slate-600 mb-1">
+                  <span>Game Progress</span>
+                  <span>{gameState?.called_numbers ? Math.round((gameState.called_numbers.length / 75) * 100) : 0}%</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${gameState?.called_numbers ? (gameState.called_numbers.length / 75) * 100 : 0}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
 
-            {/* Unified Game Display - Called Numbers and Bingo Card */}
-            <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Trophy className="w-6 h-6 text-purple-600" />
+            {/* Players List - Compact */}
+            {gameState && (
+              <div className="bg-slate-50 rounded-xl p-3">
+                <h4 className="font-bold text-slate-900 text-sm mb-2">Players</h4>
+                <div className="flex flex-wrap gap-2">
+                  {gameState.players?.map((playerId: string) => (
+                    <div key={playerId} className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {getDisplayName(playerId, playerId === user?.id)}
+                    </div>
+                  ))}
+                  {gameState.bots?.map((botId: string, botIndex: number) => (
+                    <div key={botId} className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      {botProfiles[botId]?.name || `Bot ${botIndex + 1}`}
+                    </div>
+                  ))}
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">Live Game View</h3>
               </div>
+            )}
 
-              {gameState && (
-                <div className="space-y-6">
-                  {/* Game Status */}
-                  <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-xl p-4">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <div className="w-3 h-3 bg-purple-600 rounded-full animate-pulse"></div>
-                      <span className="font-bold text-purple-700">
-                        {gameState.status === 'active' ? 'Game Active' : 
-                         gameState.status === 'finished' ? 'Game Finished' : 
-                         'Game Starting'}
-                      </span>
-                    </div>
-                    {gameState.status === 'finished' && (
-                      <p className="text-sm text-purple-600 text-center">
-                        Redirecting to lobby in 3 seconds...
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Latest Number Called - Prominent Display */}
-                  {gameState.latest_number && (
-                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-                      <div className="text-center">
-                        <div className="text-sm font-medium mb-2 opacity-90">Latest Number Called</div>
-                        <div className="text-5xl font-black mb-2">
-                          {gameState.latest_number.letter}{gameState.latest_number.number}
-                        </div>
-                        <div className="text-lg font-bold">
-                          {gameState.latest_number.letter}{gameState.latest_number.number}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* All Called Numbers - Grid Display */}
-                  {gameState.called_numbers && gameState.called_numbers.length > 0 && (
-                    <div className="bg-slate-50 rounded-xl p-4">
-                      <h4 className="font-bold text-slate-900 mb-3">Called Numbers ({gameState.called_numbers.length}/75)</h4>
-                      <div className="grid grid-cols-10 gap-2">
-                        {[...gameState.called_numbers].reverse().map((num, index) => {
-                          const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
-                          const colorClass = 
-                            letter === 'B' ? 'bg-red-100 text-red-700 border-red-200' :
-                            letter === 'I' ? 'bg-blue-100 text-blue-700 border-blue-200' :
-                            letter === 'N' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                            letter === 'G' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                            'bg-purple-100 text-purple-700 border-purple-200'
-                          return (
-                            <div
-                              key={index}
-                              className={`${colorClass} border rounded-lg py-2 text-center font-bold text-sm`}
-                            >
-                              <div className="text-xs opacity-70">{letter}</div>
-                              <div>{num}</div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Players Count */}
-                  <div className="bg-slate-50 rounded-xl p-4">
-                    <h4 className="font-bold text-slate-900 mb-3">Players ({(gameState.players?.length || 0) + (gameState.bots?.length || 0)})</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {gameState.players?.map((playerId: string, playerIndex: number) => (
-                        <div key={playerId} className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-                          {getDisplayName(playerId, playerId === user?.id)} {playerId === user?.id ? '(You)' : ''}
-                        </div>
-                      ))}
-                      {gameState.bots?.map((botId: string, botIndex: number) => (
-                        <div key={botId} className="px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
-                          {botProfiles[botId]?.name || `Bot ${botIndex + 1}`}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Game Progress */}
-                  <div>
-                    <div className="flex justify-between text-sm text-slate-600 mb-2">
-                      <span>Game Progress</span>
-                      <span>{gameState.called_numbers ? Math.round((gameState.called_numbers.length / 75) * 100) : 0}%</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-3">
-                      <div 
-                        className="bg-gradient-to-r from-purple-500 to-purple-600 h-3 rounded-full transition-all duration-500"
-                        style={{ width: `${gameState.called_numbers ? (gameState.called_numbers.length / 75) * 100 : 0}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  {/* Net Prize */}
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-4">
-                    <div className="text-center">
-                      <div className="text-sm text-emerald-600 mb-1">Current Prize Pool</div>
-                      <div className="text-2xl font-bold text-emerald-600">
-                        {formatCurrency(typeof gameState.net_prize === 'number' ? gameState.net_prize : netPrizePool)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-        
-              {/* Back to Lobby */}
-              <button
-                onClick={() => router.push('/lobby')}
-                className="w-full bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 mt-6"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to Lobby
-              </button>
-            </div>
+            {/* Back to Lobby Button */}
+            <button
+              onClick={() => router.push('/lobby')}
+              className="w-full bg-slate-600 hover:bg-slate-700 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Lobby
+            </button>
           </div>
         )}
 
