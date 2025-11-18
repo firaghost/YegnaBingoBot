@@ -73,7 +73,7 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.webApp('Play Now', MINI_APP_URL)],
+              [Markup.button.callback('🎮 Play Now', 'play_now')],
               [Markup.button.callback('Balance', 'balance')],
               [Markup.button.callback('Leaderboard', 'leaderboard')],
               [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
@@ -113,7 +113,7 @@ export function setupBotHandlers(bot: Telegraf) {
           {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-              [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+              [Markup.button.callback('🎮 Play Now', 'play_now')],
               [Markup.button.callback('💰 Balance', 'balance')],
               [Markup.button.callback('❓ Help', 'help')]
             ])
@@ -160,7 +160,7 @@ export function setupBotHandlers(bot: Telegraf) {
             {
               parse_mode: 'Markdown',
               ...Markup.inlineKeyboard([
-                [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+                [Markup.button.callback('🎮 Play Now', 'play_now')],
                 [Markup.button.callback('💰 Balance', 'balance')],
                 [Markup.button.callback('❓ Help', 'help')]
               ])
@@ -186,7 +186,7 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+            [Markup.button.callback('🎮 Play Now', 'play_now')],
             [Markup.button.callback('💰 Balance', 'balance')],
             [Markup.button.callback('❓ Help', 'help')]
           ])
@@ -228,9 +228,9 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('Deposit', `${MINI_APP_URL}/deposit`)],
-            [Markup.button.webApp('Withdraw', `${MINI_APP_URL}/withdraw`)],
-            [Markup.button.webApp('Play Game', MINI_APP_URL)]
+            [Markup.button.callback('💸 Deposit', 'deposit_action')],
+            [Markup.button.callback('💰 Withdraw', 'withdraw_action')],
+            [Markup.button.callback('🎮 Play Game', 'play_now')]
           ])
         }
       )
@@ -269,9 +269,9 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('Deposit', `${MINI_APP_URL}/deposit`)],
-            [Markup.button.webApp('Withdraw', `${MINI_APP_URL}/withdraw`)],
-            [Markup.button.webApp('Play Now', MINI_APP_URL)]
+            [Markup.button.callback('💸 Deposit', 'deposit_action')],
+            [Markup.button.callback('💰 Withdraw', 'withdraw_action')],
+            [Markup.button.callback('🎮 Play Now', 'play_now')]
           ])
         }
       )
@@ -288,7 +288,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          [Markup.button.callback('🎮 Play Now', 'play_now')]
         ])
       }
     )
@@ -300,6 +300,7 @@ export function setupBotHandlers(bot: Telegraf) {
     if (!userId) return
 
     const referralLink = buildReferralLink(String(userId))
+    const code = `ref_${String(userId)}`
 
     let totalRefs = 0
     let refEarnings = 0
@@ -319,13 +320,14 @@ export function setupBotHandlers(bot: Telegraf) {
       `🎉 *Invite Friends & Earn!*\n\n` +
       `Share your personal link and earn a bonus when your friend registers.\n\n` +
       `🔗 Your link:\n\`${referralLink}\`\n\n` +
+      `🧾 Your code: \`${code}\`\n\n` +
       `👥 Total Referrals: ${totalRefs}\n` +
       `💵 Earnings: ${refEarnings.toFixed(2)} ETB`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.url('🔗 Share Invite Link', referralLink)],
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          [Markup.button.callback('🔗 Get Invite Link', `get_invite:${code}`)],
+          [Markup.button.callback('🎮 Play Now', 'play_now')]
         ])
       }
     )
@@ -340,7 +342,7 @@ export function setupBotHandlers(bot: Telegraf) {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          [Markup.button.callback('🎮 Play Now', 'play_now')]
         ])
       }
     )
@@ -357,7 +359,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.callback('🎮 Play Now', 'play_now')],
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
@@ -394,8 +396,8 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('Play Game', MINI_APP_URL)],
-            [Markup.button.webApp('Full Stats', `${MINI_APP_URL}/account`)],
+            [Markup.button.callback('🎮 Play Game', 'play_now')],
+            [Markup.button.callback('📊 Full Stats', 'account_action')],
             [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
           ])
         }
@@ -430,7 +432,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('View Full Leaderboard', `${MINI_APP_URL}/leaderboard`)]
+          [Markup.button.callback('🏆 View Full Leaderboard', 'leaderboard_action')]
         ])
       })
     } catch (error) {
@@ -463,7 +465,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.editMessageText(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('Full Leaderboard', `${MINI_APP_URL}/leaderboard`)],
+          [Markup.button.callback('🏆 Full Leaderboard', 'leaderboard_action')],
           [Markup.button.callback('Back', 'back_to_start')]
         ])
       })
@@ -499,7 +501,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.callback('🎮 Play Now', 'play_now')],
           [Markup.button.url('📢 Join Channel', CHANNEL_URL)]
         ])
       }
@@ -525,7 +527,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.callback('🎮 Play Now', 'play_now')],
           [Markup.button.callback('🔙 Back', 'back_to_start')]
         ])
       }
@@ -540,7 +542,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('Deposit Now', `${MINI_APP_URL}/deposit`)]
+          [Markup.button.callback('💸 Deposit Now', 'deposit_action')]
         ])
       }
     )
@@ -554,7 +556,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('Withdraw Now', `${MINI_APP_URL}/withdraw`)]
+          [Markup.button.callback('💰 Withdraw Now', 'withdraw_action')]
         ])
       }
     )
@@ -568,7 +570,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('View Account', `${MINI_APP_URL}/account`)]
+          [Markup.button.callback('👤 View Account', 'account_action')]
         ])
       }
     )
@@ -582,7 +584,7 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('View History', `${MINI_APP_URL}/history`)]
+          [Markup.button.callback('📜 View History', 'history_action')]
         ])
       }
     )
@@ -619,8 +621,8 @@ export function setupBotHandlers(bot: Telegraf) {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.webApp('Play Game', MINI_APP_URL)],
-            [Markup.button.webApp('Full Stats', `${MINI_APP_URL}/account`)]
+            [Markup.button.callback('🎮 Play Game', 'play_now')],
+            [Markup.button.callback('📊 Full Stats', 'account_action')]
           ])
         }
       )
@@ -655,7 +657,7 @@ export function setupBotHandlers(bot: Telegraf) {
       await ctx.reply(message, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-          [Markup.button.webApp('Join a Room', `${MINI_APP_URL}/lobby`)]
+          [Markup.button.callback('🎮 Join a Room', 'join_room')]
         ])
       })
     } catch (error) {
@@ -670,6 +672,55 @@ export function setupBotHandlers(bot: Telegraf) {
     
     if (!callbackData) {
       await ctx.answerCbQuery('Invalid action')
+      return
+    }
+
+    // Common actions to avoid exposing URLs on hover
+    if (callbackData === 'play_now') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`🎮 Open the game:\n\`${MINI_APP_URL}\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'deposit_action') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`💸 Deposit:\n\`${MINI_APP_URL}/deposit\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'withdraw_action') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`💰 Withdraw:\n\`${MINI_APP_URL}/withdraw\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'account_action') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`👤 Your account:\n\`${MINI_APP_URL}/account\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'history_action') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`📜 History:\n\`${MINI_APP_URL}/history\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'leaderboard_action') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`🏆 Leaderboard:\n\`${MINI_APP_URL}/leaderboard\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData === 'join_room') {
+      await ctx.answerCbQuery()
+      await ctx.reply(`🎮 Rooms:\n\`${MINI_APP_URL}/lobby\``, { parse_mode: 'Markdown' })
+      return
+    }
+    if (callbackData.startsWith('get_invite:')) {
+      const code = callbackData.split(':')[1] || ''
+      const uname = BOT_USERNAME
+      if (uname) {
+        const url = `https://t.me/${uname}?start=${code}`
+        await ctx.reply(`🔗 Your invite link:\n\`${url}\``, { parse_mode: 'Markdown' })
+      } else {
+        await ctx.reply(`🧾 Your invite code: \`${code}\`\nSet BOT_USERNAME to enable deep-links.`, { parse_mode: 'Markdown' })
+      }
+      await ctx.answerCbQuery()
       return
     }
 
@@ -722,13 +773,8 @@ export function setupBotHandlers(bot: Telegraf) {
           'To reject this deposit with a reason, please use the admin panel:\n\n' +
           `${MINI_APP_URL}/mgmt-portal-x7k9p2/deposits\n\n` +
           `Transaction ID: \`${transactionId}\`\n\n` +
-          'Tap the button below to open the admin panel.',
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.webApp('Open Admin Panel', `${MINI_APP_URL}/mgmt-portal-x7k9p2/deposits`)]
-            ])
-          }
+          'Use the link above to open the admin panel.',
+          { parse_mode: 'Markdown' }
         )
       } catch (error: any) {
         console.error('Error processing rejection:', error)
@@ -782,13 +828,8 @@ export function setupBotHandlers(bot: Telegraf) {
           'To reject this withdrawal with a reason, please use the admin panel:\n\n' +
           `${MINI_APP_URL}/mgmt-portal-x7k9p2/withdrawals\n\n` +
           `Withdrawal ID: \`${withdrawalId}\`\n\n` +
-          'Tap the button below to open the admin panel.',
-          {
-            parse_mode: 'Markdown',
-            ...Markup.inlineKeyboard([
-              [Markup.button.webApp('Open Admin Panel', `${MINI_APP_URL}/mgmt-portal-x7k9p2/withdrawals`)]
-            ])
-          }
+          'Use the link above to open the admin panel.',
+          { parse_mode: 'Markdown' }
         )
       } catch (error: any) {
         console.error('Error processing rejection:', error)
