@@ -8,6 +8,14 @@ const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXoffi
 // Use admin client for all operations
 const supabase = supabaseAdmin
 
+// Bot username for deep links (must be set in env in serverless/webhook mode)
+const BOT_USERNAME = process.env.BOT_USERNAME || ''
+
+function buildReferralLink(telegramId?: string): string {
+  const code = telegramId || ''
+  return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=ref_${code}` : MINI_APP_URL
+}
+
 export function setupBotHandlers(bot: Telegraf) {
   // Start command - Register user
   bot.command('start', async (ctx) => {
@@ -280,6 +288,43 @@ export function setupBotHandlers(bot: Telegraf) {
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
+  })
+
+  // Invite/referral command
+  bot.command(['invite', 'refer', 'referral'], async (ctx) => {
+    const userId = ctx.from?.id
+    if (!userId) return
+
+    const referralLink = buildReferralLink(String(userId))
+
+    let totalRefs = 0
+    let refEarnings = 0
+    try {
+      const { data: user } = await supabase
+        .from('users')
+        .select('total_referrals, referral_earnings')
+        .eq('telegram_id', String(userId))
+        .maybeSingle()
+      totalRefs = user?.total_referrals || 0
+      refEarnings = Number(user?.referral_earnings || 0)
+    } catch (e) {
+      console.error('Invite stats fetch failed:', e)
+    }
+
+    await ctx.reply(
+      `🎉 *Invite Friends & Earn!*\n\n` +
+      `Share your personal link and earn a bonus when your friend registers.\n\n` +
+      `🔗 Your link:\n\`${referralLink}\`\n\n` +
+      `👥 Total Referrals: ${totalRefs}\n` +
+      `💵 Earnings: ${refEarnings.toFixed(2)} ETB`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('🔗 Share Invite Link', referralLink)],
           [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
         ])
       }
