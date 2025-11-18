@@ -9,7 +9,179 @@ const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXoffi
 
 const bot = new Telegraf(BOT_TOKEN)
 
-// Helper function to get level badge
+let BOT_USERNAME: string = process.env.BOT_USERNAME || ''
+
+bot.telegram
+  .getMe()
+  .then((me) => {
+    BOT_USERNAME = me.username || BOT_USERNAME
+  })
+  .catch(() => {})
+
+// Handle registration with referral payload in callback data: register:<referral_code>
+bot.action(/register:.+/, async (ctx) => {
+  const userId = ctx.from?.id
+  const username = ctx.from?.username || ctx.from?.first_name || 'Player'
+  const firstName = ctx.from?.first_name || 'Player'
+
+  if (!userId) return
+
+  const cb = ctx.callbackQuery as any
+  const cbData: string = cb && 'data' in cb ? cb.data : ''
+  const referredCode = cbData.split(':')[1]
+
+  try {
+    // Check if already registered
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('*')
+      .eq('telegram_id', userId.toString())
+      .maybeSingle()
+
+    if (existingUser) {
+      await ctx.answerCbQuery('You are already registered!')
+      await ctx.editMessageText(
+        `✅ You're already registered!\n\n` +
+        `💰 Balance: ${existingUser.balance.toFixed(2)} ETB\n` +
+        `🎁 Bonus: ${(existingUser.bonus_balance || 0).toFixed(2)} ETB\n\n` +
+        `Tap "Play Now" to start!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+          ])
+        }
+      )
+      return
+    }
+
+    // Resolve referrer (ignore self)
+    let referrer: any = null
+    if (referredCode && referredCode !== userId.toString()) {
+      const { data: refUser } = await supabase
+        .from('users')
+        .select('id, telegram_id, bonus_balance, total_referrals, referral_earnings')
+        .eq('referral_code', referredCode)
+        .maybeSingle()
+      if (refUser) referrer = refUser
+    }
+
+    // Registration bonus
+    const welcomeRaw = await getConfig('welcome_bonus')
+    const registrationBonus = Number(welcomeRaw) || 3.0
+
+    // Create user with referred_by if referrer exists
+    const { data: newUser, error: insertError } = await supabase
+      .from('users')
+      .insert({
+        telegram_id: userId.toString(),
+        username: username,
+        balance: 0,
+        bonus_balance: registrationBonus,
+        games_played: 0,
+        games_won: 0,
+        total_winnings: 0,
+        referral_code: userId.toString(),
+        referred_by: referrer ? referredCode : null,
+        daily_streak: 0
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Insert error:', insertError)
+      // Duplicate safety
+      // @ts-ignore
+      if (insertError.code === '23505') {
+        const { data: user } = await supabase
+          .from('users')
+          .select('*')
+          .eq('telegram_id', userId.toString())
+          .single()
+        await ctx.answerCbQuery('You are already registered!')
+        await ctx.editMessageText(
+          `✅ You're already registered!\n\n` +
+          `💰 Balance: ${user.balance.toFixed(2)} ETB\n` +
+          `🎁 Bonus: ${(user.bonus_balance || 0).toFixed(2)} ETB`,
+          { parse_mode: 'Markdown' }
+        )
+        return
+      }
+      throw insertError
+    }
+
+    // Award referral bonus
+    if (referrer && newUser) {
+      const refBonusRaw = await getConfig('referral_bonus')
+      const referralBonus = Number(refBonusRaw) || 0
+      if (referralBonus > 0) {
+        try {
+          await supabase.from('referrals').insert({
+            referrer_id: referrer.id,
+            referred_id: newUser.id,
+            referral_code: referredCode,
+            bonus_amount: referralBonus,
+            status: 'completed',
+            completed_at: new Date().toISOString()
+          })
+
+          await supabase
+            .from('users')
+            .update({
+              bonus_balance: Number(referrer.bonus_balance || 0) + referralBonus,
+              total_referrals: Number(referrer.total_referrals || 0) + 1,
+              referral_earnings: Number(referrer.referral_earnings || 0) + referralBonus
+            })
+            .eq('id', referrer.id)
+
+          if (referrer.telegram_id) {
+            try {
+              await bot.telegram.sendMessage(
+                String(referrer.telegram_id),
+                `🎉 You earned ${referralBonus.toFixed(2)} ETB referral bonus!\n👤 New player: ${username}`
+              )
+            } catch {}
+          }
+        } catch (e) {
+          console.error('Referral awarding error:', e)
+        }
+      }
+    }
+
+    await ctx.answerCbQuery('✅ Registration successful!')
+    await ctx.editMessageText(
+      `🎉 *Registration Successful!*\n\n` +
+      `Welcome to BingoX, ${firstName}! 🎰\n\n` +
+      `🎁 You've received ${registrationBonus.toFixed(2)} ETB bonus!\n\n` +
+      `Tap "Play Now" to choose a room! 🎮`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+          [Markup.button.url('🎉 Invite Friends', buildReferralLink(userId.toString()))]
+        ])
+      }
+    )
+  } catch (error: any) {
+    console.error('Error in registration with referral:', error)
+    await ctx.answerCbQuery(`❌ Registration failed: ${error.message || 'Please try again'}`)
+  }
+})
+
+function buildReferralLink(telegramId: string | undefined): string {
+  const code = telegramId || ''
+  return BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=ref_${code}` : `${MINI_APP_URL}`
+}
+
+function getStartPayload(ctx: any): string | null {
+  const text = (ctx.message?.text || '').trim()
+  const m = text.match(/^\/start(?:\s+(.+))?$/)
+  if (m && m[1]) return m[1]
+  // @ts-ignore: telegraf may populate this for deep links
+  return ctx.startPayload || null
+}
+
+// Helper: map numeric level to a human-readable badge
 function getLevelBadge(level: number): string {
   if (level <= 10) return 'Beginner'
   if (level <= 25) return 'Intermediate'
@@ -31,6 +203,10 @@ bot.command('start', async (ctx) => {
   if (!userId) return
 
   try {
+    const payload = getStartPayload(ctx)
+    const referredCode = payload && payload.startsWith('ref_') ? payload.slice(4) : undefined
+    const referralLink = buildReferralLink(userId?.toString())
+
     // Check if user exists
     const { data: existingUser } = await supabase
       .from('users')
@@ -58,7 +234,7 @@ bot.command('start', async (ctx) => {
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
-            [Markup.button.callback('✅ Register Now', 'register')],
+            [Markup.button.callback('✅ Register Now', referredCode ? `register:${referredCode}` : 'register')],
             [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
             [Markup.button.callback('❓ Help', 'help')]
           ])
@@ -80,6 +256,7 @@ bot.command('start', async (ctx) => {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
             [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)],
+            [Markup.button.url('🎉 Invite Friends', referralLink)],
             [Markup.button.url('📢 Join Channel', CHANNEL_URL)],
             [Markup.button.callback('💰 Balance', 'balance')]
           ])
@@ -421,6 +598,41 @@ bot.command('withdraw', async (ctx) => {
   )
 })
 
+// 11.5 INVITE/REFERRAL - Share your link
+bot.command(['invite', 'refer', 'referral'], async (ctx) => {
+  const userId = ctx.from?.id
+  if (!userId) return
+
+  try {
+    const referralLink = buildReferralLink(userId.toString())
+    const { data: user } = await supabase
+      .from('users')
+      .select('total_referrals, referral_earnings')
+      .eq('telegram_id', userId.toString())
+      .maybeSingle()
+
+    const totalRefs = user?.total_referrals || 0
+    const refEarnings = Number(user?.referral_earnings || 0)
+
+    await ctx.reply(
+      `🎉 *Invite Friends & Earn!*\n\n` +
+      `Share your personal link and earn a bonus when your friend registers.\n\n` +
+      `🔗 Your link:\n${referralLink}\n\n` +
+      `👥 Total Referrals: ${totalRefs}\n` +
+      `💵 Earnings: ${refEarnings.toFixed(2)} ETB`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('🔗 Share Invite Link', referralLink)],
+          [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+        ])
+      }
+    )
+  } catch (error) {
+    console.error('Error in invite command:', error)
+  }
+})
+
 // 12. HELP - Show help & commands
 bot.command('help', async (ctx) => {
   await ctx.reply(
@@ -646,17 +858,34 @@ bot.on('inline_query', async (ctx) => {
   try {
     const q = (ctx.inlineQuery?.query || '').trim().toLowerCase()
 
+    const referralLink = buildReferralLink(ctx.from?.id?.toString())
     const joinKeyboard = {
       inline_keyboard: [
         [
           { text: '📢 Join Channel', url: CHANNEL_URL },
           { text: '🎮 Play Now', web_app: { url: MINI_APP_URL } as any },
           { text: '💸 Deposit', web_app: { url: `${MINI_APP_URL}/deposit` } as any }
+        ],
+        [
+          { text: '🎉 Invite Friends', url: referralLink }
         ]
       ]
     }
 
     const results: any[] = []
+
+    // Invite card
+    results.push({
+      type: 'article',
+      id: 'invite',
+      title: 'Invite Friends',
+      description: 'Share your referral link to earn bonus',
+      input_message_content: {
+        message_text: '🎉 Join BingoX with my link: ' + referralLink + '\nGet a bonus when you register!',
+        parse_mode: 'Markdown'
+      },
+      reply_markup: joinKeyboard
+    })
 
     if (!q || q === 'rooms') {
       results.push({
