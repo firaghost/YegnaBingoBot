@@ -1973,38 +1973,38 @@ export default function GamePage() {
         {/* Game Ended Dialog - For Both Losers and Spectators */}
         {showLoseDialog && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl my-auto">
+            <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl my-auto">
               {/* Header based on user type */}
-              <div className="flex justify-center mb-6">
-                <div className={`w-20 h-20 rounded-full flex items-center justify-center ${
+              <div className="flex justify-center mb-3">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
                   isSpectator ? 'bg-emerald-100' : 'bg-red-100'
                 }`}>
                   {isSpectator ? (
-                    <Trophy className="w-12 h-12 text-emerald-600" />
+                    <Trophy className="w-10 h-10 text-emerald-600" />
                   ) : (
-                    <Frown className="w-12 h-12 text-red-500" />
+                    <Frown className="w-10 h-10 text-red-500" />
                   )}
                 </div>
               </div>
 
-              <h2 className="text-3xl font-bold text-center mb-4 text-slate-900">
+              <h2 className="text-2xl font-bold text-center mb-2 text-slate-900">
                 {isSpectator ? 'Game Ended' : 'You Lost This Round'}
               </h2>
               
               {!isSpectator && (
-                <p className="text-center text-slate-600 mb-4">
+                <p className="text-center text-slate-600 mb-2 text-sm">
                   Stake lost: <span className="font-bold text-red-600">{formatCurrency(stake)}</span>
                 </p>
               )}
 
               {winnerName && (
-                <div className="text-center mb-6">
-                  <p className="text-slate-600 mb-2">
+                <div className="text-center mb-3">
+                  <p className="text-slate-600 mb-1 text-xs">
                     {isSpectator ? 'The winner is:' : 'Winner:'}
                   </p>
-                  <p className="text-2xl font-bold text-amber-600">{winnerName}</p>
+                  <p className="text-lg font-bold text-amber-600">{winnerName}</p>
                   {winAmount > 0 && (
-                    <p className="text-slate-600 mt-2">
+                    <p className="text-slate-600 mt-1 text-xs">
                       Prize: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
                     </p>
                   )}
@@ -2105,18 +2105,18 @@ export default function GamePage() {
                 return null
               })()}
 
-              <p className="text-center text-sm text-slate-500 mb-6">
-                {isSpectator ? 'Redirecting to waiting room in 3 seconds...' : 'Auto-redirecting to waiting room in 8 seconds...'}
+              <p className="text-center text-xs text-slate-500 mb-3">
+                {isSpectator ? 'Redirecting in 3 seconds...' : 'Auto-redirecting in 8 seconds...'}
               </p>
 
               {/* Action Buttons */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {!isSpectator && (
                   <button 
                     onClick={() => router.push(`/game/${roomId}`)}
-                    className="w-full bg-amber-500 text-white py-4 rounded-xl font-bold hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+                    className="w-full bg-amber-500 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
                   >
-                    <Trophy className="w-5 h-5" />
+                    <Trophy className="w-4 h-4" />
                     Play Again
                   </button>
                 )}
@@ -2124,19 +2124,21 @@ export default function GamePage() {
                 <button 
                   onClick={() => {
                     if (isSpectator) {
-                      router.push('/lobby')
+                      // Spectator joins next game in same room
+                      router.push(`/rooms/${roomId}`)
                     } else {
+                      // Loser goes to lobby
                       router.push('/lobby')
                     }
                   }}
-                  className={`w-full py-4 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 ${
+                  className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
                     isSpectator 
                       ? 'bg-blue-600 hover:bg-blue-700 text-white' 
                       : 'bg-slate-700 hover:bg-slate-800 text-white'
                   }`}
                 >
-                  <ArrowLeft className="w-5 h-5" />
-                  Go to Lobby
+                  <ArrowLeft className="w-4 h-4" />
+                  {isSpectator ? 'Join Next Game' : 'Go to Lobby'}
                 </button>
               </div>
             </div>
