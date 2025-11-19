@@ -12,7 +12,7 @@ function escapeMarkdown(input: string) {
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'broadcast_manage')
-    const { title, message, filters, imageUrl } = await request.json()
+    const { title, message, filters, imageUrl, targetUserIds } = await request.json()
 
     if (!title || !message) {
       return NextResponse.json(
@@ -30,24 +30,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get users based on filters - only users with telegram_id
+    // Get users based on filters or explicit selection - only users with telegram_id
     let query = supabase
       .from('users')
-      .select('telegram_id, username')
+      .select('id, telegram_id, username')
       .not('telegram_id', 'is', null)
 
-    if (filters?.activeOnly) {
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      query = query.gte('last_active', yesterday.toISOString())
-    }
+    if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
+      query = query.in('id', targetUserIds)
+    } else {
+      if (filters?.activeOnly) {
+        const yesterday = new Date()
+        yesterday.setDate(yesterday.getDate() - 1)
+        query = query.gte('last_active', yesterday.toISOString())
+      }
 
-    if (filters?.minBalance) {
-      query = query.gte('balance', filters.minBalance)
-    }
+      if (filters?.minBalance) {
+        query = query.gte('balance', filters.minBalance)
+      }
 
-    if (filters?.minGames) {
-      query = query.gte('games_played', filters.minGames)
+      if (filters?.minGames) {
+        query = query.gte('games_played', filters.minGames)
+      }
     }
 
     const { data: users, error } = await query
@@ -147,7 +151,8 @@ export async function POST(request: NextRequest) {
     // Store broadcast record
     const storedFilters = {
       ...(filters || {}),
-      ...(trimmedImageUrl ? { imageUrl: trimmedImageUrl } : {})
+      ...(trimmedImageUrl ? { imageUrl: trimmedImageUrl } : {}),
+      ...(Array.isArray(targetUserIds) && targetUserIds.length > 0 ? { targetUserIds } : {})
     }
 
     await supabase.from('broadcasts').insert({

@@ -3,6 +3,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { formatCurrency } from '@/lib/utils'
+
+interface UserResult {
+  id: string
+  username: string | null
+  telegram_id: string | null
+  phone: string | null
+  balance: number | null
+}
 
 export default function AdminBroadcast() {
   const [title, setTitle] = useState('')
@@ -21,14 +30,22 @@ export default function AdminBroadcast() {
   const [previousBroadcasts, setPreviousBroadcasts] = useState<any[]>([])
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [userResults, setUserResults] = useState<UserResult[]>([])
+  const [selectedUsers, setSelectedUsers] = useState<UserResult[]>([])
+  const [isSearching, setIsSearching] = useState(false)
 
   useEffect(() => {
     fetchEstimatedRecipients()
     fetchPreviousBroadcasts()
-  }, [targetAll, activeOnly, minBalance, minGames])
+  }, [targetAll, activeOnly, minBalance, minGames, selectedUsers])
 
   const fetchEstimatedRecipients = async () => {
     try {
+      if (selectedUsers.length > 0) {
+        setEstimatedRecipients(selectedUsers.length)
+        return
+      }
       let query = supabase
         .from('users')
         .select('*', { count: 'exact', head: true })
@@ -91,6 +108,42 @@ export default function AdminBroadcast() {
     return parts.join('\n')
   }, [message, channelLink, botLink])
 
+  const searchUsers = useCallback(async (term: string) => {
+    setSearchTerm(term)
+    if (!term || term.trim().length < 2) {
+      setUserResults([])
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, username, telegram_id, phone, balance')
+        .or(`username.ilike.%${term}%,phone.ilike.%${term}%,telegram_id.ilike.%${term}%`)
+        .limit(10)
+
+      if (error) throw error
+      const typedData = (data || []) as UserResult[]
+      const filtered = typedData.filter((user: UserResult) => Boolean(user.telegram_id))
+      setUserResults(filtered)
+    } catch (error) {
+      console.error('Error searching users:', error)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [])
+
+  const toggleUserSelection = useCallback((user: UserResult) => {
+    setSelectedUsers(prev => {
+      const exists = prev.some(u => u.id === user.id)
+      if (exists) {
+        return prev.filter(u => u.id !== user.id)
+      }
+      return [...prev, user]
+    })
+  }, [])
+
   const handleSend = async () => {
     if (!title || !message) {
       showNotification('error', 'Please fill in title and message')
@@ -134,6 +187,7 @@ export default function AdminBroadcast() {
             minBalance: minBalance ? parseInt(minBalance) : null,
             minGames: minGames ? parseInt(minGames) : null
           },
+          targetUserIds: selectedUsers.length > 0 ? selectedUsers.map(user => user.id) : null,
           imageUrl: finalImageUrl || null
         })
       })
@@ -149,6 +203,9 @@ export default function AdminBroadcast() {
       setMessage('')
       setImageUrl('')
       setImageFile(null)
+      setSearchTerm('')
+      setUserResults([])
+      setSelectedUsers([])
       fetchPreviousBroadcasts()
     } catch (error: any) {
       console.error('Error sending broadcast:', error)
@@ -329,6 +386,83 @@ export default function AdminBroadcast() {
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Target Audience</h3>
                   
                   <div className="space-y-3 sm:space-y-4">
+                    {/* Direct User Search */}
+                    <div className="bg-slate-700/30 rounded-lg border border-slate-700 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-300 font-medium text-sm">Send to Specific Users</p>
+                          <p className="text-xs text-slate-500 mt-1">Search by username, phone, or Telegram ID</p>
+                        </div>
+                        {selectedUsers.length > 0 && (
+                          <span className="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            {selectedUsers.length} selected
+                          </span>
+                        )}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={e => searchUsers(e.target.value)}
+                        placeholder="Search users..."
+                        className="w-full bg-slate-800/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/50 text-sm"
+                      />
+
+                      {searchTerm && (
+                        <div className="bg-slate-800/50 border border-slate-700 rounded-lg max-h-52 overflow-y-auto divide-y divide-slate-700">
+                          {isSearching ? (
+                            <div className="p-3 text-xs text-slate-400">Searching...</div>
+                          ) : userResults.length === 0 ? (
+                            <div className="p-3 text-xs text-slate-400">No users found</div>
+                          ) : (
+                            userResults.map((user: UserResult) => {
+                              const isSelected = selectedUsers.some(u => u.id === user.id)
+                              return (
+                                <button
+                                  key={user.id}
+                                  onClick={() => toggleUserSelection(user)}
+                                  type="button"
+                                  className={`w-full text-left px-3 py-2 text-xs sm:text-sm flex items-center justify-between transition-colors ${
+                                    isSelected ? 'bg-emerald-500/10 text-emerald-300' : 'text-slate-200 hover:bg-slate-700/50'
+                                  }`}
+                                >
+                                  <div>
+                                    <p className="font-medium">{user.username || 'Unnamed user'}</p>
+                                    <p className="text-[11px] text-slate-400">
+                                      TG: {user.telegram_id || 'n/a'} · Phone: {user.phone || 'n/a'} · Balance: {formatCurrency(user.balance || 0)}
+                                    </p>
+                                  </div>
+                                  <span className="text-xs">
+                                    {isSelected ? '✓ Selected' : 'Select'}
+                                  </span>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      )}
+
+                      {selectedUsers.length > 0 && (
+                        <div className="pt-2 border-t border-slate-700 text-xs text-slate-300 space-y-1">
+                          <p className="text-slate-400">Selected recipients:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedUsers.map(user => (
+                              <span key={user.id} className="px-2 py-1 bg-slate-800 border border-slate-600 rounded-full">
+                                {user.username || user.telegram_id || 'User'}
+                              </span>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setSelectedUsers([])}
+                            type="button"
+                            className="mt-2 text-emerald-300 hover:text-emerald-200"
+                          >
+                            Clear selection
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Target All Toggle */}
                     <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-700/30 rounded-lg border border-slate-700">
                       <div>

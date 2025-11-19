@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
 import BottomNav from '@/app/components/BottomNav'
-import { LuHistory, LuCalendar, LuClock, LuArrowDown, LuArrowUp } from 'react-icons/lu'
+import { LuHistory, LuCalendar, LuClock, LuArrowDown, LuArrowUp, LuInfo, LuWallet, LuStar } from 'react-icons/lu'
 import { getConfig } from '@/lib/admin-config'
 
 interface Transaction {
@@ -24,6 +24,15 @@ interface Transaction {
   display_status: 'success' | 'loss' | 'neutral'
   room_name: string | null
   reason?: string | null
+  prize_pool?: number | null
+  net_prize?: number | null
+  commission_rate?: number | null
+  commission_amount?: number | null
+  bonus_deducted?: number | null
+  main_deducted?: number | null
+  total_deducted?: number | null
+  source?: string | null
+  credited_to?: string | null
 }
 
 interface GameHistory {
@@ -232,7 +241,7 @@ export default function HistoryPage() {
           {activeTab === 'transactions' ? (
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <h3 className="text-base font-semibold mb-4 text-slate-900">Transaction History</h3>
-              {transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length === 0 ? (
+              {transactions.filter(tx => ['deposit', 'withdrawal', 'stake', 'win', 'bonus'].includes(tx.type)).length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <div className="text-6xl mb-4">💳</div>
                   <p className="text-xl">No transactions yet</p>
@@ -242,14 +251,25 @@ export default function HistoryPage() {
                 <>
                   <div className="space-y-2">
                     {transactions
-                      .filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal')
+                      .filter(tx => ['deposit', 'withdrawal', 'stake', 'win', 'bonus'].includes(tx.type))
                       .slice(0, txVisible)
                       .map(tx => {
                         const isDeposit = tx.type === 'deposit'
+                        const isWithdrawal = tx.type === 'withdrawal'
+                        const isStake = tx.type === 'stake'
+                        const isWin = tx.type === 'win'
                         const status = (tx.status || '').toLowerCase()
-                        const title = isDeposit ? 'Deposit' : 'Withdrawal'
-                        const iconBg = isDeposit ? 'bg-emerald-500' : 'bg-rose-500'
-                        const amountColor = isDeposit ? 'text-emerald-600' : 'text-rose-600'
+                        const title = isDeposit ? 'Deposit' : isWithdrawal ? 'Withdrawal' : isStake ? 'Game Entry' : isWin ? 'Win Payout' : 'Bonus Credit'
+                        const iconBg = isDeposit
+                          ? 'bg-emerald-500'
+                          : isWin
+                            ? 'bg-blue-500'
+                            : isStake
+                              ? 'bg-amber-500'
+                              : isWithdrawal
+                                ? 'bg-rose-500'
+                                : 'bg-purple-500'
+                        const amountColor = isDeposit || isWin || tx.amount > 0 ? 'text-emerald-600' : 'text-rose-600'
                         const StatusBadge = () => (
                           <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${
                             status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
@@ -281,6 +301,12 @@ export default function HistoryPage() {
                                       {new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                     <span className="truncate">Ref: {String(tx.id).slice(0, 8).toUpperCase()}</span>
+                                    {tx.game_level && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <LuStar className="w-3.5 h-3.5" />
+                                        {tx.game_level}
+                                      </span>
+                                    )}
                                   </div>
                                   {tx.description && (
                                     <p className="mt-1 text-xs text-slate-500 truncate">{tx.description}</p>
@@ -288,6 +314,32 @@ export default function HistoryPage() {
                                   {/* Rejection/Failure reason */}
                                   {(status === 'failed' || status === 'rejected') && tx.reason && (
                                     <p className="mt-1 text-xs text-rose-600 truncate">Reason: {tx.reason}</p>
+                                  )}
+                                  {(isStake || isWin) && (
+                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500">
+                                      {typeof tx.bonus_deducted === 'number' && typeof tx.main_deducted === 'number' && (
+                                        <div className="flex items-center gap-1">
+                                          <LuWallet className="w-3.5 h-3.5" />
+                                          <span>
+                                            Stake split: {formatCurrency(tx.main_deducted || 0)} real / {formatCurrency(tx.bonus_deducted || 0)} bonus
+                                          </span>
+                                        </div>
+                                      )}
+                                      {typeof tx.net_prize === 'number' && isWin && (
+                                        <div className="flex items-center gap-1">
+                                          <LuInfo className="w-3.5 h-3.5" />
+                                          <span>
+                                            Net prize {formatCurrency(tx.net_prize || 0)} after {Math.round((tx.commission_rate || 0) * 100)}% commission
+                                          </span>
+                                        </div>
+                                      )}
+                                      {tx.credited_to && (
+                                        <div className="flex items-center gap-1">
+                                          <LuWallet className="w-3.5 h-3.5" />
+                                          <span>Credited to: {tx.credited_to.replace('_', ' ')}</span>
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               </div>
@@ -299,7 +351,7 @@ export default function HistoryPage() {
                         )
                       })}
                   </div>
-                  {transactions.filter(tx => tx.type === 'deposit' || tx.type === 'withdrawal').length > txVisible && (
+                  {transactions.filter(tx => ['deposit', 'withdrawal', 'stake', 'win', 'bonus'].includes(tx.type)).length > txVisible && (
                     <div className="mt-3 flex justify-center">
                       <button onClick={() => setTxVisible(v => v + 10)} className="px-4 py-2 text-sm font-medium bg-slate-100 hover:bg-slate-200 rounded-lg">View more</button>
                     </div>

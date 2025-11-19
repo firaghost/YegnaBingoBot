@@ -11,6 +11,7 @@ SELECT
   t.id,
   t.user_id,
   t.type,
+  t.game_id,
   t.amount,
   t.description,
   t.result,
@@ -19,6 +20,15 @@ SELECT
   t.created_at,
   g.room_id,
   r.name as room_name,
+  g.prize_pool,
+  g.net_prize,
+  g.commission_rate,
+  g.commission_amount,
+  t.metadata->>'source' AS source,
+  t.metadata->>'credited_to' AS credited_to,
+  NULLIF(t.metadata->>'bonus_deducted', '')::NUMERIC AS bonus_deducted,
+  NULLIF(t.metadata->>'main_deducted', '')::NUMERIC AS main_deducted,
+  NULLIF(t.metadata->>'total_deducted', '')::NUMERIC AS total_deducted,
   -- New: reason field combining transaction metadata and withdrawals.admin_note
   COALESCE(
     NULLIF(t.metadata->>'rejection_reason', ''),

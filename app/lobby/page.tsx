@@ -7,7 +7,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
-import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle } from 'react-icons/lu'
+import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo } from 'react-icons/lu'
 import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
 interface Room {
@@ -193,6 +193,33 @@ export default function LobbyPage() {
 
     checkChannelMembership()
   }, [authLoading, user?.telegram_id, checkChannelMembership])
+
+  useEffect(() => {
+    if (!showChannelPrompt || !user?.telegram_id) return
+
+    let isActive = true
+    let intervalId: NodeJS.Timeout | null = null
+
+    const runCheck = async () => {
+      if (!isActive) return
+      await checkChannelMembership(true)
+      if (intervalId === null && showChannelPrompt) {
+        intervalId = setInterval(async () => {
+          if (!isActive) return
+          await checkChannelMembership(true)
+        }, 8000)
+      }
+    }
+
+    const timeoutId = setTimeout(runCheck, 2000)
+
+    return () => {
+      isActive = false
+      clearTimeout(timeoutId)
+      if (intervalId) clearInterval(intervalId)
+      intervalId = null
+    }
+  }, [showChannelPrompt, user?.telegram_id, checkChannelMembership])
 
   // Handle contact share from Telegram
   useEffect(() => {

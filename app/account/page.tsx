@@ -91,6 +91,7 @@ export default function AccountPage() {
     telegram: '@bingox_support',
     phone: '+251 911 234 567'
   })
+  const [commissionRate, setCommissionRate] = useState<number>(0.1)
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -134,6 +135,23 @@ export default function AccountPage() {
     }
 
     fetchSupportInfo()
+  }, [])
+
+  useEffect(() => {
+    const loadCommission = async () => {
+      try {
+        const rate = await getConfig('game_commission_rate')
+        const numeric = typeof rate === 'number' ? rate : parseFloat(rate)
+        const normalized = isNaN(numeric as number)
+          ? 0.1
+          : ((numeric as number) > 1 ? (numeric as number) / 100 : (numeric as number))
+        setCommissionRate(normalized)
+      } catch (error) {
+        console.warn('Failed to load commission rate for account terms, using default 10%')
+      }
+    }
+
+    loadCommission()
   }, [])
 
 
@@ -313,7 +331,14 @@ export default function AccountPage() {
               <p className="mb-4">All games must be played fairly. Any form of cheating or manipulation will result in account suspension.</p>
               <h4 className="font-semibold text-slate-900 mb-2">3. Payments</h4>
               <p className="mb-4">All deposits and withdrawals are subject to verification. Processing times may vary.</p>
-              <h4 className="font-semibold text-slate-900 mb-2">4. Responsible Gaming</h4>
+              <h4 className="font-semibold text-slate-900 mb-2">4. Game Winnings &amp; Commission</h4>
+              <p className="mb-4">
+                Each game prize pool is calculated from the real-money stakes of participating players. A commission of {Math.round((commissionRate || 0.1) * 100)}%
+                is deducted from the gross prize to cover operational costs, and the remaining net amount is awarded to the winner(s). When a player wins and their
+                stake included bonus funds, the real-funded share of the win is credited to the withdrawable balance, while the bonus-funded share is credited to the
+                dedicated <strong>Bonus Win</strong> balance and remains non-withdrawable. This structure keeps bonus rewards separate while ensuring real cash winnings stay withdrawable.
+              </p>
+              <h4 className="font-semibold text-slate-900 mb-2">5. Responsible Gaming</h4>
               <p>Please play responsibly. If you feel you have a gambling problem, please seek help.</p>
             </div>
           </div>
