@@ -399,6 +399,7 @@ export default function AdminWithdrawalsPage() {
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">User</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Amount</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Bank</th>
+                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Account Holder</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Date</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Actions</th>
@@ -419,6 +420,9 @@ export default function AdminWithdrawalsPage() {
                         <td className="px-4 sm:px-6 py-4">
                           <div className="text-sm text-slate-300">{withdrawal.bank_name}</div>
                           <div className="text-xs text-slate-500">{withdrawal.account_number}</div>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-sm text-slate-300">
+                          {withdrawal.account_holder || '—'}
                         </td>
                         <td className="px-4 sm:px-6 py-4">
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -489,6 +493,10 @@ export default function AdminWithdrawalsPage() {
                       <div>
                         <div className="text-xs text-slate-400">Account</div>
                         <div className="text-slate-300 break-words">{withdrawal.account_number}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Account Holder</div>
+                        <div className="text-slate-300 break-words">{withdrawal.account_holder || '—'}</div>
                       </div>
                     </div>
                     {withdrawal.status === 'pending' && (

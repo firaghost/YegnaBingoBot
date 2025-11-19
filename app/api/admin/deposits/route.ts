@@ -107,12 +107,13 @@ export async function POST(request: NextRequest) {
       // Get deposit bonus percentage from admin config
       const depositBonusPercent = await getConfig('deposit_bonus') || 0
       const bonusAmount = (transaction.amount * depositBonusPercent) / 100
+      const totalCredit = transaction.amount + bonusAmount
 
-      // Apply deposit to real balance and bonus to bonus_balance
+      // Apply entire credit to real balance (bonus no longer stored in bonus wallet)
       const { error: applyErr } = await supabase.rpc('apply_deposit', {
         p_user_id: transaction.user_id,
-        p_amount: transaction.amount,
-        p_bonus: bonusAmount
+        p_amount: totalCredit,
+        p_bonus: 0
       })
 
       if (applyErr) throw applyErr
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
             type: 'bonus',
             amount: bonusAmount,
             status: 'completed',
-            description: `Deposit bonus (${depositBonusPercent}% of ${transaction.amount} ETB)`
+            description: `Deposit bonus (${depositBonusPercent}% of ${transaction.amount} ETB) credited to real balance`
           })
       }
 

@@ -33,6 +33,10 @@ ALTER TABLE users
 
 COMMENT ON COLUMN users.bonus_win_balance IS 'Winnings generated from bonus funds. Never withdrawable.';
 
+-- 1b) Ensure withdrawals has approved_at column
+ALTER TABLE withdrawals
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+
 -- 2) Ensure transactions has metadata JSONB (idempotent)
 DO $$
 BEGIN
@@ -388,8 +392,8 @@ BEGIN
   IF v_available_balance < p_amount THEN RAISE EXCEPTION 'Insufficient available balance'; END IF;
 
   -- Create withdrawal and place hold
-  INSERT INTO withdrawals(user_id, amount, status, bank_name, account_number, account_holder)
-  VALUES (p_user_id, p_amount, 'pending', p_bank_name, p_account_number, p_account_holder)
+  INSERT INTO withdrawals(user_id, amount, status, bank_name, account_number, account_holder, approved_at)
+  VALUES (p_user_id, p_amount, 'pending', p_bank_name, p_account_number, p_account_holder, NULL)
   RETURNING id INTO v_withdrawal_id;
 
   UPDATE users
