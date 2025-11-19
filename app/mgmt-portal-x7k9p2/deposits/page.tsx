@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { useLocalStorage } from '@/lib/hooks/usePageState'
+import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
 export default function AdminDeposits() {
   const [deposits, setDeposits] = useState<any[]>([])
@@ -20,10 +21,19 @@ export default function AdminDeposits() {
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [currentPage, setCurrentPage] = useLocalStorage('deposits_page', 1)
   const [pageSize, setPageSize] = useLocalStorage('deposits_pageSize', 10)
+  const { admin, loading: adminLoading } = useAdminAuth()
+
+  const isDataLoading = loading || adminLoading
 
   useEffect(() => {
+    if (adminLoading) return
+    if (!admin) {
+      setLoading(false)
+      return
+    }
     fetchDeposits()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminLoading, admin])
 
   useEffect(() => {
     filterDeposits()
@@ -31,9 +41,17 @@ export default function AdminDeposits() {
   }, [filter, searchTerm, allDeposits])
 
   const fetchDeposits = async () => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      const response = await fetch('/api/admin/deposits?status=all')
+      const response = await fetch('/api/admin/deposits?status=all', {
+        headers: { 'x-admin-id': admin.id }
+      })
       const result = await response.json()
 
       if (!response.ok) {
@@ -73,6 +91,10 @@ export default function AdminDeposits() {
   }
 
   const handleApprove = async (depositId: string) => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
     setSelectedDepositId(depositId)
     setConfirmAction('approve')
     setShowConfirmDialog(true)
@@ -80,12 +102,16 @@ export default function AdminDeposits() {
 
   const confirmApprove = async () => {
     if (!selectedDepositId) return
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
     
     setShowConfirmDialog(false)
     try {
       const response = await fetch('/api/admin/deposits', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
         body: JSON.stringify({
           action: 'approve',
           transactionId: selectedDepositId
@@ -110,6 +136,10 @@ export default function AdminDeposits() {
   }
 
   const handleReject = (depositId: string) => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
     setSelectedDepositId(depositId)
     setRejectionReason('')
     setShowRejectModal(true)
@@ -121,11 +151,16 @@ export default function AdminDeposits() {
       return
     }
 
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
+
     setShowRejectModal(false)
     try {
       const response = await fetch('/api/admin/deposits', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
         body: JSON.stringify({
           action: 'reject',
           transactionId: selectedDepositId,
@@ -310,10 +345,14 @@ export default function AdminDeposits() {
 
         {/* Deposits Table/Cards */}
         <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
-          {loading ? (
+          {isDataLoading ? (
             <div className="p-8 sm:p-12 text-center">
               <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-slate-400 text-sm sm:text-base">Loading deposits...</p>
+            </div>
+          ) : !admin ? (
+            <div className="p-8 sm:p-12 text-center text-slate-400 text-sm sm:text-base">
+              Admin session missing. Please log in again to view deposits.
             </div>
           ) : paginatedDeposits.length === 0 ? (
             <div className="p-8 sm:p-12 text-center text-slate-400 text-sm sm:text-base">
@@ -329,6 +368,8 @@ export default function AdminDeposits() {
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">User</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Amount</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Method</th>
+                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Reference</th>
+                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Proof</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Date</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Actions</th>
@@ -348,6 +389,23 @@ export default function AdminDeposits() {
                         </td>
                         <td className="px-4 sm:px-6 py-4 text-sm text-slate-300">
                           {deposit.metadata?.payment_method || deposit.payment_method || 'Bank Transfer'}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-300">
+                          {deposit.metadata?.transaction_reference || '—'}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-300">
+                          {deposit.metadata?.proof_url ? (
+                            <a
+                              href={deposit.metadata.proof_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-cyan-400 hover:text-cyan-200 underline"
+                            >
+                              View Proof
+                            </a>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                         <td className="px-4 sm:px-6 py-4">
                           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -414,6 +472,25 @@ export default function AdminDeposits() {
                       <div className="col-span-2">
                         <div className="text-xs text-slate-400 mb-1">Method</div>
                         <div className="text-slate-300">{deposit.metadata?.payment_method || deposit.payment_method || 'Bank Transfer'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Reference</div>
+                        <div className="text-slate-300 break-words">{deposit.metadata?.transaction_reference || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">Proof</div>
+                        {deposit.metadata?.proof_url ? (
+                          <a
+                            href={deposit.metadata.proof_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-cyan-400 hover:text-cyan-200 underline"
+                          >
+                            View Proof
+                          </a>
+                        ) : (
+                          <span className="text-slate-500">No Proof</span>
+                        )}
                       </div>
                     </div>
                     {deposit.status === 'pending' && (

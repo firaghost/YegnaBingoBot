@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
 import { useLocalStorage } from '@/lib/hooks/usePageState'
+import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
 export default function AdminWithdrawalsPage() {
   const [withdrawals, setWithdrawals] = useState<any[]>([])
@@ -20,10 +20,19 @@ export default function AdminWithdrawalsPage() {
   const [currentPage, setCurrentPage] = useLocalStorage('withdrawals_page', 1)
   const [pageSize, setPageSize] = useLocalStorage('withdrawals_pageSize', 10)
   const [isEnforcing, setIsEnforcing] = useState(false)
+  const { admin, loading: adminLoading } = useAdminAuth()
+
+  const isDataLoading = loading || adminLoading
 
   useEffect(() => {
+    if (adminLoading) return
+    if (!admin) {
+      setLoading(false)
+      return
+    }
     fetchWithdrawals()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminLoading, admin])
 
   useEffect(() => {
     filterWithdrawals()
@@ -31,29 +40,21 @@ export default function AdminWithdrawalsPage() {
   }, [filter, searchTerm, allWithdrawals])
 
   const fetchWithdrawals = async () => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      setLoading(false)
+      return
+    }
+
     try {
-      const response = await fetch('/api/admin/withdrawals?status=all')
+      const response = await fetch('/api/admin/withdrawals?status=all', {
+        headers: { 'x-admin-id': admin.id }
+      })
       const result = await response.json()
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch withdrawals')
       }
-
-  const enforceRules = async () => {
-    try {
-      setIsEnforcing(true)
-      const res = await fetch('/api/admin/withdrawals/enforce', { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to enforce rules')
-      showNotification('success', `Processed ${data.processed} withdrawal(s) using bonus rules`)
-      await fetchWithdrawals()
-    } catch (e: any) {
-      showNotification('error', e.message || 'Failed to enforce rules')
-    } finally {
-      setIsEnforcing(false)
-    }
-  }
-
       setAllWithdrawals(result.data || [])
     } catch (error) {
       console.error('Error fetching withdrawals:', error)
@@ -82,9 +83,17 @@ export default function AdminWithdrawalsPage() {
   }
 
   const enforceRules = async () => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
+
     try {
       setIsEnforcing(true)
-      const res = await fetch('/api/admin/withdrawals/enforce', { method: 'POST' })
+      const res = await fetch('/api/admin/withdrawals/enforce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id }
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to enforce rules')
       showNotification('success', `Processed ${data.processed} withdrawal(s) using bonus rules`)
@@ -102,18 +111,26 @@ export default function AdminWithdrawalsPage() {
   }
 
   const handleApprove = (withdrawalId: string) => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
     setSelectedWithdrawal({ id: withdrawalId, userId: '', amount: 0 })
     setShowConfirmDialog(true)
   }
 
   const confirmApprove = async () => {
     if (!selectedWithdrawal) return
-    
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
+
     setShowConfirmDialog(false)
     try {
       const response = await fetch('/api/admin/withdrawals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
         body: JSON.stringify({
           action: 'approve',
           withdrawalId: selectedWithdrawal.id
@@ -125,7 +142,7 @@ export default function AdminWithdrawalsPage() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to approve')
       }
-      
+
       showNotification('success', 'Withdrawal approved!')
       fetchWithdrawals()
     } catch (error: any) {
@@ -137,6 +154,10 @@ export default function AdminWithdrawalsPage() {
   }
 
   const handleReject = (withdrawalId: string, userId: string, amount: number) => {
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
     setSelectedWithdrawal({ id: withdrawalId, userId, amount })
     setRejectionReason('')
     setShowRejectModal(true)
@@ -148,11 +169,16 @@ export default function AdminWithdrawalsPage() {
       return
     }
 
+    if (!admin) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
+
     setShowRejectModal(false)
     try {
       const response = await fetch('/api/admin/withdrawals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
         body: JSON.stringify({
           action: 'reject',
           withdrawalId: selectedWithdrawal.id,
@@ -350,10 +376,14 @@ export default function AdminWithdrawalsPage() {
 
         {/* Withdrawals Table/Cards */}
         <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
-          {loading ? (
+          {isDataLoading ? (
             <div className="p-8 sm:p-12 text-center">
               <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-slate-400 text-sm sm:text-base">Loading withdrawals...</p>
+            </div>
+          ) : !admin ? (
+            <div className="p-8 sm:p-12 text-center text-slate-400 text-sm sm:text-base">
+              Admin session missing. Please log in again to view withdrawals.
             </div>
           ) : paginatedWithdrawals.length === 0 ? (
             <div className="p-8 sm:p-12 text-center text-slate-400 text-sm sm:text-base">
@@ -455,7 +485,10 @@ export default function AdminWithdrawalsPage() {
                       <div className="col-span-2">
                         <div className="text-xs text-slate-400 mb-1">Bank</div>
                         <div className="text-slate-300">{withdrawal.bank_name}</div>
-                        <div className="text-xs text-slate-500">{withdrawal.account_number}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-slate-400">Account</div>
+                        <div className="text-slate-300 break-words">{withdrawal.account_number}</div>
                       </div>
                     </div>
                     {withdrawal.status === 'pending' && (
