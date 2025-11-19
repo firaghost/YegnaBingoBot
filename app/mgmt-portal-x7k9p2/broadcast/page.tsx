@@ -82,11 +82,17 @@ export default function AdminBroadcast() {
       return
     }
 
+    const adminId = localStorage.getItem('admin_id')
+    if (!adminId) {
+      showNotification('error', 'Admin session missing. Please log in again.')
+      return
+    }
+
     setIsSending(true)
     try {
       const response = await fetch('/api/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': adminId },
         body: JSON.stringify({
           title,
           message,
@@ -352,7 +358,7 @@ export default function AdminBroadcast() {
                           <p className="font-medium text-white text-xs sm:text-sm">{broadcast.title}</p>
                           <p className="text-xs text-slate-500 mt-1 line-clamp-1 hidden sm:block">{broadcast.message}</p>
                         </td>
-                        <td className="hidden sm:table-cell px-6 py-4 text-slate-300 text-sm">{broadcast.recipients_count || 0}</td>
+                        <td className="hidden sm:table-cell px-6 py-4 text-slate-300 text-sm">{broadcast.recipients ?? 0}</td>
                         <td className="hidden md:table-cell px-6 py-4">
                           <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                             ✓ Sent
