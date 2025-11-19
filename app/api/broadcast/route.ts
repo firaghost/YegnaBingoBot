@@ -5,13 +5,8 @@ import { requirePermission } from '@/lib/server/admin-permissions'
 const RAW_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || ''
 const TELEGRAM_API = RAW_BOT_TOKEN ? `https://api.telegram.org/bot${RAW_BOT_TOKEN}` : ''
 
-function escapeHtml(input: string) {
-  return input
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+function escapeMarkdown(input: string) {
+  return input.replace(/([_\*\[\]()~`>#+\-=|{}.!])/g, '\\$1')
 }
 
 export async function POST(request: NextRequest) {
@@ -74,9 +69,9 @@ export async function POST(request: NextRequest) {
       errors: [] as string[]
     }
 
-    const escapedTitle = escapeHtml(title)
-    const escapedMessage = escapeHtml(message).replace(/\n/g, '<br/>')
-    const broadcastMessage = `📢 <b>${escapedTitle}</b><br/><br/>${escapedMessage}`
+    const escapedTitle = escapeMarkdown(title)
+    const escapedMessage = escapeMarkdown(message)
+    const broadcastMessage = `📢 *${escapedTitle}*\n\n${escapedMessage}`
 
     console.log(`📢 Starting broadcast to ${users.length} users`)
 
@@ -98,7 +93,7 @@ export async function POST(request: NextRequest) {
         const messagePayload: any = {
           chat_id: user.telegram_id,
           text: broadcastMessage,
-          parse_mode: 'HTML'
+          parse_mode: 'MarkdownV2'
         }
 
         // Only add web_app button if we have a valid HTTPS URL
