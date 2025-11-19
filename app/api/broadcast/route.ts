@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { requirePermission } from '@/lib/server/admin-permissions'
 
-const BOT_TOKEN = process.env.BOT_TOKEN!
-const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`
+const RAW_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || ''
+const TELEGRAM_API = RAW_BOT_TOKEN ? `https://api.telegram.org/bot${RAW_BOT_TOKEN}` : ''
 
 function escapeHtml(input: string) {
   return input
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if BOT_TOKEN is configured
-    if (!BOT_TOKEN || BOT_TOKEN === 'undefined') {
+    if (!RAW_BOT_TOKEN || RAW_BOT_TOKEN === 'undefined') {
       console.error('BOT_TOKEN is not configured')
       return NextResponse.json(
         { error: 'Bot token not configured. Please set BOT_TOKEN in environment variables.' },
@@ -124,6 +124,9 @@ export async function POST(request: NextRequest) {
         } else {
           results.failed++
           const errorMsg = responseData.description || JSON.stringify(responseData)
+          if (response.status === 401) {
+            console.error('❌ Telegram returned 401 Unauthorized. Please verify TELEGRAM_BOT_TOKEN / BOT_TOKEN.')
+          }
           console.error(`❌ Failed to send to ${user.username}: ${errorMsg}`)
           results.errors.push(`User ${user.username}: ${errorMsg}`)
         }

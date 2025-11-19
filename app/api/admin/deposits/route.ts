@@ -5,6 +5,21 @@ import { requireAnyPermission, requirePermission } from '@/lib/server/admin-perm
 
 const supabase = supabaseAdmin
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || process.env.APP_URL || ''
+
+function escapeMarkdown(text: string): string {
+  return text.replace(/([_\*\[\]()~`>#+\-=|{}.!])/g, '\\$1')
+}
+
+function getAppReplyMarkup() {
+  if (APP_URL && APP_URL.startsWith('https://')) {
+    return {
+      inline_keyboard: [[{ text: 'Open Wallet', web_app: { url: APP_URL } }]]
+    }
+  }
+  return undefined
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAnyPermission(request, ['transactions_view','deposits_manage'])
@@ -105,7 +120,8 @@ export async function POST(request: NextRequest) {
       if (updateError) throw updateError
 
       // Get deposit bonus percentage from admin config
-      const depositBonusPercent = await getConfig('deposit_bonus') || 0
+      const depositBonusPercentRaw = await getConfig('deposit_bonus')
+      const depositBonusPercent = Number(depositBonusPercentRaw) || 0
       const bonusAmount = (transaction.amount * depositBonusPercent) / 100
       const totalCredit = transaction.amount + bonusAmount
 
@@ -136,17 +152,32 @@ export async function POST(request: NextRequest) {
         try {
           const botToken = process.env.TELEGRAM_BOT_TOKEN
           if (botToken) {
+            const amountText = escapeMarkdown(transaction.amount.toFixed(2))
+            const bonusText = escapeMarkdown(bonusAmount.toFixed(2))
             const totalAdded = transaction.amount + bonusAmount
+            const totalText = escapeMarkdown(totalAdded.toFixed(2))
+            const percentText = escapeMarkdown(depositBonusPercent.toFixed(2).replace(/\.00$/, ''))
+
+            let message = `✅ *Deposit Approved*\n\nYour deposit of *${amountText} ETB* has been approved.`
+            if (bonusAmount > 0) {
+              message += `\n\n🎁 *Bonus Applied:* ${bonusText} ETB (${percentText}% of ${amountText} ETB)`
+              message += `\n📊 *Total Added:* ${totalText} ETB`
+            }
+            message += `\n\nYou can now use this balance to play games!`
+
+            const payload: any = {
+              chat_id: user.telegram_id,
+              text: message,
+              parse_mode: 'Markdown'
+            }
+
+            const replyMarkup = getAppReplyMarkup()
+            if (replyMarkup) payload.reply_markup = replyMarkup
+
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: user.telegram_id,
-                text: bonusAmount > 0 
-                  ? `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved!\n\n💰 *Bonus Applied:* ${bonusAmount} ETB (${depositBonusPercent}%)\n📊 *Total Added:* ${totalAdded} ETB\n\nYou can now use this balance to play games!`
-                  : `✅ *Deposit Approved*\n\nYour deposit of *${transaction.amount} ETB* has been approved and added to your account.\n\nYou can now use this balance to play games!`,
-                parse_mode: 'Markdown'
-              })
+              body: JSON.stringify(payload)
             })
           }
         } catch (error) {
@@ -180,14 +211,22 @@ export async function POST(request: NextRequest) {
         try {
           const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
           if (botToken) {
+            const amountText = escapeMarkdown(transaction.amount.toFixed(2))
+            const reasonText = escapeMarkdown(reason)
+
+            const payload: any = {
+              chat_id: user.telegram_id,
+              text: `❌ *Deposit Rejected*\n\nYour deposit request of *${amountText} ETB* has been rejected.\n\n*Reason:* ${reasonText}\n\nPlease contact support if you have any questions.`,
+              parse_mode: 'Markdown'
+            }
+
+            const replyMarkup = getAppReplyMarkup()
+            if (replyMarkup) payload.reply_markup = replyMarkup
+
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: user.telegram_id,
-                text: `❌ *Deposit Rejected*\n\nYour deposit request of *${transaction.amount} ETB* has been rejected.\n\n*Reason:* ${reason}\n\nPlease contact support if you have any questions.`,
-                parse_mode: 'Markdown'
-              })
+              body: JSON.stringify(payload)
             })
           }
         } catch (error) {

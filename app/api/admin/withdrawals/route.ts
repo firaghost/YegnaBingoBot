@@ -4,6 +4,21 @@ import { requireAnyPermission, requirePermission } from '@/lib/server/admin-perm
 
 const supabase = supabaseAdmin
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || process.env.APP_URL || ''
+
+function escapeMarkdown(text: string): string {
+  return text.replace(/([_\*\[\]()~`>#+\-=|{}.!])/g, '\\$1')
+}
+
+function getAppReplyMarkup() {
+  if (APP_URL && APP_URL.startsWith('https://')) {
+    return {
+      inline_keyboard: [[{ text: 'View Wallet', web_app: { url: APP_URL } }]]
+    }
+  }
+  return undefined
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAnyPermission(request, ['transactions_view','withdrawals_manage'])
@@ -88,16 +103,32 @@ export async function POST(request: NextRequest) {
       // Send Telegram notification
       if (withdrawal?.users?.telegram_id) {
         try {
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
           if (botToken) {
+            const amountText = escapeMarkdown(Number(withdrawal.amount).toFixed(2))
+            const bankText = escapeMarkdown(withdrawal.bank_name || 'N/A')
+            const accountText = escapeMarkdown(withdrawal.account_number || 'N/A')
+            const noteText = adminNote ? `\n\n📝 *Admin Note:* ${escapeMarkdown(adminNote)}` : ''
+
+            const payload: any = {
+              chat_id: withdrawal.users.telegram_id,
+              text:
+                `✅ *Withdrawal Approved*\n\n` +
+                `Your withdrawal request of *${amountText} ETB* has been approved.` +
+                `\n\nThe funds will be transferred to your bank account within 24-48 hours.` +
+                `\n\n*Bank:* ${bankText}` +
+                `\n*Account:* ${accountText}` +
+                noteText,
+              parse_mode: 'Markdown'
+            }
+
+            const replyMarkup = getAppReplyMarkup()
+            if (replyMarkup) payload.reply_markup = replyMarkup
+
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: withdrawal.users.telegram_id,
-                text: `✅ *Withdrawal Approved*\n\nYour withdrawal request of *${withdrawal.amount} ETB* has been approved.\n\nThe funds will be transferred to your bank account within 24-48 hours.\n\n*Bank:* ${withdrawal.bank_name}\n*Account:* ${withdrawal.account_number}`,
-                parse_mode: 'Markdown'
-              })
+              body: JSON.stringify(payload)
             })
           }
         } catch (error) {
@@ -122,16 +153,29 @@ export async function POST(request: NextRequest) {
       // Send Telegram notification
       if (withdrawal?.users?.telegram_id) {
         try {
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
+          const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
           if (botToken) {
+            const amountText = escapeMarkdown(Number(withdrawal.amount).toFixed(2))
+            const reasonText = adminNote
+              ? `*Reason:* ${escapeMarkdown(adminNote)}`
+              : 'Please contact support for more information.'
+
+            const payload: any = {
+              chat_id: withdrawal.users.telegram_id,
+              text:
+                `❌ *Withdrawal Rejected*\n\n` +
+                `Your withdrawal request of *${amountText} ETB* has been rejected.\n\n` +
+                `Your balance has been refunded to your account.\n\n${reasonText}`,
+              parse_mode: 'Markdown'
+            }
+
+            const replyMarkup = getAppReplyMarkup()
+            if (replyMarkup) payload.reply_markup = replyMarkup
+
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: withdrawal.users.telegram_id,
-                text: `❌ *Withdrawal Rejected*\n\nYour withdrawal request of *${withdrawal.amount} ETB* has been rejected.\n\nYour balance has been refunded to your account.\n\n${adminNote ? `*Reason:* ${adminNote}` : 'Please contact support for more information.'}`,
-                parse_mode: 'Markdown'
-              })
+              body: JSON.stringify(payload)
             })
           }
         } catch (error) {

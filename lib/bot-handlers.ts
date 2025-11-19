@@ -231,8 +231,17 @@ export function setupBotHandlers(bot: Telegraf) {
         return
       }
 
-      // Get registration bonus from admin config
-      const registrationBonus = (await getConfig('welcome_bonus')) || 3.00
+      // Get registration and referral bonuses from admin config
+      const registrationBonusRaw = await getConfig('welcome_bonus')
+      const registrationBonusValue = Number(registrationBonusRaw)
+      const registrationBonus = Number.isFinite(registrationBonusValue) ? registrationBonusValue : 3.00
+
+      let referralBonusAmount: number | null = null
+      if (referralCode) {
+        const referralBonusRaw = await getConfig('referral_bonus')
+        const referralBonusValue = Number(referralBonusRaw)
+        referralBonusAmount = Number.isFinite(referralBonusValue) ? referralBonusValue : 25.00
+      }
 
       // Create new user with registration bonus
       const { error: insertError } = await supabase
@@ -290,15 +299,50 @@ export function setupBotHandlers(bot: Telegraf) {
         .eq('telegram_id', userId.toString())
         .single()
 
+      let referrerForNotify: { id: string; telegramId: string; username?: string | null } | null = null
+      if (referralCode) {
+        const { data: referrer } = await supabase
+          .from('users')
+          .select('id, telegram_id, username')
+          .eq('referral_code', referralCode)
+          .maybeSingle()
+
+        if (referrer?.id && referrer.telegram_id && referrer.telegram_id !== userId.toString()) {
+          referrerForNotify = {
+            id: referrer.id,
+            telegramId: referrer.telegram_id,
+            username: referrer.username || null
+          }
+        }
+      }
+
       // Process referral bonus if referral code exists
       if (referralCode && newUser?.id) {
         try {
-          const { error: refError } = await supabase.rpc('process_referral_bonus', {
+          const { data: referralProcessed, error: refError } = await supabase.rpc('process_referral_bonus', {
             p_referred_user_id: newUser.id,
             p_referral_code: referralCode
           })
           if (refError) {
             console.error('Error processing referral bonus:', refError)
+          } else if (referralProcessed && referralBonusAmount && referrerForNotify?.telegramId) {
+            const bonusText = referralBonusAmount.toFixed(2)
+            const referredDisplay = username ? `@${username}` : firstName
+            const notifyMessage =
+              `🎉 Referral Success!\n\n` +
+              `${referredDisplay} just joined using your invite.\n\n` +
+              `Bonus: ${bonusText} ETB has been added to your balance.\n\n` +
+              `Keep sharing your link to earn more rewards!`
+
+            try {
+              await ctx.telegram.sendMessage(referrerForNotify.telegramId, notifyMessage, {
+                reply_markup: {
+                  inline_keyboard: [[{ text: '🎮 Play Now', url: MINI_APP_URL }]]
+                }
+              })
+            } catch (notifyError) {
+              console.error('Failed to notify referrer about referral bonus:', notifyError)
+            }
           }
         } catch (e) {
           console.error('Referral bonus processing failed:', e)
