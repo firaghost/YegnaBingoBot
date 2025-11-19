@@ -1,12 +1,17 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminBroadcast() {
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageUploading, setImageUploading] = useState(false)
+  const [channelLink] = useState(process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL || process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial')
+  const [botLink] = useState(process.env.NEXT_PUBLIC_BOT_LINK || (process.env.MINI_APP_URL ? `${process.env.MINI_APP_URL}` : 'https://t.me/BingoXOfficialBot'))
   const [targetAll, setTargetAll] = useState(true)
   const [activeOnly, setActiveOnly] = useState(false)
   const [minBalance, setMinBalance] = useState('')
@@ -72,6 +77,20 @@ export default function AdminBroadcast() {
     setTimeout(() => setNotification(null), 4000)
   }
 
+  const composeMessageWithLinks = useCallback(() => {
+    const baseMessage = message.trim()
+    const parts = [
+      baseMessage,
+      '',
+      `📢 Stay updated: ${channelLink}`,
+      `🤖 Play with us: ${botLink}`
+    ]
+      .map(part => part.trim())
+      .filter(Boolean)
+
+    return parts.join('\n')
+  }, [message, channelLink, botLink])
+
   const handleSend = async () => {
     if (!title || !message) {
       showNotification('error', 'Please fill in title and message')
@@ -90,17 +109,32 @@ export default function AdminBroadcast() {
 
     setIsSending(true)
     try {
+      let finalImageUrl = imageUrl.trim()
+
+      if (imageFile) {
+        setImageUploading(true)
+        finalImageUrl = await handleImageUpload(imageFile)
+        setImageUploading(false)
+        if (!finalImageUrl) {
+          setIsSending(false)
+          return
+        }
+      }
+
+      const formattedMessage = composeMessageWithLinks()
+
       const response = await fetch('/api/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-id': adminId },
         body: JSON.stringify({
           title,
-          message,
+          message: formattedMessage,
           filters: {
             activeOnly,
             minBalance: minBalance ? parseInt(minBalance) : null,
             minGames: minGames ? parseInt(minGames) : null
-          }
+          },
+          imageUrl: finalImageUrl || null
         })
       })
 
@@ -113,6 +147,8 @@ export default function AdminBroadcast() {
       showNotification('success', `Broadcast sent to ${data.results.sent} users!`)
       setTitle('')
       setMessage('')
+      setImageUrl('')
+      setImageFile(null)
       fetchPreviousBroadcasts()
     } catch (error: any) {
       console.error('Error sending broadcast:', error)
@@ -121,6 +157,40 @@ export default function AdminBroadcast() {
       setIsSending(false)
     }
   }
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    try {
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const fileName = `broadcast-${Date.now()}.${fileExt}`
+      const filePath = `broadcasts/${fileName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (uploadError) {
+        console.error('Upload failed:', uploadError)
+        showNotification('error', 'Failed to upload image. Please try again.')
+        return ''
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath)
+
+      setImageUrl(publicUrl)
+      return publicUrl
+    } catch (error) {
+      console.error('Unexpected upload error:', error)
+      showNotification('error', 'Failed to upload image. Please try again.')
+      return ''
+    } finally {
+      setImageUploading(false)
+    }
+  }, [showNotification])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -184,6 +254,74 @@ export default function AdminBroadcast() {
                     className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm"
                   />
                   <p className="text-xs text-slate-500 mt-2">{message.length} characters</p>
+                </div>
+
+                {/* Image Upload */}
+                <div>
+                  <label className="block text-slate-300 text-sm font-medium mb-2">Broadcast Image (optional)</label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0] || null
+                          if (!file) {
+                            setImageFile(null)
+                            setImageUrl('')
+                            return
+                          }
+
+                          if (!file.type.startsWith('image/')) {
+                            showNotification('error', 'Please select a valid image file')
+                            return
+                          }
+
+                          if (file.size > 5 * 1024 * 1024) {
+                            showNotification('error', 'Image must be 5MB or smaller')
+                            return
+                          }
+
+                          setImageFile(file)
+                          await handleImageUpload(file)
+                        }}
+                        className="w-full text-sm text-slate-300 bg-slate-700/50 border border-slate-600 rounded-lg file:mr-3 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:bg-emerald-500 file:text-white hover:file:bg-emerald-600"
+                      />
+                      <div className="relative">
+                        <label className="block text-slate-300 text-xs font-medium mb-2">Or paste image URL</label>
+                        <input
+                          type="url"
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          placeholder="https://example.com/image.jpg"
+                          className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">If you select an image, it will be uploaded and attached to the broadcast. Otherwise, the URL will be used directly.</p>
+                    </div>
+                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 flex items-center justify-center min-h-[140px]">
+                      {imageUrl ? (
+                        <img src={imageUrl} alt="Broadcast preview" className="max-h-32 object-cover rounded" />
+                      ) : (
+                        <span className="text-slate-500 text-sm">Image preview will appear here</span>
+                      )}
+                    </div>
+                    {imageUrl && (
+                      <button
+                        onClick={() => {
+                          setImageFile(null)
+                          setImageUrl('')
+                        }}
+                        className="sm:col-span-2 w-full bg-slate-700/50 text-slate-300 py-2 rounded-lg border border-slate-600 text-sm hover:bg-slate-700 transition-colors"
+                        type="button"
+                      >
+                        Remove image
+                      </button>
+                    )}
+                  </div>
+                  {imageUploading && (
+                    <p className="text-xs text-emerald-400 mt-2">Uploading image...</p>
+                  )}
                 </div>
 
                 {/* Filters Section */}

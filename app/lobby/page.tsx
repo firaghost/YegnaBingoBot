@@ -1,13 +1,13 @@
 "use client"
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
-import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX } from 'react-icons/lu'
+import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle } from 'react-icons/lu'
 import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
 interface Room {
@@ -35,6 +35,13 @@ export default function LobbyPage() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
   const [commissionLoaded, setCommissionLoaded] = useState<boolean>(false)
+  const [showChannelPrompt, setShowChannelPrompt] = useState(false)
+  const [checkingChannelStatus, setCheckingChannelStatus] = useState(false)
+  const [channelCheckError, setChannelCheckError] = useState<string | null>(null)
+  const channelLink = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL || process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial'
+  const channelUsername = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME || process.env.TELEGRAM_CHANNEL_USERNAME || ''
+  const channelCheckAttempted = useRef(false)
+
   useEffect(() => {
     // Load commission rate once on mount
     const loadCommission = async () => {
@@ -149,6 +156,43 @@ export default function LobbyPage() {
     if (!commissionLoaded) return
     fetchRooms()
   }, [commissionRate, commissionLoaded])
+
+  const checkChannelMembership = useCallback(async (force = false) => {
+    if (!force && channelCheckAttempted.current) return
+    if (checkingChannelStatus) return
+    channelCheckAttempted.current = true
+    setCheckingChannelStatus(true)
+    setChannelCheckError(null)
+
+    try {
+      const response = await fetch('/api/channel/check-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramId: user?.telegram_id })
+      })
+
+      const result = await response.json()
+      if (result.isMember) {
+        setShowChannelPrompt(false)
+      } else {
+        setShowChannelPrompt(true)
+      }
+    } catch (error) {
+      setChannelCheckError('Failed to check channel membership')
+    } finally {
+      setCheckingChannelStatus(false)
+    }
+  }, [checkingChannelStatus, user?.telegram_id])
+
+  useEffect(() => {
+    if (authLoading) return
+    if (!user?.telegram_id) {
+      setShowChannelPrompt(false)
+      return
+    }
+
+    checkChannelMembership()
+  }, [authLoading, user?.telegram_id, checkChannelMembership])
 
   // Handle contact share from Telegram
   useEffect(() => {
@@ -367,6 +411,59 @@ export default function LobbyPage() {
             <button onClick={() => setShowInsufficientBalance(false)} className="text-white hover:text-red-100">
               <LuX className="w-5 h-5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Channel Join Prompt */}
+      {showChannelPrompt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center px-4">
+          <div className="max-w-lg w-full bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <LuMegaphone className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-emerald-300">Stay connected</p>
+                <h2 className="text-xl font-semibold text-white">Join our official Telegram channel</h2>
+              </div>
+            </div>
+            <p className="text-slate-200 text-sm mb-5">
+              Get instant updates about tournaments, bonuses, and winner highlights. Join our channel and stay ahead of the game.
+            </p>
+            {channelCheckError && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                <LuLoaderCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>{channelCheckError}</span>
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link
+                href={channelLink}
+                target="_blank"
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition-colors"
+              >
+                <LuMegaphone className="w-4 h-4" />
+                <span>Join {channelUsername ? channelUsername.replace('@', '') : 'Channel'}</span>
+              </Link>
+              <button
+                onClick={() => checkChannelMembership(true)}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-700 text-slate-200 hover:bg-slate-600 transition-colors disabled:opacity-60"
+                disabled={checkingChannelStatus}
+              >
+                {checkingChannelStatus ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Checking...</span>
+                  </>
+                ) : (
+                  <>
+                    <LuCheck className="w-4 h-4" />
+                    <span>I’ve joined</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -4,6 +4,7 @@ import { getConfig } from './admin-config'
 
 const MINI_APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || 'https://yegnagame.vercel.app'
 const CHANNEL_URL = process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial'
+const BOT_LOGO_URL = (process.env.BOT_LOGO_URL || (process.env as any).NEXT_PUBLIC_BOT_LOGO_URL || '').trim()
 
 // Use admin client for all operations
 const supabase = supabaseAdmin
@@ -163,12 +164,12 @@ export function setupBotHandlers(bot: Telegraf) {
       const code = `ref_${userId}`
       const referralLink = buildReferralLink(userId, botUsername)
 
-      const textLines: string[] = []
-      textLines.push('🎉 Invite Friends & Earn!')
-      if (referralLink) {
-        textLines.push('\n🔗 [Tap to join](' + referralLink + ')')
-      }
-      textLines.push(`\n🧾 Your code: \`${code}\``)
+      const messageLines: string[] = [
+        '🎉 Invite Friends & Earn!',
+        '',
+        referralLink ? `🔗 Join: ${referralLink}` : '',
+        `🧾 Your code: ${code}`
+      ].filter(Boolean)
 
       const results = [
         {
@@ -177,9 +178,16 @@ export function setupBotHandlers(bot: Telegraf) {
           title: 'Share your BingoX invite',
           description: 'Send your personal referral link to this chat',
           input_message_content: {
-            message_text: textLines.join('\n'),
-            parse_mode: 'Markdown'
-          }
+            message_text: messageLines.join('\n')
+          },
+          thumb_url: BOT_LOGO_URL || undefined,
+          thumb_width: BOT_LOGO_URL ? 200 : undefined,
+          thumb_height: BOT_LOGO_URL ? 200 : undefined,
+          reply_markup: referralLink
+            ? {
+                inline_keyboard: [[{ text: '🎮 Join BingoX', url: referralLink }]]
+              }
+            : undefined
         } as any
       ]
 

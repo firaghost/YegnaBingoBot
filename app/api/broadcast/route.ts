@@ -12,7 +12,7 @@ function escapeMarkdown(input: string) {
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'broadcast_manage')
-    const { title, message, filters } = await request.json()
+    const { title, message, filters, imageUrl } = await request.json()
 
     if (!title || !message) {
       return NextResponse.json(
@@ -69,9 +69,8 @@ export async function POST(request: NextRequest) {
       errors: [] as string[]
     }
 
-    const escapedTitle = escapeMarkdown(title)
-    const escapedMessage = escapeMarkdown(message)
-    const broadcastMessage = `📢 *${escapedTitle}*\n\n${escapedMessage}`
+    const trimmedImageUrl = typeof imageUrl === 'string' && imageUrl.trim().length > 0 ? imageUrl.trim() : null
+    const broadcastMessage = `📢 ${title}\n\n${message}`
 
     console.log(`📢 Starting broadcast to ${users.length} users`)
 
@@ -90,11 +89,16 @@ export async function POST(request: NextRequest) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
 
-        const messagePayload: any = {
-          chat_id: user.telegram_id,
-          text: broadcastMessage,
-          parse_mode: 'MarkdownV2'
-        }
+        const messagePayload: any = trimmedImageUrl
+          ? {
+              chat_id: user.telegram_id,
+              photo: trimmedImageUrl,
+              caption: broadcastMessage
+            }
+          : {
+              chat_id: user.telegram_id,
+              text: broadcastMessage
+            }
 
         // Only add web_app button if we have a valid HTTPS URL
         if (appUrl && appUrl.startsWith('https://')) {
@@ -105,7 +109,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+        const endpoint = trimmedImageUrl ? 'sendPhoto' : 'sendMessage'
+
+        const response = await fetch(`${TELEGRAM_API}/${endpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(messagePayload)
@@ -139,13 +145,18 @@ export async function POST(request: NextRequest) {
     console.log(`📊 Broadcast complete: ${results.sent} sent, ${results.failed} failed`)
 
     // Store broadcast record
+    const storedFilters = {
+      ...(filters || {}),
+      ...(trimmedImageUrl ? { imageUrl: trimmedImageUrl } : {})
+    }
+
     await supabase.from('broadcasts').insert({
       title,
       message,
       recipients: results.total,
       sent: results.sent,
       failed: results.failed,
-      filters: filters || {},
+      filters: storedFilters,
       created_at: new Date().toISOString()
     })
 

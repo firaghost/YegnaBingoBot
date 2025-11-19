@@ -20,10 +20,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const today = new Date().toISOString().split('T')[0]
     const lastPlayDate = user.last_play_date
 
-    // If already played today, don't update
     if (lastPlayDate === today) {
       return NextResponse.json({ 
         message: 'Already played today',
@@ -32,17 +31,15 @@ export async function POST(request: NextRequest) {
     }
 
     let newStreak = 1
-
     if (lastPlayDate) {
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
       const yesterdayStr = yesterday.toISOString().split('T')[0]
-
-      // If played yesterday, continue streak
       if (lastPlayDate === yesterdayStr) {
         newStreak = (user.daily_streak || 0) + 1
+      } else {
+        newStreak = 1
       }
-      // Otherwise, streak is broken, reset to 1
     }
 
     // Update user's streak and last play date
