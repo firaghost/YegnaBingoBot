@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { getAllConfig } from '@/lib/admin-config'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -19,8 +20,10 @@ export default function ProfessionalDashboard() {
     activeUsers: 0,
     totalGames: 0,
     activeGames: 0,
-    totalRevenue: 0,
-    todayRevenue: 0,
+    totalRevenueReal: 0,
+    totalRevenueBonus: 0,
+    todayRevenueReal: 0,
+    todayRevenueBonus: 0,
     pendingWithdrawals: 0,
     totalTransactions: 0,
     totalCommission: 0,
@@ -65,22 +68,60 @@ export default function ProfessionalDashboard() {
         .select('*', { count: 'exact', head: true })
         .in('status', ['waiting', 'countdown', 'active'])
 
-      // Fetch revenue (total and today)
-      const { data: allGames } = await supabase
-        .from('games')
-        .select('stake, created_at')
-        .eq('status', 'finished')
+      // Fetch commission rate from config (fallback 10%)
+      const config = await getAllConfig()
+      const commissionRate = Number((config as any)?.gameCommissionRate) || 0.1
 
-      let totalRevenue = 0
-      let todayRevenue = 0
+      // Revenue = completed deposits (real), with separate deposit bonus totals
       const today = new Date().toDateString()
+      const { data: depositTxs } = await supabase
+        .from('transactions')
+        .select('amount, created_at')
+        .eq('type', 'deposit')
+        .eq('status', 'completed')
 
-      allGames?.forEach((game: any) => {
-        const stake = game.stake || 0
-        totalRevenue += stake
-        if (new Date(game.created_at).toDateString() === today) {
-          todayRevenue += stake
+      const { data: depositBonusTxs } = await supabase
+        .from('transactions')
+        .select('amount, created_at')
+        .eq('type', 'bonus')
+        .eq('status', 'completed')
+        .ilike('description', 'Deposit bonus%')
+
+      let totalRevenueReal = 0
+      let totalRevenueBonus = 0
+      let todayRevenueReal = 0
+      let todayRevenueBonus = 0
+
+      depositTxs?.forEach((tx: any) => {
+        const amt = Number(tx?.amount || 0)
+        totalRevenueReal += amt
+        if (new Date(tx.created_at).toDateString() === today) todayRevenueReal += amt
+      })
+      depositBonusTxs?.forEach((tx: any) => {
+        const amt = Number(tx?.amount || 0)
+        totalRevenueBonus += amt
+        if (new Date(tx.created_at).toDateString() === today) todayRevenueBonus += amt
+      })
+
+      // Commission still based on real stakes only
+      const { data: stakeTxs } = await supabase
+        .from('transactions')
+        .select('created_at, metadata, amount')
+        .eq('type', 'stake')
+        .eq('status', 'completed')
+
+      // Sum real stake volume (for commission)
+      let realStakeTotal = 0
+      let realStakeToday = 0
+      stakeTxs?.forEach((tx: any) => {
+        const md = (tx?.metadata || {}) as any
+        let main = Number(md?.main_deducted ?? 0)
+        if (!main || isNaN(main)) {
+          // Legacy fallback: stake amount is negative
+          main = Math.abs(Number(tx?.amount ?? 0))
         }
+        realStakeTotal += main
+        if (new Date(tx.created_at).toDateString() === today) realStakeToday += main
       })
 
       // Fetch pending deposits
@@ -102,29 +143,19 @@ export default function ProfessionalDashboard() {
         .from('transactions')
         .select('*', { count: 'exact', head: true })
 
-      // Fetch commission (total and today)
-      const { data: users } = await supabase
-        .from('users')
-        .select('total_winnings, created_at')
-
-      let totalCommission = 0
-      let todayCommission = 0
-
-      users?.forEach((user: any) => {
-        const commission = (user.total_winnings || 0) * 0.05 // 5% commission
-        totalCommission += commission
-        if (new Date(user.created_at).toDateString() === today) {
-          todayCommission += commission
-        }
-      })
+      // Commission (from real stake volume only)
+      const totalCommission = realStakeTotal * commissionRate
+      const todayCommission = realStakeToday * commissionRate
 
       setStats({
         totalUsers: totalUsers || 0,
         activeUsers: activeUsers || 0,
         totalGames: totalGames || 0,
         activeGames: activeGames || 0,
-        totalRevenue,
-        todayRevenue,
+        totalRevenueReal,
+        totalRevenueBonus,
+        todayRevenueReal,
+        todayRevenueBonus,
         pendingWithdrawals: pendingWithdrawals || 0,
         totalTransactions: totalTransactions || 0,
         totalCommission,
@@ -134,34 +165,42 @@ export default function ProfessionalDashboard() {
       // Fetch chart data (last 30 days)
       const last30Days = new Date()
       last30Days.setDate(last30Days.getDate() - 30)
-
+      // Games per day
       const { data: gamesData } = await supabase
         .from('games')
-        .select('stake, created_at, status')
+        .select('created_at')
         .gte('created_at', last30Days.toISOString())
         .order('created_at', { ascending: true })
 
-      // Process chart data
-      const dailyData: { [key: string]: { revenue: number; games: number; users: number } } = {}
+      // Real deposits per day (for chart)
+      const { data: depositChart } = await supabase
+        .from('transactions')
+        .select('created_at, amount')
+        .eq('type', 'deposit')
+        .eq('status', 'completed')
+        .gte('created_at', last30Days.toISOString())
+        .order('created_at', { ascending: true })
 
-      gamesData?.forEach((game: any) => {
-        const date = new Date(game.created_at).toLocaleDateString()
-        if (!dailyData[date]) {
-          dailyData[date] = { revenue: 0, games: 0, users: 0 }
-        }
-        dailyData[date].revenue += game.stake || 0
-        dailyData[date].games += 1
+      const revenueByDate: Record<string, number> = {}
+      const gamesByDate: Record<string, number> = {}
+
+      depositChart?.forEach((tx: any) => {
+        const d = new Date(tx.created_at).toLocaleDateString()
+        const amt = Number(tx?.amount || 0)
+        revenueByDate[d] = (revenueByDate[d] || 0) + amt
       })
 
-      const labels = Object.keys(dailyData).slice(-30)
-      const revenueData = labels.map(date => dailyData[date].revenue)
-      const gamesCountData = labels.map(date => dailyData[date].games)
-
-      setChartData({
-        labels,
-        revenue: revenueData,
-        gamesCount: gamesCountData,
+      gamesData?.forEach((g: any) => {
+        const d = new Date(g.created_at).toLocaleDateString()
+        gamesByDate[d] = (gamesByDate[d] || 0) + 1
       })
+
+      const labelSet = new Set<string>([...Object.keys(revenueByDate), ...Object.keys(gamesByDate)])
+      const labels = Array.from(labelSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime()).slice(-30)
+      const revenueData = labels.map(d => revenueByDate[d] || 0)
+      const gamesCountData = labels.map(d => gamesByDate[d] || 0)
+
+      setChartData({ labels, revenue: revenueData, gamesCount: gamesCountData })
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
@@ -187,17 +226,26 @@ export default function ProfessionalDashboard() {
     )
   }
 
+  const hasPerm = (key: string) => {
+    if (admin?.role === 'super_admin') return true
+    const p = (admin?.permissions || {}) as Record<string, boolean>
+    return Boolean(p[key])
+  }
+  const hasAny = (...keys: string[]) => keys.some(k => hasPerm(k))
+
   const navItems = [
-    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null },
-    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null },
-    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits },
-    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals },
-    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: BarChart3, badge: null },
-    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null },
-    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null },
-    { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: Megaphone, badge: null },
-    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null },
-  ]
+    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
+    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null, permsAny: ['games_view','games_manage'] },
+    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits, permsAny: ['deposits_view','deposits_manage'] },
+    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals, permsAny: ['withdrawals_view','withdrawals_manage'] },
+    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: BarChart3, badge: null, permsAny: ['transactions_view'] },
+    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null, permsAny: ['rooms_view','rooms_manage'] },
+    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null, permsAny: ['banks_view','banks_manage'] },
+    { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: Megaphone, badge: null, permsAny: ['broadcast_manage'] },
+    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null, permsAny: ['settings_view','settings_manage'] },
+  ] as const
+
+  const visibleNavItems = navItems.filter(item => admin?.role === 'super_admin' || item.permsAny.some(k => hasPerm(k)))
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col lg:flex-row">
@@ -207,8 +255,22 @@ export default function ProfessionalDashboard() {
           <h2 className="text-xl font-bold text-white">BingoX Admin</h2>
           <p className="text-slate-400 text-xs mt-1">Management Portal</p>
         </div>
+        {/* Profile Block */}
+        <div className="px-4 py-4 border-b border-slate-700/50 hidden lg:flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-bold">
+            {String(admin?.username || '?').charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="text-white font-semibold truncate">{admin?.username || '—'}</div>
+            <div className="text-xs mt-1">
+              <span className={`px-2 py-0.5 rounded-full border ${admin?.role === 'super_admin' ? 'bg-violet-500/20 text-violet-300 border-violet-500/30' : admin?.role === 'admin' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-blue-500/20 text-blue-300 border-blue-500/30'}`}>
+                {admin?.role === 'super_admin' ? 'Super Admin' : (admin?.role || '').replace('_',' ').replace(/\b\w/g, c=>c.toUpperCase())}
+              </span>
+            </div>
+          </div>
+        </div>
         <nav className="p-2 lg:p-4 flex lg:flex-col gap-1 lg:gap-2 flex-wrap lg:flex-nowrap justify-center lg:justify-start items-center lg:items-stretch">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const IconComponent = item.icon
             return (
               <Link
@@ -283,18 +345,28 @@ export default function ProfessionalDashboard() {
             <p className="text-green-400 text-xs mt-2">Active: {stats.activeGames}</p>
           </div>
 
-          {/* Total Revenue */}
+          {/* Revenue (Real vs Bonus) */}
           <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 backdrop-blur-md rounded-lg p-6 border border-purple-500/30 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Total Revenue</span>
+              <span className="text-slate-400 text-sm font-medium">Revenue (Real)</span>
               <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
                 <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
             </div>
-            <div className="text-3xl font-bold text-white">{formatCurrency(stats.totalRevenue)}</div>
-            <p className="text-purple-400 text-xs mt-2">Today: {formatCurrency(stats.todayRevenue)}</p>
+            <div className="text-3xl font-bold text-white">{formatCurrency(stats.totalRevenueReal)}</div>
+            <p className="text-purple-400 text-xs mt-2">Today (Real): {formatCurrency(stats.todayRevenueReal)}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-900/40 border border-slate-700/50 rounded-md p-2">
+                <div className="text-slate-400">Bonus Derived (All)</div>
+                <div className="text-slate-200 font-semibold">{formatCurrency(stats.totalRevenueBonus)}</div>
+              </div>
+              <div className="bg-slate-900/40 border border-slate-700/50 rounded-md p-2">
+                <div className="text-slate-400">Bonus Today</div>
+                <div className="text-slate-200 font-semibold">{formatCurrency(stats.todayRevenueBonus)}</div>
+              </div>
+            </div>
           </div>
 
           {/* Commission */}
@@ -337,12 +409,12 @@ export default function ProfessionalDashboard() {
               <LineChart data={chartDataFormatted} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.2)" />
                 <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#3b82f6" style={{ fontSize: '12px' }} label={{ value: 'Revenue (ETB)', angle: -90, position: 'insideLeft' }} />
+                <YAxis stroke="#3b82f6" style={{ fontSize: '12px' }} label={{ value: 'Real Revenue (ETB)', angle: -90, position: 'insideLeft' }} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.9)', border: '1px solid #3b82f6', borderRadius: '8px' }}
                   labelStyle={{ color: '#fff' }}
                   formatter={(value: any, name: string) => {
-                    if (name === 'revenue') return [formatCurrency(value), 'Revenue (ETB)']
+                    if (name === 'revenue') return [formatCurrency(value), 'Real Revenue (ETB)']
                     return [Math.round(value), 'Games Played']
                   }}
                 />
@@ -356,6 +428,7 @@ export default function ProfessionalDashboard() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {hasAny('users_view','users_manage') && (
           <Link href="/mgmt-portal-x7k9p2/users" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-colors group relative">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center group-hover:bg-cyan-500/30 transition-colors">
@@ -369,7 +442,9 @@ export default function ProfessionalDashboard() {
               </div>
             </div>
           </Link>
+          )}
 
+          {hasAny('games_view','games_manage') && (
           <Link href="/mgmt-portal-x7k9p2/games" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-colors group relative">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center group-hover:bg-green-500/30 transition-colors">
@@ -383,7 +458,9 @@ export default function ProfessionalDashboard() {
               </div>
             </div>
           </Link>
+          )}
 
+          {hasAny('withdrawals_view','withdrawals_manage') && (
           <Link href="/mgmt-portal-x7k9p2/withdrawals" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-yellow-500/50 transition-colors group relative">
             {stats.pendingWithdrawals > 0 && (
               <div className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
@@ -402,7 +479,9 @@ export default function ProfessionalDashboard() {
               </div>
             </div>
           </Link>
+          )}
 
+          {hasAny('settings_view','settings_manage') && (
           <Link href="/mgmt-portal-x7k9p2/settings" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-purple-500/50 transition-colors group relative">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center group-hover:bg-purple-500/30 transition-colors">
@@ -417,6 +496,7 @@ export default function ProfessionalDashboard() {
               </div>
             </div>
           </Link>
+          )}
         </div>
         </main>
       </div>

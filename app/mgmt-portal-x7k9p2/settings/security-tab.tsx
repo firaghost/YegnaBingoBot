@@ -3,6 +3,9 @@
 
 import { useState, useEffect } from 'react'
 import { Lock, Users, Settings, Search, Plus, Save, Check, X, List } from 'lucide-react'
+import { AdminTable } from '../components/AdminTable'
+import { AdminEditModal } from '../components/AdminEditModal'
+import { CreateAdminCard } from '../components/CreateAdminCard'
 
 export function SecurityTab({
   isSuperAdmin,
@@ -28,7 +31,9 @@ export function SecurityTab({
   updateAdmin,
   admin,
 }: any) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'bypass' | 'whitelist' | 'admins' | 'audit'>('bypass')
+  const [activeTab, setActiveTab] = useState<'profile' | 'bypass' | 'whitelist' | 'admins' | 'audit'>('profile')
+  const [editingAdmin, setEditingAdmin] = useState<any>(null)
+  const [showEditModal, setShowEditModal] = useState(false)
 
   // Persist active tab to localStorage
   const handleTabChange = (tab: 'profile' | 'bypass' | 'whitelist' | 'admins' | 'audit') => {
@@ -52,16 +57,23 @@ export function SecurityTab({
     }
   }, [])
 
-  // Central permission catalog
+  // Central permission catalog (detailed)
   const PERMISSIONS: { key: string; label: string }[] = [
     { key: 'users_view', label: 'Users: View' },
     { key: 'users_manage', label: 'Users: Manage' },
+    { key: 'games_view', label: 'Games: View' },
     { key: 'games_manage', label: 'Games: Manage' },
+    { key: 'rooms_view', label: 'Rooms: View' },
+    { key: 'rooms_manage', label: 'Rooms: Manage' },
+    { key: 'banks_view', label: 'Banks: View' },
+    { key: 'banks_manage', label: 'Banks: Manage' },
+    { key: 'deposits_view', label: 'Deposits: View' },
     { key: 'deposits_manage', label: 'Deposits: Manage' },
+    { key: 'withdrawals_view', label: 'Withdrawals: View' },
     { key: 'withdrawals_manage', label: 'Withdrawals: Manage' },
     { key: 'transactions_view', label: 'Transactions: View' },
-    { key: 'rooms_manage', label: 'Rooms: Manage' },
     { key: 'broadcast_manage', label: 'Broadcast: Manage' },
+    { key: 'settings_view', label: 'Settings: View' },
     { key: 'settings_manage', label: 'Settings: Manage' },
     { key: 'maintenance_toggle', label: 'Maintenance: Toggle' },
     { key: 'whitelist_manage', label: 'Whitelist: Manage' },
@@ -259,74 +271,50 @@ export function SecurityTab({
       {/* ADMIN MANAGEMENT TAB */}
       {activeTab === 'admins' && isSuperAdmin && (
         <div className="space-y-6">
-          {/* Create New Admin */}
-          <div className="bg-gradient-to-br from-blue-950/40 via-slate-900 to-slate-900 rounded-2xl border border-blue-700/20 p-6 sm:p-8 shadow-xl">
-            <h3 className="text-2xl font-bold text-white mb-2">Create New Admin</h3>
-            <p className="text-slate-400 mb-6">Add a new admin account with specific role and permissions</p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">Username</label>
-                <input value={newAdmin.username || ''} onChange={e=>setNewAdmin({ ...newAdmin, username: e.target.value })} autoComplete="off" name="new_admin_username" placeholder="e.g., admin_user" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">Password</label>
-                <input value={newAdmin.password || ''} onChange={e=>setNewAdmin({ ...newAdmin, password: e.target.value })} autoComplete="new-password" name="new_admin_password" placeholder="Strong password" type="password" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">Role</label>
-                <select value={newAdmin.role || 'admin'} onChange={e=>setNewAdmin({ ...newAdmin, role: e.target.value })} className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-sm">
-                  <option value="admin">Admin</option>
-                  <option value="moderator">Moderator</option>
-                  <option value="super_admin">Super Admin</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">Telegram ID</label>
-                <input value={newAdmin.telegram_id || ''} onChange={e=>setNewAdmin({ ...newAdmin, telegram_id: e.target.value })} autoComplete="off" name="new_admin_telegram_id" placeholder="Optional" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 transition-all text-sm" />
-              </div>
-            </div>
+          <CreateAdminCard
+            newAdmin={newAdmin}
+            setNewAdmin={setNewAdmin}
+            onSubmit={createAdmin}
+            PERMISSIONS={PERMISSIONS}
+            PermissionChip={PermissionChip}
+          />
 
-            {/* Permissions for new admin */}
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">Permissions</label>
-              <div className="flex flex-wrap gap-2">
-                {PERMISSIONS.map(p => (
-                  <PermissionChip
-                    key={p.key}
-                    label={p.label}
-                    active={Boolean(newAdmin.permissions?.[p.key])}
-                    onClick={() =>
-                      setNewAdmin({
-                        ...newAdmin,
-                        permissions: { ...newAdmin.permissions, [p.key]: !Boolean(newAdmin.permissions?.[p.key]) },
-                      })
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-            <button onClick={createAdmin} className="w-full sm:w-auto px-8 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all duration-200 shadow-lg hover:shadow-blue-500/20 hover:shadow-xl flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" />
-              Create Admin
-            </button>
-          </div>
-
-          {/* Existing Admins */}
           <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-slate-700/50 p-6 sm:p-8 shadow-xl">
-            <h3 className="text-2xl font-bold text-white mb-6">Existing Admins ({admins.length})</h3>
-            {loadingAdmins ? (
-              <div className="text-slate-400 py-8 text-center">Loading admins…</div>
-            ) : admins.length === 0 ? (
-              <div className="text-slate-400 py-8 text-center">No admins found</div>
-            ) : (
-              <div className="space-y-4">
-                {admins.map((a: any) => (
-                  <AdminCard key={a.id} admin={a} setAdmins={setAdmins} updateAdmin={updateAdmin} PERMISSIONS={PERMISSIONS} PermissionChip={PermissionChip} />
-                ))}
-              </div>
-            )}
+            <h3 className="text-2xl font-bold text-white mb-6">Manage Admins</h3>
+            <AdminTable
+              admins={admins}
+              loading={loadingAdmins}
+              onEdit={(admin: any) => {
+                setEditingAdmin(admin)
+                setShowEditModal(true)
+              }}
+              onResetPassword={(admin: any) => {
+                setEditingAdmin(admin)
+                setShowEditModal(true)
+              }}
+              onDelete={(admin: any) => {
+                if (confirm(`Delete admin "${admin.username}"? This cannot be undone.`)) {
+                  // TODO: Implement delete
+                }
+              }}
+            />
           </div>
+
+          <AdminEditModal
+            admin={editingAdmin}
+            isOpen={showEditModal}
+            onClose={() => {
+              setShowEditModal(false)
+              setEditingAdmin(null)
+            }}
+            onSave={async (updatedAdmin: any) => {
+              await updateAdmin(updatedAdmin)
+              setShowEditModal(false)
+              setEditingAdmin(null)
+            }}
+            PERMISSIONS={PERMISSIONS}
+            PermissionChip={PermissionChip}
+          />
         </div>
       )}
 
@@ -352,7 +340,7 @@ function MyProfileEditor({ admin, onSave }: { admin: any; onSave: (p: any) => vo
     <div className="space-y-6">
       <div>
         <label className="block text-sm font-semibold text-slate-300 mb-3">Username</label>
-        <input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="off" name="profile_username" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 transition-all" />
+        <input value={username} onChange={e=>setUsername(e.target.value)} autoComplete="username" name="profile_username" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 transition-all" />
       </div>
 
       <div className="space-y-4 border-t border-slate-700 pt-6">
@@ -361,7 +349,7 @@ function MyProfileEditor({ admin, onSave }: { admin: any; onSave: (p: any) => vo
         <div>
           <label className="block text-sm font-semibold text-slate-300 mb-2">Current Password</label>
           <div className="relative">
-            <input value={oldPassword} onChange={e=>setOldPassword(e.target.value)} autoComplete="off" name="profile_current_password" type={showOld ? 'text' : 'password'} placeholder="Required to change password" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 transition-all" />
+            <input value={oldPassword} onChange={e=>setOldPassword(e.target.value)} autoComplete="current-password" name="profile_current_password" type={showOld ? 'text' : 'password'} placeholder="Required to change password" className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/20 transition-all" />
             <button type="button" onClick={()=>setShowOld(!showOld)} className="absolute right-3 top-3 text-slate-400 hover:text-slate-300">
               {showOld ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
             </button>
@@ -393,82 +381,6 @@ function MyProfileEditor({ admin, onSave }: { admin: any; onSave: (p: any) => vo
         <Save className="w-4 h-4" />
         Save Changes
       </button>
-    </div>
-  )
-}
-
-// Admin Card Component
-function AdminCard({ admin, setAdmins, updateAdmin, PERMISSIONS, PermissionChip }: any) {
-  const [showPassword, setShowPassword] = useState(false)
-
-  return (
-    <div className="bg-slate-900/40 border border-slate-700 rounded-xl p-6 hover:border-slate-600 transition-colors">
-      <div className="space-y-4">
-        {/* Basic Info Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div>
-            <label className="text-xs font-semibold text-slate-400 mb-2 block uppercase">Username</label>
-            <input
-              value={admin.username || ''}
-              onChange={(e:any)=> setAdmins((prev:any[]) => prev.map(x=> x.id===admin.id ? { ...x, username: e.target.value } : x))}
-              className="w-full bg-slate-700/50 border border-slate-600 rounded px-3 py-2 text-white text-sm focus:border-emerald-400 focus:outline-none transition-colors"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-400 mb-2 block uppercase">Role</label>
-            <select
-              value={admin.role}
-              onChange={(e:any)=> setAdmins((prev:any[]) => prev.map(x=> x.id===admin.id ? { ...x, role: e.target.value } : x))}
-              className="w-full bg-slate-700/50 border border-slate-600 rounded px-3 py-2 text-white text-sm focus:border-emerald-400 focus:outline-none transition-colors"
-            >
-              <option value="admin">Admin</option>
-              <option value="moderator">Moderator</option>
-              <option value="super_admin">Super Admin</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-400 mb-2 block uppercase">New Password</label>
-            <div className="relative">
-              <input
-                placeholder="(optional)"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                name={`admin_new_password_${admin.id}`}
-                onChange={(e:any)=> setAdmins((prev:any[]) => prev.map(x=> x.id===admin.id ? { ...x, new_password: e.target.value } : x))}
-                className="w-full bg-slate-700/50 border border-slate-600 rounded px-3 py-2 text-white text-sm focus:border-emerald-400 focus:outline-none transition-colors"
-              />
-              <button type="button" onClick={()=>setShowPassword(!showPassword)} className="absolute right-2 top-2 text-slate-400 hover:text-slate-300">
-                {showPassword ? <X className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-              </button>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-400 mb-2 block uppercase">Telegram ID</label>
-            <div className="bg-slate-700/30 rounded px-3 py-2 text-slate-300 text-sm">{admin.telegram_id || '—'}</div>
-          </div>
-          <div className="flex items-end">
-            <button onClick={()=>updateAdmin(admin)} className="w-full px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-all flex items-center justify-center gap-1">
-              <Save className="w-3 h-3" />
-              Save
-            </button>
-          </div>
-        </div>
-
-        {/* Permissions */}
-        <div className="border-t border-slate-700 pt-4">
-          <label className="block text-xs font-semibold text-slate-300 mb-3 uppercase">Permissions</label>
-          <div className="flex flex-wrap gap-2">
-            {PERMISSIONS.map((p: any) => (
-              <PermissionChip
-                key={p.key}
-                label={p.label}
-                active={Boolean(admin.permissions?.[p.key])}
-                onClick={() => setAdmins((prev:any[]) => prev.map(x => x.id===admin.id ? { ...x, permissions: { ...(x.permissions||{}), [p.key]: !Boolean(x.permissions?.[p.key]) } } : x))}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

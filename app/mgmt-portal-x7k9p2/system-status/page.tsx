@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getAllConfig } from '@/lib/admin-config'
+import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
 export default function SystemStatusPage() {
+  const { admin, isAuthenticated, loading: authLoading } = useAdminAuth()
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -17,6 +19,9 @@ export default function SystemStatusPage() {
   })
   const [config, setConfig] = useState<any>({})
   const [loading, setLoading] = useState(true)
+
+  const hasPerm = (key: string) => admin?.role === 'super_admin' || Boolean((admin?.permissions || {})[key])
+  const canView = hasPerm('settings_view') || hasPerm('settings_manage')
 
   useEffect(() => {
     fetchSystemStatus()
@@ -99,6 +104,18 @@ export default function SystemStatusPage() {
           </svg>
         )
     }
+  }
+
+  if (authLoading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Loading…</div>
+  if (!isAuthenticated || !canView) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-2">403 - Forbidden</h1>
+          <p className="text-slate-400">You do not have permission to access System Status.</p>
+        </div>
+      </div>
+    )
   }
 
   return (

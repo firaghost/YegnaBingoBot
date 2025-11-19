@@ -13,7 +13,11 @@ type TabType = 'system' | 'financial' | 'bonuses' | 'notifications' | 'support' 
 
 export default function AdminSettings() {
   const [activeTab, setActiveTab] = useLocalStorage<TabType>('settings_active_tab', 'system')
-  const { admin, isSuperAdmin } = useAdminAuth()
+  const { admin, isSuperAdmin, isAuthenticated, loading: authLoading } = useAdminAuth()
+
+  const hasPerm = (key: string) => admin?.role === 'super_admin' || Boolean((admin?.permissions || {})[key])
+  const canView = hasPerm('settings_view') || hasPerm('settings_manage')
+  const canManage = hasPerm('settings_manage')
   const [settings, setSettings] = useState({
     siteName: 'BingoX',
     maintenanceMode: false,
@@ -362,6 +366,18 @@ export default function AdminSettings() {
     </div>
   )
 
+  if (authLoading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Loading…</div>
+  if (!isAuthenticated || !canView) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-2">403 - Forbidden</h1>
+          <p className="text-slate-400">You do not have permission to access Settings.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Notification Toast */}
@@ -404,12 +420,13 @@ export default function AdminSettings() {
               )}
               <button
                 onClick={handleSave}
-                disabled={!hasChanges || isSaving}
+                disabled={!hasChanges || isSaving || !canManage}
                 className={`px-6 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 ${
-                  hasChanges && !isSaving
+                  hasChanges && !isSaving && canManage
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                     : 'bg-slate-700 text-slate-400 cursor-not-allowed'
                 }`}
+                title={!canManage ? 'You do not have permission to modify settings' : ''}
               >
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
@@ -657,30 +674,66 @@ export default function AdminSettings() {
 
           {/* Security */}
           {activeTab === 'security' && (
-            <SecurityTab
-              isSuperAdmin={isSuperAdmin}
-              bypassEnabled={bypassEnabled}
-              setBypass={setBypass}
-              wlUserIds={wlUserIds}
-              wlTgIds={wlTgIds}
-              wlUsernames={wlUsernames}
-              wlSearchTerm={wlSearchTerm}
-              setWlSearchTerm={setWlSearchTerm}
-              wlResults={wlResults}
-              searchWhitelistUsers={searchWhitelistUsers}
-              addToWhitelist={addToWhitelist}
-              removeFromWhitelist={removeFromWhitelist}
-              saveWhitelist={saveWhitelist}
-              wlSaving={wlSaving}
-              admins={admins}
-              loadingAdmins={loadingAdmins}
-              newAdmin={newAdmin}
-              setNewAdmin={setNewAdmin}
-              setAdmins={setAdmins}
-              createAdmin={createAdmin}
-              updateAdmin={updateAdmin}
-              admin={admin}
-            />
+            <>
+              {/* Withdrawal Security Controls */}
+              <div className="space-y-6 mb-6">
+                <div className="bg-slate-800/50 backdrop-blur-md rounded-2xl border border-slate-700/50 p-6 sm:p-8 shadow-xl">
+                  <h3 className="text-2xl font-bold text-white mb-2">Withdrawal Security</h3>
+                  <p className="text-slate-400 mb-6">Protect withdrawals with OTP and per-IP rate limits.</p>
+                  <div className="space-y-6">
+                    <SettingToggle
+                      label="Require OTP On Withdrawal"
+                      value={settings.requireOtpOnWithdrawal}
+                      onChange={(value: boolean) => setSettings({ ...settings, requireOtpOnWithdrawal: value })}
+                      description="When enabled, users must verify an OTP code to submit a withdrawal."
+                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      <SettingInput
+                        label="IP Withdraw Max Requests / Minute"
+                        value={settings.ipWithdrawMaxPerMin}
+                        onChange={(e: any) => setSettings({ ...settings, ipWithdrawMaxPerMin: e.target.value })}
+                        type="number"
+                        description="Maximum number of withdrawal requests allowed per IP within the window."
+                      />
+                      <SettingInput
+                        label="IP Withdraw Window (seconds)"
+                        value={settings.ipWithdrawWindowSeconds}
+                        onChange={(e: any) => setSettings({ ...settings, ipWithdrawWindowSeconds: e.target.value })}
+                        type="number"
+                        description="Time window used for per-IP withdrawal throttling."
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500">Use the Save Changes button at the top to persist these settings.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Existing Security Sections */}
+              <SecurityTab
+                isSuperAdmin={isSuperAdmin}
+                bypassEnabled={bypassEnabled}
+                setBypass={setBypass}
+                wlUserIds={wlUserIds}
+                wlTgIds={wlTgIds}
+                wlUsernames={wlUsernames}
+                wlSearchTerm={wlSearchTerm}
+                setWlSearchTerm={setWlSearchTerm}
+                wlResults={wlResults}
+                searchWhitelistUsers={searchWhitelistUsers}
+                addToWhitelist={addToWhitelist}
+                removeFromWhitelist={removeFromWhitelist}
+                saveWhitelist={saveWhitelist}
+                wlSaving={wlSaving}
+                admins={admins}
+                loadingAdmins={loadingAdmins}
+                newAdmin={newAdmin}
+                setNewAdmin={setNewAdmin}
+                setAdmins={setAdmins}
+                createAdmin={createAdmin}
+                updateAdmin={updateAdmin}
+                admin={admin}
+              />
+            </>
           )}
         </div>
       </div>
