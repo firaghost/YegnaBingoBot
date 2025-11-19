@@ -1,9 +1,11 @@
 "use client"
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+
+type BasicUser = { id: string; username: string }
 
 export default function AdminGamesPage() {
   const [allGames, setAllGames] = useState<any[]>([])
@@ -13,6 +15,7 @@ export default function AdminGamesPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const isFetchingRef = useRef(false)
 
   useEffect(() => {
     fetchGames()
@@ -27,99 +30,113 @@ export default function AdminGamesPage() {
 
   const fetchGames = async () => {
     try {
+      if (isFetchingRef.current) return
+      isFetchingRef.current = true
+
       const { data, error } = await supabase
         .from('games')
         .select(`
-          *,
+          id, status, created_at, started_at, ended_at, game_status,
+          players, called_numbers, winner_id, latest_number, prize_pool,
           rooms (name, stake)
         `)
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
-      // Fetch player details and winner info for each game
-      const gamesWithDetails = await Promise.all(
-        (data || []).map(async (game: any) => {
-          let playerDetails: any[] = []
-          let winnerInfo: any = null
-          
-          if (game.players && game.players.length > 0) {
-            const { data: users } = await supabase
-              .from('users')
-              .select('id, username')
-              .in('id', game.players)
-            playerDetails = users || []
-          }
+      const gamesRaw = data || []
 
-          // Fetch winner info if game has a winner
-          if (game.winner_id) {
-            const { data: winner } = await supabase
-              .from('users')
-              .select('id, username')
-              .eq('id', game.winner_id)
-              .single()
-            winnerInfo = winner
-          }
+      // Build a unique set of user IDs (first 5 players per game + winners) to fetch once
+      const idSet = new Set<string>()
+      for (const g of gamesRaw) {
+        if (Array.isArray(g.players)) {
+          const top5 = g.players.slice(0, 5)
+          for (const pid of top5) idSet.add(pid)
+        }
+        if (g.winner_id) idSet.add(g.winner_id)
+      }
+      let userMap = new Map<string, any>()
+      if (idSet.size > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, username')
+          .in('id', Array.from(idSet))
+        if (users) userMap = new Map((users as BasicUser[]).map((u) => [u.id, u]))
+      }
 
-          // Use the new game_status column from database
-          // If not available, fall back to detection logic
-          let displayStatus = game.game_status
+      // First pass: compute lightweight list and update UI immediately
+      const baseList = gamesRaw.map((game: any) => {
+        // Use the new game_status column from database
+        let displayStatus = game.game_status
 
-          // Fallback: If game_status not set, detect it
-          if (!displayStatus) {
-            const isCanceled = game.status === 'finished' && 
-                              (!game.started_at || !game.ended_at) &&
-                              (!game.players || game.players.length === 0) &&
-                              (!game.called_numbers || game.called_numbers.length === 0) &&
-                              !game.winner_id
+        // Fallback detection when game_status missing
+        if (!displayStatus) {
+          const isCanceled = game.status === 'finished' &&
+            (!game.started_at || !game.ended_at) &&
+            (!game.players || game.players.length === 0) &&
+            (!game.called_numbers || game.called_numbers.length === 0) &&
+            !game.winner_id
 
-            const isIncomplete = game.status === 'finished' && 
-                                game.started_at && 
-                                game.ended_at &&
-                                !game.winner_id &&
-                                game.players && 
-                                game.players.length > 0
+          const isIncomplete = game.status === 'finished' &&
+            game.started_at &&
+            game.ended_at &&
+            !game.winner_id &&
+            game.players &&
+            game.players.length > 0
 
-            if (isCanceled) {
-              displayStatus = 'finished_canceled'
-            } else if (isIncomplete) {
-              displayStatus = 'finished_no_winner'
-            } else if (game.status === 'finished' && game.winner_id) {
-              displayStatus = 'finished_winner'
-            } else {
-              displayStatus = game.status
-            }
-          }
+          if (isCanceled) displayStatus = 'finished_canceled'
+          else if (isIncomplete) displayStatus = 'finished_no_winner'
+          else if (game.status === 'finished' && game.winner_id) displayStatus = 'finished_winner'
+          else displayStatus = game.status
+        }
 
-          // Safety correction for misclassified rows (avoid showing many fake "active")
-          const calledCount = Array.isArray(game.called_numbers) ? game.called_numbers.length : 0
-          const playerCount = Array.isArray(game.players) ? game.players.length : 0
-          const hasLatest = !!game.latest_number
-          if (displayStatus === 'active' && calledCount === 0 && !hasLatest) {
-            // If there are no called numbers yet and no latest number, it's effectively still waiting
-            displayStatus = 'waiting'
-          }
-          if (displayStatus === 'active' && playerCount === 0) {
-            // No players cannot be truly active
-            displayStatus = 'waiting'
-          }
+        // Safety: hide impossible "active" rows (0 players and no calls/latest) to prevent double-counting in Waiting
+        const calledCount = Array.isArray(game.called_numbers) ? game.called_numbers.length : 0
+        const playerCount = Array.isArray(game.players) ? game.players.length : 0
+        const hasLatest = !!game.latest_number
+        const impossibleActive = (game.status === 'active') && (playerCount === 0) && (calledCount === 0) && !hasLatest
+        if (impossibleActive) return null
 
-          return {
-            ...game,
-            player_count: game.players?.length || 0,
-            player_details: playerDetails,
-            winner_info: winnerInfo,
-            display_status: displayStatus,
-            net_prize: game.net_prize || 0
-          }
-        })
-      )
+        // Hide empty waiting rows (0 players) to avoid showing phantom waiting games
+        if (game.status === 'waiting' && playerCount === 0) return null
+
+        // Remove empty canceled games from the UI (never started, no players, no calls)
+        const shouldHide = game.status === 'finished' &&
+          (!game.started_at || !game.ended_at) &&
+          (!game.players || game.players.length === 0) &&
+          (!game.called_numbers || game.called_numbers.length === 0) &&
+          !game.winner_id
+        if (shouldHide) return null
+
+        return {
+          ...game,
+          player_count: playerCount,
+          player_details: [],
+          winner_info: null,
+          display_status: displayStatus,
+          net_prize: game.net_prize || 0,
+        }
+      }).filter(Boolean) as any[]
+
+      // Update UI fast with base list
+      setAllGames(baseList)
+
+      // Second pass: enrich with usernames (non-blocking)
+      const gamesWithDetails = baseList.map((game: any) => {
+        const playerDetails = (Array.isArray(game.players) ? game.players : [])
+          .slice(0, 5)
+          .map((id: string) => userMap.get(id))
+          .filter(Boolean)
+        const winnerInfo = game.winner_id ? userMap.get(game.winner_id) || null : null
+        return { ...game, player_details: playerDetails, winner_info: winnerInfo }
+      })
 
       setAllGames(gamesWithDetails)
     } catch (error) {
       console.error('Error fetching games:', error)
     } finally {
       setLoading(false)
+      isFetchingRef.current = false
     }
   }
 
@@ -128,7 +145,13 @@ export default function AdminGamesPage() {
 
     if (filter !== 'all') {
       if (filter === 'finished') {
-        filtered = filtered.filter(g => g.display_status?.startsWith('finished'))
+        filtered = filtered.filter(g => g.display_status === 'finished_winner' || g.display_status === 'finished_no_winner')
+      } else if (filter === 'waiting' || filter === 'countdown' || filter === 'active') {
+        // Match DB exactly for live states
+        filtered = filtered.filter(g => g.status === filter)
+        if (filter === 'waiting') {
+          filtered = filtered.filter(g => (g.player_count || 0) > 0)
+        }
       } else {
         filtered = filtered.filter(g => g.display_status === filter)
       }
@@ -141,7 +164,15 @@ export default function AdminGamesPage() {
       )
     }
 
-    setGames(filtered)
+    // Deduplicate by id (safety)
+    const seen = new Set<string>()
+    const unique = filtered.filter((g) => {
+      if (seen.has(g.id)) return false
+      seen.add(g.id)
+      return true
+    })
+
+    setGames(unique)
   }
 
   const totalPages = Math.ceil(games.length / pageSize)
@@ -150,10 +181,10 @@ export default function AdminGamesPage() {
   // Calculate stats
   const stats = {
     total: allGames.length,
-    waiting: allGames.filter(g => g.display_status === 'waiting').length,
-    countdown: allGames.filter(g => g.display_status === 'countdown').length,
-    active: allGames.filter(g => g.display_status === 'active').length,
-    finished: allGames.filter(g => g.display_status?.startsWith('finished')).length,
+    waiting: allGames.filter(g => g.status === 'waiting' && (g.player_count || 0) > 0).length,
+    countdown: allGames.filter(g => g.status === 'countdown').length,
+    active: allGames.filter(g => g.status === 'active').length,
+    finished: allGames.filter(g => g.display_status === 'finished_winner' || g.display_status === 'finished_no_winner').length,
     totalPrize: allGames.reduce((sum, g) => sum + (g.prize_pool || 0), 0),
     totalPlayers: allGames.reduce((sum, g) => sum + (g.player_count || 0), 0),
   }
@@ -255,11 +286,32 @@ export default function AdminGamesPage() {
               const isNoWinner = game.display_status === 'finished_no_winner'
               const isFinishedWinner = game.display_status === 'finished_winner'
 
+              // Badge status: prefer raw status; otherwise derive from counts, but NEVER override finished
+              const calledCount = Array.isArray(game.called_numbers) ? game.called_numbers.length : 0
+              const playerCount = typeof game.player_count === 'number' ? game.player_count : (Array.isArray(game.players) ? game.players.length : 0)
+              const isFinishedDisplay = typeof game.display_status === 'string' && game.display_status.startsWith('finished')
+              const isFinishedRaw = game.status === 'finished' || !!game.winner_id || !!game.ended_at || isFinishedDisplay
+              let liveStatus: 'waiting' | 'countdown' | 'active' | null = null
+              if (!isFinishedRaw) {
+                if (game.status === 'waiting' || game.status === 'countdown' || game.status === 'active') {
+                  liveStatus = game.status as 'waiting' | 'countdown' | 'active'
+                } else if (!isCanceled && !isNoWinner && !isFinishedWinner) {
+                  // Heuristic for new schemas only when not finished
+                  if (calledCount > 0) liveStatus = 'active'
+                  else if (playerCount > 0) liveStatus = 'waiting'
+                }
+              }
+              const finishedKey = game.winner_id ? 'finished_winner' : 'finished_no_winner'
+              const badgeKey = liveStatus ?? (isCanceled ? 'finished_canceled' : isNoWinner ? 'finished_no_winner' : isFinishedWinner ? 'finished_winner' : isFinishedRaw ? finishedKey : 'other')
+              const badgeText = liveStatus
+                ? (liveStatus.charAt(0).toUpperCase() + liveStatus.slice(1))
+                : (isCanceled ? 'Canceled' : isNoWinner ? 'No Winner' : isFinishedWinner ? 'Finished' : isFinishedRaw ? (game.winner_id ? 'Finished' : 'No Winner') : 'Other')
+
               return (
               <div key={game.id} className={`bg-slate-800/50 backdrop-blur-md rounded-lg border p-4 transition-all ${
                 isCanceled ? 'border-orange-500/50 shadow-lg shadow-orange-500/20' :
                 isNoWinner ? 'border-red-500/50 shadow-lg shadow-red-500/20' :
-                game.display_status === 'active' ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/20' :
+                (liveStatus === 'active') ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/20' :
                 isFinishedWinner ? 'border-cyan-500/30' :
                 'border-slate-700/50'
               }`}>
@@ -272,14 +324,14 @@ export default function AdminGamesPage() {
                         <p className="text-xs text-slate-400">{formatCurrency(game.rooms?.stake || 0)} entry</p>
                       </div>
                       <span className={`px-2 py-1 rounded text-xs font-semibold whitespace-nowrap ${
-                        isCanceled ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                        isNoWinner ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                        game.display_status === 'waiting' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                        game.display_status === 'countdown' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                        game.display_status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse' :
+                        badgeKey === 'finished_canceled' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                        badgeKey === 'finished_no_winner' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                        badgeKey === 'waiting' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                        badgeKey === 'countdown' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                        badgeKey === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse' :
                         'bg-slate-500/20 text-slate-400 border border-slate-500/30'
                       }`}>
-                        {isCanceled ? 'Canceled' : isNoWinner ? 'No Winner' : game.display_status.charAt(0).toUpperCase() + game.display_status.slice(1)}
+                        {badgeText}
                       </span>
                     </div>
                     
@@ -333,7 +385,7 @@ export default function AdminGamesPage() {
 
                   {/* Actions */}
                   <div className="flex flex-col gap-2 w-full sm:w-auto">
-                    {game.display_status === 'active' && (
+                    {(!isFinishedRaw && liveStatus === 'active') && (
                       <Link
                         href={`/mgmt-portal-x7k9p2/games/${game.id}`}
                         className="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-emerald-500/30 text-sm text-center"

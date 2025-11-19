@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
@@ -16,6 +16,10 @@ export default function AdminGameViewer() {
   const [players, setPlayers] = useState<any[]>([])
   const [calledNumbers, setCalledNumbers] = useState<number[]>([])
   const [latestNumber, setLatestNumber] = useState<any>(null)
+  const [playerMarkings, setPlayerMarkings] = useState<Map<number, number>>(new Map()) // number -> playerIndex
+  const [endCountdown, setEndCountdown] = useState<number | null>(null)
+  const countdownRef = useRef<any>(null)
+  const [ending, setEnding] = useState(false)
   
   useEffect(() => {
     if (gameId) {
@@ -58,6 +62,27 @@ export default function AdminGameViewer() {
         if (playerData) {
           setPlayers(playerData)
         }
+
+        // Fetch player markings (who marked which numbers)
+        let markings: any[] | null = null
+        try {
+          const { data: mData } = await supabase
+            .from('player_markings')
+            .select('player_id, number')
+            .eq('game_id', gameId)
+          markings = mData || null
+        } catch {}
+
+        if (markings && markings.length > 0 && playerData) {
+          const markingMap = new Map<number, number>()
+          markings.forEach((m: any) => {
+            const playerIndex = playerData.findIndex((p: any) => p.id === m.player_id)
+            if (playerIndex !== -1) {
+              markingMap.set(m.number, playerIndex)
+            }
+          })
+          setPlayerMarkings(markingMap)
+        }
       }
 
       // Fetch winner info if game has a winner
@@ -76,6 +101,62 @@ export default function AdminGameViewer() {
       console.error('Error fetching game data:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Auto end: if all 75 numbers are called and there's no winner, start a 30s timer
+  useEffect(() => {
+    if (!game) return
+    const allCalled = (calledNumbers?.length || 0) >= 75
+    const noWinner = !game.winner_id
+    const isActive = game.status === 'active'
+    if (isActive && allCalled && noWinner && endCountdown == null) {
+      setEndCountdown(30)
+      countdownRef.current = setInterval(() => {
+        setEndCountdown((prev) => {
+          if (prev == null) return prev
+          if (prev <= 1) {
+            clearInterval(countdownRef.current)
+            countdownRef.current = null
+            endGameNow('auto_end_no_claim')
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+
+    // Stop countdown if game ends or becomes inactive
+    if ((!isActive || game.winner_id) && countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
+      setEndCountdown(null)
+    }
+    return () => {}
+  }, [game?.status, game?.winner_id, calledNumbers?.length])
+
+  // End game immediately (admin control)
+  const endGameNow = async (reason: string = 'manual_end') => {
+    if (!gameId || ending) return
+    try {
+      setEnding(true)
+      // Try extended update first (if columns exist)
+      const { error: err1 } = await supabase
+        .from('games')
+        .update({ status: 'finished', ended_at: new Date().toISOString(), game_status: 'finished_no_winner', end_reason: reason })
+        .eq('id', gameId)
+      if (err1) {
+        // Fallback to minimal update (status + ended_at only)
+        await supabase
+          .from('games')
+          .update({ status: 'finished', ended_at: new Date().toISOString() })
+          .eq('id', gameId)
+      }
+      await fetchGameData()
+    } catch (e) {
+      console.error('Failed to end game:', e)
+    } finally {
+      setEnding(false)
     }
   }
 
@@ -363,6 +444,17 @@ export default function AdminGameViewer() {
               </div>
             </div>
             <div className="flex items-center gap-2 text-xs">
+              {endCountdown != null && (
+                <span className="px-2 py-1 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 font-semibold">Auto-end in {endCountdown}s</span>
+              )}
+              <button
+                onClick={() => endGameNow('admin_manual_end')}
+                className="px-3 py-1.5 rounded bg-red-600/20 text-red-300 border border-red-600/30 hover:bg-red-600/30 transition-colors font-semibold"
+                disabled={ending}
+                title="Force end this game"
+              >
+                {ending ? 'Ending…' : 'End Now'}
+              </button>
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
               <span className="text-slate-300">Live</span>
             </div>
@@ -429,9 +521,9 @@ export default function AdminGameViewer() {
               <h3 className="text-sm font-bold text-white mb-4 text-center">Bingo Board</h3>
               
               {/* BINGO Header */}
-              <div className="grid grid-cols-5 gap-1 mb-3">
+              <div className="grid grid-cols-5 gap-0.5 mb-2 w-full">
                 {['B', 'I', 'N', 'G', 'O'].map((letter, index) => (
-                  <div key={letter} className={`text-center font-black text-lg ${
+                  <div key={letter} className={`text-center font-bold text-sm ${
                     ['text-red-400', 'text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'][index]
                   }`}>
                     {letter}
@@ -439,26 +531,31 @@ export default function AdminGameViewer() {
                 ))}
               </div>
 
-              {/* Numbers Grid - Compact */}
-              <div className="grid grid-cols-5 gap-1 mb-4">
+              {/* Numbers Grid - Fits horizontally under BINGO (fixed height) */}
+              <div className="grid grid-cols-5 gap-0.5 mb-3 w-full h-[420px] md:h-[520px]">
                 {Object.entries(bingoNumbers).map(([letter, numbers]) => (
-                  <div key={letter} className="space-y-1">
+                  <div key={letter} className="grid" style={{ gridTemplateRows: 'repeat(15, minmax(0, 1fr))', rowGap: '2px' }}>
                     {numbers.map((number) => {
                       const isCalled = calledNumbers.includes(number)
                       const isLatest = latestNumber?.number === number
+                      const playerIndex = playerMarkings.get(number)
+                      const playerColor = playerIndex !== undefined ? playerColors[playerIndex % playerColors.length] : null
                       
                       return (
                         <div
                           key={number}
                           className={`
-                            w-full aspect-square flex items-center justify-center rounded text-xs font-bold transition-all duration-300
-                            ${isCalled 
-                              ? isLatest 
-                                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105 animate-pulse' 
-                                : 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white'
+                            w-full h-full flex items-center justify-center rounded text-[10px] sm:text-xs font-bold transition-all duration-300 relative
+                            ${isLatest 
+                              ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-110 animate-pulse' 
+                              : isCalled && playerColor
+                              ? `bg-gradient-to-br ${playerColor} text-white shadow-sm`
+                              : isCalled
+                              ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white'
                               : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50'
                             }
                           `}
+                          title={playerIndex !== undefined ? `Marked by Player ${playerIndex + 1}` : ''}
                         >
                           {number}
                         </div>
@@ -469,15 +566,22 @@ export default function AdminGameViewer() {
               </div>
 
               {/* Legend */}
-              <div className="flex justify-center gap-4 text-xs">
+              <div className="flex flex-wrap justify-center gap-3 text-xs">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded"></div>
-                  <span className="text-slate-300">Called</span>
+                  <span className="text-slate-300">Called (No Player)</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded"></div>
                   <span className="text-slate-300">Latest</span>
                 </div>
+                <div className="text-slate-400">•</div>
+                {players.slice(0, 4).map((player, index) => (
+                  <div key={player.id} className="flex items-center gap-1.5">
+                    <div className={`w-3 h-3 bg-gradient-to-br ${playerColors[index % playerColors.length]} rounded`}></div>
+                    <span className="text-slate-300">{player.username}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
