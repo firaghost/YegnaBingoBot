@@ -187,44 +187,44 @@ export default function ProfessionalDashboard() {
   }
 
   const navItems = [
-    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: '👥', badge: null },
-    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: '🎮', badge: null },
-    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: '💰', badge: pendingDeposits },
-    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: '💸', badge: stats.pendingWithdrawals },
-    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: '💳', badge: null },
-    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: '🚪', badge: null },
-    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: '🏦', badge: null },
-    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: '⚙️', badge: null },
+    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: null, badge: pendingDeposits },
+    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: null, badge: stats.pendingWithdrawals },
+    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: null, badge: null },
   ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col lg:flex-row">
       {/* Side Navigation */}
-      <aside className="w-full lg:w-64 bg-slate-800/50 backdrop-blur-md border-b lg:border-b-0 lg:border-r border-slate-700/50 sticky top-0 lg:h-screen overflow-y-auto lg:overflow-y-auto">
-        <div className="p-6 border-b border-slate-700/50">
+      <aside className="w-full lg:w-64 bg-slate-800/50 backdrop-blur-md border-b lg:border-b-0 lg:border-r border-slate-700/50 sticky top-0 lg:h-screen overflow-y-auto lg:overflow-y-auto flex flex-col lg:flex-col">
+        <div className="p-6 border-b border-slate-700/50 hidden lg:block">
           <h2 className="text-xl font-bold text-white">BingoX Admin</h2>
           <p className="text-slate-400 text-xs mt-1">Management Portal</p>
         </div>
-        <nav className="p-4 space-y-2 lg:space-y-2 flex lg:flex-col gap-2 lg:gap-0 overflow-x-auto lg:overflow-x-visible">
+        <nav className="p-2 lg:p-4 flex lg:flex-col gap-1 lg:gap-2 flex-wrap lg:flex-nowrap justify-center lg:justify-start items-center lg:items-stretch">
           {navItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className="flex items-center justify-between px-3 lg:px-4 py-2 lg:py-3 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors group relative whitespace-nowrap lg:whitespace-normal"
+              className="flex items-center justify-center lg:justify-between px-2 lg:px-4 py-2 lg:py-3 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors group relative"
             >
               <div className="flex items-center gap-2 lg:gap-3">
                 <span className="text-lg lg:text-xl">{item.icon}</span>
-                <span className="font-medium text-sm lg:text-base hidden sm:inline">{item.label}</span>
+                <span className="font-medium text-sm lg:text-base hidden lg:inline">{item.label}</span>
               </div>
               {item.badge !== null && item.badge > 0 && (
-                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                   {item.badge}
                 </span>
               )}
             </Link>
           ))}
         </nav>
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-700/50 bg-slate-800/50">
+        <div className="p-4 border-t border-slate-700/50 bg-slate-800/50 w-full mt-auto">
           <button
             onClick={logout}
             className="w-full px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg border border-red-500/30 transition-colors text-sm font-medium"

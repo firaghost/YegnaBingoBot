@@ -12,19 +12,68 @@ type StatusFilter = 'all' | 'active' | 'pending' | 'inactive'
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [showUserModal, setShowUserModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletingUser, setDeletingUser] = useState(false)
-  const [sortField, setSortField] = useState<SortField>('created_at')
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [pageSize, setPageSize] = useState(50)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userMgmt_pageSize')
+      return saved ? parseInt(saved) : 50
+    }
+    return 50
+  })
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userMgmt_currentPage')
+      return saved ? parseInt(saved) : 1
+    }
+    return 1
+  })
   const [userGames, setUserGames] = useState<any[]>([])
   const [loadingGames, setLoadingGames] = useState(false)
   const [showGameHistory, setShowGameHistory] = useState(false)
+  const [userTransactions, setUserTransactions] = useState<any[]>([])
+  const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('userMgmt_searchTerm') || ''
+    }
+    return ''
+  })
+  const [sortField, setSortField] = useState<SortField>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userMgmt_sortField')
+      return (saved as SortField) || 'created_at'
+    }
+    return 'created_at'
+  })
+  const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userMgmt_sortOrder')
+      return (saved as SortOrder) || 'desc'
+    }
+    return 'desc'
+  })
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('userMgmt_statusFilter')
+      return (saved as StatusFilter) || 'all'
+    }
+    return 'all'
+  })
+
+  // Save preferences to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('userMgmt_pageSize', pageSize.toString())
+      localStorage.setItem('userMgmt_currentPage', currentPage.toString())
+      localStorage.setItem('userMgmt_searchTerm', searchTerm)
+      localStorage.setItem('userMgmt_sortField', sortField)
+      localStorage.setItem('userMgmt_sortOrder', sortOrder)
+      localStorage.setItem('userMgmt_statusFilter', statusFilter)
+    }
+  }, [pageSize, currentPage, searchTerm, sortField, sortOrder, statusFilter])
 
   useEffect(() => {
     fetchUsers()
@@ -39,14 +88,35 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100)
+      // Fetch ALL users with pagination (Supabase has 1000 row limit per query)
+      let allUsers: any[] = []
+      let page = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (error) throw error
-      setUsers(data || [])
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (error) throw error
+
+        if (!data || data.length === 0) {
+          hasMore = false
+        } else {
+          allUsers = [...allUsers, ...data]
+          page++
+          // Stop if we got less than pageSize (means we reached the end)
+          if (data.length < pageSize) {
+            hasMore = false
+          }
+        }
+      }
+
+      console.log(`Fetched ${allUsers.length} total users (across ${page} pages)`)
+      setUsers(allUsers)
     } catch (error) {
       console.error('Error fetching users:', error)
     } finally {
@@ -134,7 +204,7 @@ export default function AdminUsersPage() {
   const fetchUserGames = async (userId: string) => {
     setLoadingGames(true)
     try {
-      // Fetch ALL finished games first
+      // Fetch ALL finished games first (no filter)
       const { data: allGames, error } = await supabase
         .from('games')
         .select('*')
@@ -151,28 +221,59 @@ export default function AdminUsersPage() {
         return isPlayer
       })
       
-      console.log(`Total finished games: ${allGames?.length || 0}`)
+      console.log(`Total finished games in DB: ${allGames?.length || 0}`)
       console.log(`Games where user ${userId} is a player: ${playerGames.length}`)
       console.log(`User games:`, playerGames.map((g: any) => ({
         id: g.id.slice(0, 8),
         players: g.players?.length || 0,
-        winner: g.winner_id === userId ? 'YES' : 'NO'
+        winner: g.winner_id === userId ? 'YES' : 'NO',
+        stake: g.stake,
+        net_prize: g.net_prize
       })))
       
       setUserGames(playerGames)
-      setShowGameHistory(true)
     } catch (error) {
       console.error('Error fetching user games:', error)
+      console.error('Error details:', error)
       alert('Failed to load game history')
     } finally {
       setLoadingGames(false)
     }
   }
 
+  // Fetch recent transactions for a user
+  const fetchUserTransactions = async (userId: string) => {
+    setLoadingTransactions(true)
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(100)
+
+      if (error) throw error
+      setUserTransactions(data || [])
+    } catch (error) {
+      console.error('Error fetching user transactions:', error)
+    } finally {
+      setLoadingTransactions(false)
+    }
+  }
+
+  // Open history modal and load data in parallel
+  const openUserHistory = (user: any) => {
+    setSelectedUser(user)
+    setShowGameHistory(true)
+    setUserGames([])
+    setUserTransactions([])
+    fetchUserGames(user.id)
+    fetchUserTransactions(user.id)
+  }
+
   const stats = {
     total: users.length,
-    active: users.filter(u => u.status === 'active').length,
-    pending: users.filter(u => u.status === 'pending').length,
+    active: users.length, // All users are active (no approval system)
     totalBalance: users.reduce((sum, u) => sum + (u.balance || 0), 0),
     totalGames: users.reduce((sum, u) => sum + (u.games_played || 0), 0),
     totalWins: users.reduce((sum, u) => sum + (u.games_won || 0), 0),
@@ -241,10 +342,6 @@ export default function AdminUsersPage() {
           <div className="bg-gradient-to-br from-emerald-900/30 to-slate-900 rounded-lg border border-emerald-700/30 p-3 sm:p-4 hover:border-emerald-600/50 transition-all">
             <div className="text-xs text-emerald-400 mb-1">Active</div>
             <div className="text-xl sm:text-2xl font-bold text-emerald-400">{stats.active}</div>
-          </div>
-          <div className="bg-gradient-to-br from-yellow-900/30 to-slate-900 rounded-lg border border-yellow-700/30 p-3 sm:p-4 hover:border-yellow-600/50 transition-all">
-            <div className="text-xs text-yellow-400 mb-1">Pending</div>
-            <div className="text-xl sm:text-2xl font-bold text-yellow-400">{stats.pending}</div>
           </div>
           <div className="bg-gradient-to-br from-cyan-900/30 to-slate-900 rounded-lg border border-cyan-700/30 p-3 sm:p-4 hover:border-cyan-600/50 transition-all">
             <div className="text-xs text-cyan-400 mb-1">With Phone</div>
@@ -372,7 +469,6 @@ export default function AdminUsersPage() {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">
                     <div className="flex items-center gap-2">Lost</div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Status</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('created_at')}>
                     <div className="flex items-center gap-2">Joined <SortIcon field="created_at" /></div>
                   </th>
@@ -427,15 +523,6 @@ export default function AdminUsersPage() {
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_played || 0}</td>
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_won || 0}</td>
                       <td className="px-6 py-4 text-red-400 font-medium">{(user.games_played || 0) - (user.games_won || 0)}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
-                          user.status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                          user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                          'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}>
-                          {user.status || 'pending'}
-                        </span>
-                      </td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
@@ -452,8 +539,7 @@ export default function AdminUsersPage() {
                           </button>
                           <button
                             onClick={() => {
-                              setSelectedUser(user)
-                              fetchUserGames(user.id)
+                              openUserHistory(user)
                             }}
                             className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-purple-500/30"
                           >
@@ -569,13 +655,6 @@ export default function AdminUsersPage() {
                     <div className="font-semibold text-white text-lg">{user.username || 'Unknown'}</div>
                     <div className="text-xs text-slate-500">ID: {user.id.slice(0, 8)}</div>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
-                    user.status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                    user.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                    'bg-red-500/20 text-red-400 border-red-500/30'
-                  }`}>
-                    {user.status || 'pending'}
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
@@ -602,7 +681,13 @@ export default function AdminUsersPage() {
                 </div>
 
                 {/* Mobile Action Buttons */}
-                <div className="grid grid-cols-3 gap-2 pt-4 border-t border-slate-700/30">
+                <div className="grid grid-cols-4 gap-2 pt-4 border-t border-slate-700/30">
+                  <button
+                    onClick={() => openUserHistory(user)}
+                    className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-purple-500/30"
+                  >
+                    History
+                  </button>
                   <button
                     onClick={() => {
                       setSelectedUser(user)
@@ -796,43 +881,6 @@ export default function AdminUsersPage() {
                   )}
                 </div>
 
-                {/* Status */}
-                <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50 flex items-center justify-between">
-                  <div>
-                    <div className="text-slate-400 text-xs mb-1">Status</div>
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold border inline-block ${
-                      selectedUser.status === 'active' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                      selectedUser.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
-                      'bg-red-500/20 text-red-400 border-red-500/30'
-                    }`}>
-                      {selectedUser.status || 'pending'}
-                    </span>
-                  </div>
-                  {selectedUser.status === 'pending' && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const { error } = await supabase
-                            .from('users')
-                            .update({ status: 'active' })
-                            .eq('id', selectedUser.id)
-                          
-                          if (error) throw error
-                          
-                          setSelectedUser({ ...selectedUser, status: 'active' })
-                          fetchUsers()
-                          alert('User activated successfully!')
-                        } catch (error) {
-                          console.error('Error activating user:', error)
-                          alert('Failed to activate user')
-                        }
-                      }}
-                      className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded transition-colors border border-emerald-500/30"
-                    >
-                      Activate
-                    </button>
-                  )}
-                </div>
 
                 <div className="text-xs text-slate-500">Joined: {new Date(selectedUser.created_at).toLocaleDateString()}</div>
               </div>
@@ -856,7 +904,7 @@ export default function AdminUsersPage() {
                     </>
                   ) : (
                     <>
-                      📊 Game History ({userGames.length > 0 ? userGames.length : selectedUser.games_played || 0})
+                      Game History ({userGames.length > 0 ? userGames.length : selectedUser.games_played || 0})
                     </>
                   )}
                 </button>
@@ -974,7 +1022,7 @@ export default function AdminUsersPage() {
                   <p className="text-slate-400 text-sm">ID: {selectedUser.id.slice(0, 8)}</p>
                 </div>
                 <button
-                  onClick={() => setShowGameHistory(false)}
+                  onClick={() => { setShowGameHistory(false); setUserGames([]); setUserTransactions([]); }}
                   className="text-slate-400 hover:text-white transition-colors"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1014,6 +1062,7 @@ export default function AdminUsersPage() {
                       <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6 p-4 bg-slate-700/30 rounded-lg border border-slate-700/50">
                         <div>
                           <div className="text-slate-400 text-xs">Total Games</div>
+                          <div className="text-white font-bold text-lg">{playerGames.length}</div>
                         </div>
                         <div>
                           <div className="text-emerald-400 text-xs">Won</div>
@@ -1050,8 +1099,8 @@ export default function AdminUsersPage() {
                         <div>
                           <div className="text-orange-400 text-xs">Win Rate</div>
                           <div className="text-orange-400 font-bold text-lg">
-                            {userGames.length > 0 
-                              ? `${Math.round((userGames.filter(g => g.winner_id === selectedUser.id).length / userGames.length) * 100)}%`
+                            {playerGames.length > 0 
+                              ? `${Math.round((playerGames.filter(g => g.winner_id === selectedUser.id).length / playerGames.length) * 100)}%`
                               : '0%'
                             }
                           </div>
@@ -1077,11 +1126,6 @@ export default function AdminUsersPage() {
                           <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-center">
                             {/* Result */}
                             <div className="flex items-center gap-2">
-                              <div className={`text-lg font-bold ${
-                                isWinner ? 'text-emerald-400' : isPlayer ? 'text-red-400' : 'text-slate-400'
-                              }`}>
-                                {isWinner ? '🏆' : isPlayer ? '❌' : '👁️'}
-                              </div>
                               <div>
                                 <div className="text-xs text-slate-400">Result</div>
                                 <div className={`font-semibold text-sm ${
@@ -1129,12 +1173,41 @@ export default function AdminUsersPage() {
                       )
                     })}
                   </div>
+
+                  {/* Transactions List */}
+                  <div className="space-y-2 mt-8">
+                    <div className="text-sm font-semibold text-slate-300 mb-3">Recent Transactions</div>
+                    {loadingTransactions ? (
+                      <div className="flex items-center justify-center py-6 text-slate-400">
+                        <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Loading transactions...
+                      </div>
+                    ) : userTransactions.length === 0 ? (
+                      <div className="text-slate-400 text-sm">No transactions found</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {userTransactions.slice(0, 50).map((tx: any) => {
+                          const color = tx.type === 'win' ? 'text-emerald-400' : tx.type === 'stake' ? 'text-red-400' : tx.type === 'deposit' ? 'text-cyan-400' : 'text-yellow-400'
+                          return (
+                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-700/50 bg-slate-700/30">
+                              <div className="flex items-center gap-3">
+                                <span className={`text-sm font-semibold ${color}`}>{tx.type.toUpperCase()}</span>
+                                {tx.status && <span className={`text-xs px-2 py-0.5 rounded border ${tx.status === 'pending' ? 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{tx.status}</span>}
+                              </div>
+                              <div className="text-white font-semibold">{formatCurrency(Math.abs(Number(tx.amount) || 0))}</div>
+                              <div className="text-xs text-slate-400 whitespace-nowrap">{new Date(tx.created_at).toLocaleString()}</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
 
               <div className="mt-6 flex gap-3">
                 <button
-                  onClick={() => setShowGameHistory(false)}
+                  onClick={() => { setShowGameHistory(false); setUserGames([]); setUserTransactions([]); }}
                   className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-600/50"
                 >
                   Close
@@ -1145,5 +1218,4 @@ export default function AdminUsersPage() {
         )}
       </div>
     </div>
-  )
-}
+  )}

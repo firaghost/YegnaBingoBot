@@ -2,13 +2,15 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminGameViewer() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const gameId = params?.gameId as string
+  const viewMode = searchParams?.get('view') || 'live' // 'live' or 'history'
   const [game, setGame] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [players, setPlayers] = useState<any[]>([])
@@ -46,9 +48,29 @@ export default function AdminGameViewer() {
       setCalledNumbers(gameData.called_numbers || [])
       setLatestNumber(gameData.latest_number)
       
-      // Fetch players if available
-      if (gameData.players) {
-        setPlayers(gameData.players)
+      // Fetch player details if available
+      if (gameData.players && gameData.players.length > 0) {
+        const { data: playerData } = await supabase
+          .from('users')
+          .select('id, username')
+          .in('id', gameData.players)
+        
+        if (playerData) {
+          setPlayers(playerData)
+        }
+      }
+
+      // Fetch winner info if game has a winner
+      if (gameData.winner_id) {
+        const { data: winnerData } = await supabase
+          .from('users')
+          .select('id, username')
+          .eq('id', gameData.winner_id)
+          .single()
+        
+        if (winnerData) {
+          gameData.winner_info = winnerData
+        }
       }
     } catch (error) {
       console.error('Error fetching game data:', error)
@@ -69,6 +91,29 @@ export default function AdminGameViewer() {
   }
 
   const bingoNumbers = generateBingoNumbers()
+
+  // Compute a 5x5 boolean mask for the winning pattern string (row:X, column:Y, diag:main, diag:anti)
+  const getPatternMask = (pattern?: string | null): boolean[][] => {
+    const mask = Array(5).fill(null).map(() => Array(5).fill(false))
+    if (!pattern) return mask
+    const p = pattern.toLowerCase()
+    if (p.startsWith('row:')) {
+      const r = parseInt(p.split(':')[1] || '0')
+      if (!Number.isNaN(r) && r >= 0 && r < 5) {
+        for (let c = 0; c < 5; c++) mask[r][c] = true
+      }
+    } else if (p.startsWith('column:')) {
+      const c = parseInt(p.split(':')[1] || '0')
+      if (!Number.isNaN(c) && c >= 0 && c < 5) {
+        for (let r = 0; r < 5; r++) mask[r][c] = true
+      }
+    } else if (p === 'diag:main') {
+      for (let k = 0; k < 5; k++) mask[k][k] = true
+    } else if (p === 'diag:anti') {
+      for (let k = 0; k < 5; k++) mask[k][4 - k] = true
+    }
+    return mask
+  }
 
   if (loading) {
     return (
@@ -94,14 +139,191 @@ export default function AdminGameViewer() {
     )
   }
 
-  // Redirect if game is not active (canceled, finished, etc.)
+  // Show history view for finished games with winners
+  if ((viewMode === 'history' || game.status === 'finished') && game.winner_id) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+        {/* Header */}
+        <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <Link href="/mgmt-portal-x7k9p2/games" className="text-slate-400 hover:text-white transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </Link>
+                <div>
+                  <h1 className="text-xl font-bold text-white">{game.rooms?.name} - Game History</h1>
+                  <p className="text-xs text-slate-400">Finished Game</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <div className="w-2 h-2 rounded-full bg-slate-500"></div>
+                <span className="text-slate-300">Completed</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          {/* Winner Info - Top */}
+          <div className="bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 backdrop-blur-md rounded-lg border border-emerald-500/30 p-4 mb-6">
+            <p className="text-xs text-slate-400 mb-2">Winner</p>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-cyan-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                👑
+              </div>
+              <div>
+                <p className="text-white font-bold text-lg">{players.find(p => p.id === game.winner_id)?.username || game.winner_info?.username || 'Unknown'}</p>
+                <p className="text-sm text-emerald-400">{formatCurrency(game.net_prize || 0)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Winner's Bingo Card - How They Won (compact, like losing dialog) */}
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 mb-6">
+            <h3 className="text-sm font-bold text-white mb-3 text-center">How They Won</h3>
+            
+            {/* BINGO Header */}
+            <div className="grid grid-cols-5 gap-0.5 mb-2">
+              {['B', 'I', 'N', 'G', 'O'].map((letter, index) => (
+                <div key={letter} className={`text-center font-black text-sm ${
+                  ['text-red-400', 'text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'][index]
+                }`}>
+                  {letter}
+                </div>
+              ))}
+            </div>
+
+            {/* Winner's Card Grid - Compact */}
+            <div className="w-fit mx-auto grid grid-cols-5 gap-0.5 mb-3 bg-slate-900/30 p-2 rounded">
+              {game.winner_card && game.winner_card.map((row: any[], rowIndex: number) => 
+                row.map((number: number, colIndex: number) => {
+                  const isCalled = calledNumbers.includes(number)
+                  const isFreeSpace = number === 0
+                  const isWinningCell = getPatternMask(game.winner_pattern)[rowIndex]?.[colIndex]
+                  
+                  return (
+                    <div
+                      key={`${rowIndex}-${colIndex}`}
+                      className={`
+                        w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 flex items-center justify-center rounded text-[10px] sm:text-xs font-bold transition-all
+                        ${isWinningCell
+                          ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border border-emerald-400 shadow-md'
+                          : isFreeSpace
+                          ? 'bg-slate-600 text-slate-300'
+                          : isCalled
+                          ? 'bg-slate-600 text-slate-300'
+                          : 'bg-slate-700/50 text-slate-400'
+                        }
+                      `}
+                    >
+                      {isFreeSpace ? 'FREE' : number}
+                    </div>
+                  )
+                })
+              )}
+            </div>
+
+            <div className="flex gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded border border-emerald-400"></div>
+                <span className="text-slate-300">Marked & Called</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 bg-slate-600 rounded"></div>
+                <span className="text-slate-300">Free Space</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 bg-slate-700/50 rounded"></div>
+                <span className="text-slate-300">Not Called</span>
+              </div>
+            </div>
+          </div>
+
+
+          {/* Game Stats & Players - Side by Side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            {/* Game Stats */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <h3 className="text-sm font-bold text-white mb-3">Game Stats</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Players</span>
+                  <span className="text-white font-bold">{game.player_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Numbers Called</span>
+                  <span className="text-cyan-400 font-bold">{calledNumbers.length}/75</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Prize Pool</span>
+                  <span className="text-emerald-400 font-bold">{formatCurrency(game.prize_pool || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Entry Fee</span>
+                  <span className="text-slate-300 font-bold">{formatCurrency(game.rooms?.stake || 0)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* All Players */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <h3 className="text-sm font-bold text-white mb-3">Players ({players.length})</h3>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {players.map((player, index) => (
+                  <div key={player.id || index} className={`p-2 rounded-lg text-sm ${
+                    player.id === game.winner_id 
+                      ? 'bg-emerald-500/20 border border-emerald-500/30' 
+                      : 'bg-slate-700/30'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white">{player.username || `Player ${index + 1}`}</span>
+                      {player.id === game.winner_id && <span className="text-xs bg-emerald-500/50 text-emerald-200 px-2 py-0.5 rounded">Winner</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Called Numbers History */}
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+            <h3 className="text-sm font-bold text-white mb-3">Called Numbers ({calledNumbers.length})</h3>
+            <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+              {calledNumbers.map((number, index) => {
+                const letter = number <= 15 ? 'B' : number <= 30 ? 'I' : number <= 45 ? 'N' : number <= 60 ? 'G' : 'O'
+                return (
+                  <div
+                    key={`${number}-${index}`}
+                    className={`
+                      px-2 py-1 rounded text-xs font-bold whitespace-nowrap
+                      ${index === calledNumbers.length - 1
+                        ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white'
+                        : 'bg-slate-700/50 text-slate-300'
+                      }
+                    `}
+                  >
+                    {letter}-{number}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Redirect if game is not active or finished with winner
   if (game.status !== 'active') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-white mb-2">Game No Longer Active</h1>
-          <p className="text-gray-400 mb-4">This game has {game.status === 'finished' ? 'finished' : 'been canceled'}</p>
-          <Link href="/mgmt-portal-x7k9p2/games" className="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
+          <h1 className="text-2xl font-bold text-white mb-2">Game No Longer Available</h1>
+          <p className="text-slate-400 mb-4">This game has {game.status === 'finished' ? 'finished' : 'been canceled'}</p>
+          <Link href="/mgmt-portal-x7k9p2/games" className="inline-block bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-2 rounded-lg font-semibold transition-colors">
             ← Back to Games
           </Link>
         </div>
@@ -109,122 +331,118 @@ export default function AdminGameViewer() {
     )
   }
 
+  // Color palette for players
+  const playerColors = [
+    'from-blue-500 to-blue-600',
+    'from-purple-500 to-purple-600',
+    'from-pink-500 to-pink-600',
+    'from-green-500 to-green-600',
+    'from-yellow-500 to-yellow-600',
+    'from-red-500 to-red-600',
+    'from-indigo-500 to-indigo-600',
+    'from-cyan-500 to-cyan-600',
+  ]
+
+  const getPlayerColor = (index: number) => playerColors[index % playerColors.length]
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       {/* Header */}
-      <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3">
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Link href="/mgmt-portal-x7k9p2/games" className="text-xl sm:text-2xl text-white hover:opacity-70">←</Link>
+            <div className="flex items-center gap-3">
+              <Link href="/mgmt-portal-x7k9p2/games" className="text-slate-400 hover:text-white transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
               <div>
-                <h1 className="text-lg sm:text-2xl font-bold text-white">Live Game Monitor</h1>
-                <p className="text-gray-400 text-sm">{game.rooms?.name} - {game.rooms?.game_level}</p>
+                <h1 className="text-xl font-bold text-white">{game.rooms?.name}</h1>
+                <p className="text-xs text-slate-400">Live Game Monitor</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-blue-400"></div>
-              <span className="text-sm text-gray-300">Polling Updates</span>
+            <div className="flex items-center gap-2 text-xs">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+              <span className="text-slate-300">Live</span>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           
-          {/* Game Status Panel */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Game Info */}
-            <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Game Information</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Status:</span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    game.status === 'active' ? 'bg-green-500/20 text-green-400 animate-pulse' :
-                    game.status === 'waiting' ? 'bg-yellow-500/20 text-yellow-400' :
-                    game.status === 'countdown' ? 'bg-blue-500/20 text-blue-400' :
-                    'bg-gray-500/20 text-gray-400'
-                  }`}>
-                    {game.status}
-                  </span>
+          {/* Left Sidebar - Compact Stats & Players */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Game Stats - Compact */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-slate-400 text-xs">Players</p>
+                  <p className="text-2xl font-bold text-white">{players.length}</p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Players:</span>
-                  <span className="text-white font-semibold">{players.length}</span>
+                <div>
+                  <p className="text-slate-400 text-xs">Numbers</p>
+                  <p className="text-2xl font-bold text-cyan-400">{calledNumbers.length}/75</p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Prize Pool:</span>
-                  <span className="text-green-400 font-bold">{formatCurrency(game.prize_pool || 0)}</span>
+                <div>
+                  <p className="text-slate-400 text-xs">Prize Pool</p>
+                  <p className="text-lg font-bold text-emerald-400">{formatCurrency(game.prize_pool || 0)}</p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Numbers Called:</span>
-                  <span className="text-white font-semibold">{calledNumbers.length} / 75</span>
+                <div>
+                  <p className="text-slate-400 text-xs">Entry Fee</p>
+                  <p className="text-lg font-bold text-slate-300">{formatCurrency(game.rooms?.stake || 0)}</p>
                 </div>
-                {game.countdown_time > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Countdown:</span>
-                    <span className="text-blue-400 font-bold">{game.countdown_time}s</span>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Latest Number */}
+            {/* Latest Number - Prominent */}
             {latestNumber && (
-              <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-md rounded-xl border border-blue-400/30 p-6 text-center">
-                <h3 className="text-lg font-bold text-white mb-4">Latest Number</h3>
-                <div className="text-6xl font-bold text-blue-400 mb-2">
+              <div className="bg-gradient-to-br from-cyan-500/20 to-blue-500/20 backdrop-blur-md rounded-lg border border-cyan-500/30 p-4 text-center">
+                <p className="text-xs text-slate-400 mb-2">Latest Number</p>
+                <div className="text-5xl font-bold text-cyan-400 font-mono">
                   {latestNumber.letter}-{latestNumber.number}
-                </div>
-                <div className="text-gray-300 text-sm">
-                  Called {new Date(latestNumber.calledAt || Date.now()).toLocaleTimeString()}
                 </div>
               </div>
             )}
 
-            {/* Players List */}
-            <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-              <h3 className="text-lg font-bold text-white mb-4">Players ({players.length})</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
+            {/* Players List - Compact with Colors */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <h3 className="text-sm font-bold text-white mb-3">Players</h3>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
                 {players.map((player, index) => (
-                  <div key={player.id || index} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        {player.username?.charAt(0) || 'P'}
-                      </div>
-                      <span className="text-white font-medium">{player.username || `Player ${index + 1}`}</span>
+                  <div key={player.id || index} className="flex items-center gap-2 p-2 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">
+                    <div className={`w-6 h-6 bg-gradient-to-br ${getPlayerColor(index)} rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-xs`}>
+                      {(index + 1)}
                     </div>
-                    <div className="text-xs text-gray-400">
-                      {player.markedNumbers?.length || 0} marked
-                    </div>
+                    <span className="text-sm text-white truncate flex-1">{player.username || `Player ${index + 1}`}</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Bingo Board */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-              <h3 className="text-lg font-bold text-white mb-6 text-center">Bingo Board</h3>
+          {/* Bingo Board - Compact */}
+          <div className="lg:col-span-3">
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <h3 className="text-sm font-bold text-white mb-4 text-center">Bingo Board</h3>
               
               {/* BINGO Header */}
-              <div className="grid grid-cols-5 gap-2 mb-4">
+              <div className="grid grid-cols-5 gap-1 mb-3">
                 {['B', 'I', 'N', 'G', 'O'].map((letter, index) => (
-                  <div key={letter} className={`text-center font-black text-2xl sm:text-3xl ${
-                    ['text-red-500', 'text-blue-500', 'text-green-500', 'text-yellow-500', 'text-purple-500'][index]
+                  <div key={letter} className={`text-center font-black text-lg ${
+                    ['text-red-400', 'text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'][index]
                   }`}>
                     {letter}
                   </div>
                 ))}
               </div>
 
-              {/* Numbers Grid */}
-              <div className="grid grid-cols-5 gap-2">
+              {/* Numbers Grid - Compact */}
+              <div className="grid grid-cols-5 gap-1 mb-4">
                 {Object.entries(bingoNumbers).map(([letter, numbers]) => (
-                  <div key={letter} className="space-y-2">
+                  <div key={letter} className="space-y-1">
                     {numbers.map((number) => {
                       const isCalled = calledNumbers.includes(number)
                       const isLatest = latestNumber?.number === number
@@ -233,12 +451,12 @@ export default function AdminGameViewer() {
                         <div
                           key={number}
                           className={`
-                            w-full aspect-square flex items-center justify-center rounded-lg font-bold text-sm sm:text-base transition-all duration-300
+                            w-full aspect-square flex items-center justify-center rounded text-xs font-bold transition-all duration-300
                             ${isCalled 
                               ? isLatest 
-                                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-110 animate-pulse' 
-                                : 'bg-gradient-to-br from-green-500 to-green-600 text-white shadow-md'
-                              : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                ? 'bg-gradient-to-br from-yellow-400 to-orange-500 text-white shadow-lg scale-105 animate-pulse' 
+                                : 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white'
+                              : 'bg-slate-700/50 text-slate-400 hover:bg-slate-600/50'
                             }
                           `}
                         >
@@ -251,49 +469,45 @@ export default function AdminGameViewer() {
               </div>
 
               {/* Legend */}
-              <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gradient-to-br from-green-500 to-green-600 rounded"></div>
-                  <span className="text-gray-300">Called</span>
+              <div className="flex justify-center gap-4 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded"></div>
+                  <span className="text-slate-300">Called</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-orange-500 rounded"></div>
-                  <span className="text-gray-300">Latest</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-white/10 rounded"></div>
-                  <span className="text-gray-300">Not Called</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded"></div>
+                  <span className="text-slate-300">Latest</span>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Game History */}
-        <div className="mt-6 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-          <h3 className="text-lg font-bold text-white mb-4">Called Numbers History</h3>
-          <div className="flex flex-wrap gap-2">
-            {calledNumbers.slice().reverse().map((number, index) => {
-              const letter = number <= 15 ? 'B' : number <= 30 ? 'I' : number <= 45 ? 'N' : number <= 60 ? 'G' : 'O'
-              return (
-                <div
-                  key={`${number}-${index}`}
-                  className={`
-                    px-3 py-1 rounded-lg text-sm font-bold
-                    ${index === 0 
-                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white' 
-                      : 'bg-white/10 text-gray-300'
-                    }
-                  `}
-                >
-                  {letter}-{number}
-                </div>
-              )
-            })}
+            {/* Called Numbers History - Compact */}
+            <div className="mt-4 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4">
+              <h3 className="text-sm font-bold text-white mb-3">History ({calledNumbers.length})</h3>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                {calledNumbers.slice().reverse().map((number, index) => {
+                  const letter = number <= 15 ? 'B' : number <= 30 ? 'I' : number <= 45 ? 'N' : number <= 60 ? 'G' : 'O'
+                  return (
+                    <div
+                      key={`${number}-${index}`}
+                      className={`
+                        px-2 py-1 rounded text-xs font-bold whitespace-nowrap
+                        ${index === 0 
+                          ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white' 
+                          : 'bg-slate-700/50 text-slate-300'
+                        }
+                      `}
+                    >
+                      {letter}-{number}
+                    </div>
+                  )
+                })}
+              </div>
+              {calledNumbers.length === 0 && (
+                <p className="text-slate-400 text-center py-4 text-sm">No numbers called yet</p>
+              )}
+            </div>
           </div>
-          {calledNumbers.length === 0 && (
-            <p className="text-gray-400 text-center py-8">No numbers called yet</p>
-          )}
         </div>
       </div>
     </div>

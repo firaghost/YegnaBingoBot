@@ -69,9 +69,8 @@ export function setupBotHandlers(bot: Telegraf) {
           `🎰 *Welcome to BingoX!*\n\n` +
           `Hello ${firstName}! 👋\n\n` +
           `To get started, please register by clicking the button below.\n` +
-          `You'll receive *3 ETB bonus* just for joining!\n\n` +
+          `You'll receive *Bonus* just for joining!\n\n` +
           `✨ *What you'll get:*\n` +
-          `🎁 3 ETB registration bonus\n` +
           `💰 Win real ETB prizes\n` +
           `🎮 Multiple game rooms\n` +
           `⚡ Real-time gameplay\n` +
