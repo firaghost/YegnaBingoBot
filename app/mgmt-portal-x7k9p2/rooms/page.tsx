@@ -4,13 +4,14 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
 
 export default function AdminRoomsPage() {
   const [rooms, setRooms] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingRoom, setEditingRoom] = useState<any>(null)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useLocalStorage('rooms_search', '')
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [formData, setFormData] = useState({
     id: '',
@@ -195,9 +196,16 @@ export default function AdminRoomsPage() {
       <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Rooms Management</h1>
-              <p className="text-slate-400 text-sm mt-1">Create, edit, and manage game rooms</p>
+            <div className="flex items-center gap-3">
+              <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Rooms Management</h1>
+                <p className="text-slate-400 text-sm mt-1">Create, edit, and manage game rooms</p>
+              </div>
             </div>
             <button
               onClick={handleCreateRoom}

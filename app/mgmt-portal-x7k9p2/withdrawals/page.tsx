@@ -4,20 +4,22 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
 
 export default function AdminWithdrawalsPage() {
   const [withdrawals, setWithdrawals] = useState<any[]>([])
   const [allWithdrawals, setAllWithdrawals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [filter, setFilter] = useLocalStorage('withdrawals_filter', 'all')
+  const [searchTerm, setSearchTerm] = useLocalStorage('withdrawals_search', '')
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [selectedWithdrawal, setSelectedWithdrawal] = useState<{id: string, userId: string, amount: number} | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useLocalStorage('withdrawals_page', 1)
+  const [pageSize, setPageSize] = useLocalStorage('withdrawals_pageSize', 10)
+  const [isEnforcing, setIsEnforcing] = useState(false)
 
   useEffect(() => {
     fetchWithdrawals()
@@ -36,6 +38,21 @@ export default function AdminWithdrawalsPage() {
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch withdrawals')
       }
+
+  const enforceRules = async () => {
+    try {
+      setIsEnforcing(true)
+      const res = await fetch('/api/admin/withdrawals/enforce', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to enforce rules')
+      showNotification('success', `Processed ${data.processed} withdrawal(s) using bonus rules`)
+      await fetchWithdrawals()
+    } catch (e: any) {
+      showNotification('error', e.message || 'Failed to enforce rules')
+    } finally {
+      setIsEnforcing(false)
+    }
+  }
 
       setAllWithdrawals(result.data || [])
     } catch (error) {
@@ -62,6 +79,21 @@ export default function AdminWithdrawalsPage() {
     }
 
     setWithdrawals(filtered)
+  }
+
+  const enforceRules = async () => {
+    try {
+      setIsEnforcing(true)
+      const res = await fetch('/api/admin/withdrawals/enforce', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to enforce rules')
+      showNotification('success', `Processed ${data.processed} withdrawal(s) using bonus rules`)
+      await fetchWithdrawals()
+    } catch (e: any) {
+      showNotification('error', e.message || 'Failed to enforce rules')
+    } finally {
+      setIsEnforcing(false)
+    }
   }
 
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -177,6 +209,20 @@ export default function AdminWithdrawalsPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Enforcement Toolbar */}
+        <div className="flex items-center justify-end mb-4">
+          <button
+            onClick={enforceRules}
+            disabled={isEnforcing}
+            className={`px-4 py-2 rounded-lg font-semibold transition-colors border ${
+              isEnforcing
+                ? 'bg-slate-700/50 text-slate-400 border-slate-600 cursor-not-allowed'
+                : 'bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border-amber-500/30'
+            }`}
+          >
+            {isEnforcing ? 'Enforcing…' : 'Enforce Bonus Withdrawal Rules'}
+          </button>
+        </div>
         {/* Notification Toast */}
         {notification && (
           <div className={`fixed top-20 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${

@@ -109,6 +109,14 @@ export default function WithdrawPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 403 && data?.error === 'BONUS_ONLY_BLOCKED') {
+          setOtpRequired(false)
+          setOtpTokenId(null)
+          setOtpCode('')
+          setError(data?.message || 'Bonus winnings require a real deposit before withdrawal. Your balance has been moved to your Bonus Wallet.')
+          setLoading(false)
+          return
+        }
         if (response.status === 401 && data?.error === 'OTP_REQUIRED') {
           setOtpRequired(true)
           // Request OTP now

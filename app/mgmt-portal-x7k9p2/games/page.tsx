@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
 
 type BasicUser = { id: string; username: string }
 
@@ -11,10 +12,10 @@ export default function AdminGamesPage() {
   const [allGames, setAllGames] = useState<any[]>([])
   const [games, setGames] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [filter, setFilter] = useLocalStorage('games_filter', 'all')
+  const [searchTerm, setSearchTerm] = useLocalStorage('games_search', '')
+  const [currentPage, setCurrentPage] = useLocalStorage('games_page', 1)
+  const [pageSize, setPageSize] = useLocalStorage('games_pageSize', 10)
   const isFetchingRef = useRef(false)
 
   useEffect(() => {

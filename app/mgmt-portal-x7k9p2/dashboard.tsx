@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { Users, Gamepad2, CreditCard, TrendingDown, BarChart3, Home, Building2, Megaphone, Settings } from 'lucide-react'
 
 export default function ProfessionalDashboard() {
   const router = useRouter()
@@ -187,15 +188,15 @@ export default function ProfessionalDashboard() {
   }
 
   const navItems = [
-    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: '👥', badge: null },
-    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: '🎮', badge: null },
-    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: '💳', badge: pendingDeposits },
-    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: '💸', badge: stats.pendingWithdrawals },
-    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: '📊', badge: null },
-    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: '🏠', badge: null },
-    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: '🏦', badge: null },
-    { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: '📢', badge: null },
-    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: '⚙️', badge: null },
+    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null },
+    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null },
+    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits },
+    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals },
+    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: BarChart3, badge: null },
+    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null },
+    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null },
+    { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: Megaphone, badge: null },
+    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null },
   ]
 
   return (
@@ -207,23 +208,26 @@ export default function ProfessionalDashboard() {
           <p className="text-slate-400 text-xs mt-1">Management Portal</p>
         </div>
         <nav className="p-2 lg:p-4 flex lg:flex-col gap-1 lg:gap-2 flex-wrap lg:flex-nowrap justify-center lg:justify-start items-center lg:items-stretch">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center justify-center lg:justify-between px-2 lg:px-4 py-2 lg:py-3 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors group relative"
-            >
-              <div className="flex items-center gap-2 lg:gap-3">
-                <span className="text-lg lg:text-xl">{item.icon}</span>
-                <span className="font-medium text-sm lg:text-base hidden lg:inline">{item.label}</span>
-              </div>
-              {item.badge !== null && item.badge > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const IconComponent = item.icon
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-center lg:justify-between px-2 lg:px-4 py-2 lg:py-3 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors group relative"
+              >
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <IconComponent className="w-5 h-5 lg:w-6 lg:h-6" />
+                  <span className="font-medium text-sm lg:text-base hidden lg:inline">{item.label}</span>
+                </div>
+                {item.badge !== null && item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            )
+          })}
         </nav>
         <div className="p-4 border-t border-slate-700/50 bg-slate-800/50 w-full mt-auto">
           <button

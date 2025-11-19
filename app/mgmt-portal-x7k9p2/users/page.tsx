@@ -129,7 +129,11 @@ export default function AdminUsersPage() {
       const matchesSearch = 
         user.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.telegram_id?.toString().includes(searchTerm) ||
-        user.phone?.toString().includes(searchTerm)
+        user.phone?.toString().includes(searchTerm) ||
+        (user.last_seen_city || user.registration_city || '')
+          .toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (user.last_seen_country || user.registration_country || '')
+          .toLowerCase().includes(searchTerm.toLowerCase())
       
       const matchesStatus = statusFilter === 'all' || user.status === statusFilter
       
@@ -279,6 +283,17 @@ export default function AdminUsersPage() {
     totalWins: users.reduce((sum, u) => sum + (u.games_won || 0), 0),
     withPhone: users.filter(u => u.phone).length,
   }
+
+  // City aggregation (prefer last_seen_city then registration_city)
+  const cityCountsMap = new Map<string, number>()
+  for (const u of users) {
+    const city = (u.last_seen_city || u.registration_city || 'Unknown') as string
+    cityCountsMap.set(city, (cityCountsMap.get(city) || 0) + 1)
+  }
+  const cityCounts = Array.from(cityCountsMap.entries())
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
+  const topCities = cityCounts.slice(0, 10)
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -448,6 +463,26 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
+        {/* City Summary */}
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 p-4 sm:p-6 mb-6 shadow-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base sm:text-lg font-semibold text-white">Users by City</h3>
+            <span className="text-xs text-slate-400">Top {Math.min(10, topCities.length)}</span>
+          </div>
+          {topCities.length === 0 ? (
+            <div className="text-slate-400 text-sm">No location data yet</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {topCities.map(({ city, count }) => (
+                <div key={city} className="flex items-center justify-between bg-slate-900/40 border border-slate-700/50 rounded-lg px-3 py-2">
+                  <span className="text-slate-200 text-sm truncate">{city}</span>
+                  <span className="text-cyan-400 text-sm font-semibold">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Desktop Users Table - Hidden on Mobile */}
         <div className="hidden lg:block bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 overflow-hidden shadow-xl">
           <div className="overflow-x-auto">
@@ -469,6 +504,8 @@ export default function AdminUsersPage() {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">
                     <div className="flex items-center gap-2">Lost</div>
                   </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">City</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Country</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('created_at')}>
                     <div className="flex items-center gap-2">Joined <SortIcon field="created_at" /></div>
                   </th>
@@ -478,7 +515,7 @@ export default function AdminUsersPage() {
               <tbody className="divide-y divide-slate-700/30">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={11} className="px-6 py-12 text-center text-slate-400">
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
                         Loading users...
@@ -487,7 +524,7 @@ export default function AdminUsersPage() {
                   </tr>
                 ) : paginatedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={11} className="px-6 py-12 text-center text-slate-400">
                       No users found
                     </td>
                   </tr>
@@ -523,6 +560,8 @@ export default function AdminUsersPage() {
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_played || 0}</td>
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_won || 0}</td>
                       <td className="px-6 py-4 text-red-400 font-medium">{(user.games_played || 0) - (user.games_won || 0)}</td>
+                      <td className="px-6 py-4 text-slate-300">{user.last_seen_city || user.registration_city || '—'}</td>
+                      <td className="px-6 py-4 text-slate-300">{user.last_seen_country || user.registration_country || '—'}</td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>

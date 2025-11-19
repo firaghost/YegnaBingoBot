@@ -4,17 +4,18 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
 
 export default function AdminTransactionsPage() {
   const [allTransactions, setAllTransactions] = useState<any[]>([])
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [typeFilter, setTypeFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [dateFilter, setDateFilter] = useState('all')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [typeFilter, setTypeFilter] = useLocalStorage('transactions_typeFilter', 'all')
+  const [statusFilter, setStatusFilter] = useLocalStorage('transactions_statusFilter', 'all')
+  const [searchTerm, setSearchTerm] = useLocalStorage('transactions_search', '')
+  const [dateFilter, setDateFilter] = useLocalStorage('transactions_dateFilter', 'all')
+  const [currentPage, setCurrentPage] = useLocalStorage('transactions_page', 1)
+  const [pageSize, setPageSize] = useLocalStorage('transactions_pageSize', 10)
 
   useEffect(() => {
     fetchTransactions()

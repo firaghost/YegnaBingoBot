@@ -23,6 +23,7 @@ interface Transaction {
   display_amount: string
   display_status: 'success' | 'loss' | 'neutral'
   room_name: string | null
+  reason?: string | null
 }
 
 interface GameHistory {
@@ -283,6 +284,10 @@ export default function HistoryPage() {
                                   </div>
                                   {tx.description && (
                                     <p className="mt-1 text-xs text-slate-500 truncate">{tx.description}</p>
+                                  )}
+                                  {/* Rejection/Failure reason */}
+                                  {(status === 'failed' || status === 'rejected') && tx.reason && (
+                                    <p className="mt-1 text-xs text-rose-600 truncate">Reason: {tx.reason}</p>
                                   )}
                                 </div>
                               </div>

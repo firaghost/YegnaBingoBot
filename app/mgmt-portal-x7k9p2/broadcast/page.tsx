@@ -132,9 +132,16 @@ export default function AdminBroadcast() {
       {/* Header */}
       <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">Broadcast Messages</h1>
-            <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram</p>
+          <div className="flex items-center gap-3">
+            <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">Broadcast Messages</h1>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram</p>
+            </div>
           </div>
         </div>
       </header>

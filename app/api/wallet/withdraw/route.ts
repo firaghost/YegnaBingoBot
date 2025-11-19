@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
+import { lookupIp } from '@/lib/geoip'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
@@ -23,23 +24,29 @@ export async function POST(request: Request) {
                request.headers.get('x-real-ip') ||
                ''
 
-    // IP velocity control
+    // Per-user velocity control (avoid NAT false-positives); skip if IP missing
     try {
       const maxPerMin = Number((await getConfig('ip_withdraw_max_per_min')) || 5)
       const windowSec = Number((await getConfig('ip_withdraw_window_seconds')) || 60)
-      const { data: allowed, error: ipErr } = await supabase.rpc('record_ip_action', {
-        p_ip: ip,
-        p_action_key: 'withdraw_req',
-        p_window_seconds: windowSec,
-        p_max_count: maxPerMin
-      })
-      if (!ipErr && allowed === false) {
-        return NextResponse.json({ error: 'Too many attempts. Try again later.' }, { status: 429 })
+      if (ip) {
+        const actionKey = `withdraw_req:${userId}`
+        const { data: allowed, error: ipErr } = await supabase.rpc('record_ip_action', {
+          p_ip: ip,
+          p_action_key: actionKey,
+          p_window_seconds: windowSec,
+          p_max_count: maxPerMin
+        })
+        if (!ipErr && allowed === false) {
+          return NextResponse.json({ error: 'Too many attempts. Please wait a minute and try again.' }, { status: 429 })
+        }
       }
     } catch (e) {
       // Soft-fail rate limiter
       console.warn('IP rate-limit check failed:', (e as any)?.message || e)
     }
+
+    // Best-effort geolocation (city-level, no permission prompt)
+    const geo = await lookupIp(ip)
 
     // Get user data
     const { data: user } = await supabase
@@ -50,6 +57,60 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Enforce "deposit gate": users with NO completed deposits cannot withdraw
+    try {
+      const { data: totalDeposits } = await supabase.rpc('user_total_deposits', { p_user_id: userId })
+      const sumDeposits = Number(totalDeposits || 0)
+      if (sumDeposits <= 0) {
+        // Convert entire real balance to bonus and block request
+        try {
+          await supabase.rpc('convert_all_real_to_bonus', {
+            p_user_id: userId,
+            p_requested_amount: amount,
+            p_reason: 'withdraw_without_deposit'
+          })
+        } catch (convErr) {
+          console.warn('convert_all_real_to_bonus failed:', (convErr as any)?.message || convErr)
+        }
+
+        // Log location event
+        try {
+          await supabase.from('user_location_events').insert({
+            user_id: userId,
+            event_key: 'withdraw_blocked',
+            ip: ip || null,
+            city: geo?.city || null,
+            region: geo?.region || null,
+            country: geo?.country || null,
+            latitude: geo?.latitude || null,
+            longitude: geo?.longitude || null,
+          })
+        } catch {}
+
+        // Notify user via Telegram
+        try {
+          const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
+          if (botToken && user.telegram_id) {
+            const msg = '⚠️ Withdrawal Blocked\n\nYour withdrawal was generated from bonus-based funds. Bonus winnings require a real deposit before withdrawal. Your balance has been moved to your Bonus Wallet.'
+            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: user.telegram_id, text: msg })
+            })
+          }
+        } catch (notifyErr) {
+          console.warn('Failed to notify user about bonus rule:', (notifyErr as any)?.message || notifyErr)
+        }
+
+        return NextResponse.json({
+          error: 'BONUS_ONLY_BLOCKED',
+          message: 'Bonus winnings require a real deposit before withdrawal. Your balance has been moved to your Bonus Wallet.'
+        }, { status: 403 })
+      }
+    } catch (gateErr) {
+      console.warn('Deposit-gate check failed:', (gateErr as any)?.message || gateErr)
     }
 
     // Minimum balance requirement (must keep at least 50 ETB in account)
@@ -125,7 +186,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Call create_withdrawal function
+    // Call create_withdrawal function (DB re-validates deposit gate and limits)
     const { data, error } = await supabase.rpc('create_withdrawal', {
       p_user_id: userId,
       p_amount: amount,
@@ -137,6 +198,63 @@ export async function POST(request: Request) {
     if (error) throw error
 
     const withdrawalId = data
+
+    // Enrich withdrawal and related transaction with IP and geo
+    try {
+      await supabase
+        .from('withdrawals')
+        .update({
+          ip: ip || null,
+          city: geo?.city || null,
+          region: geo?.region || null,
+          country: geo?.country || null,
+          latitude: geo?.latitude || null,
+          longitude: geo?.longitude || null,
+        })
+        .eq('id', withdrawalId)
+
+      // Update pending withdrawal transaction row
+      await supabase
+        .from('transactions')
+        .update({
+          ip: ip || null,
+          city: geo?.city || null,
+          region: geo?.region || null,
+          country: geo?.country || null,
+          latitude: geo?.latitude || null,
+          longitude: geo?.longitude || null,
+        })
+        .eq('type', 'withdrawal')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .eq('metadata->>withdrawal_id', withdrawalId)
+
+      // Update user's last seen location
+      await supabase
+        .from('users')
+        .update({
+          last_seen_ip: ip || null,
+          last_seen_city: geo?.city || null,
+          last_seen_region: geo?.region || null,
+          last_seen_country: geo?.country || null,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+
+      // Log location event
+      await supabase.from('user_location_events').insert({
+        user_id: userId,
+        event_key: 'withdraw_request',
+        ip: ip || null,
+        city: geo?.city || null,
+        region: geo?.region || null,
+        country: geo?.country || null,
+        latitude: geo?.latitude || null,
+        longitude: geo?.longitude || null,
+      })
+    } catch (locErr) {
+      console.warn('Failed to enrich withdrawal with geo info:', (locErr as any)?.message || locErr)
+    }
 
     // Notify admin via Telegram
     try {

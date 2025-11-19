@@ -4,21 +4,22 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
 
 export default function AdminDeposits() {
   const [deposits, setDeposits] = useState<any[]>([])
   const [allDeposits, setAllDeposits] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'failed'>('all')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [filter, setFilter] = useLocalStorage<'all' | 'pending' | 'completed' | 'failed'>('deposits_filter', 'all')
+  const [searchTerm, setSearchTerm] = useLocalStorage('deposits_search', '')
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [selectedDepositId, setSelectedDepositId] = useState<string | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const [confirmAction, setConfirmAction] = useState<'approve' | null>(null)
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useLocalStorage('deposits_page', 1)
+  const [pageSize, setPageSize] = useLocalStorage('deposits_pageSize', 10)
 
   useEffect(() => {
     fetchDeposits()

@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getAllConfig, setConfig } from '@/lib/admin-config'
+import { useLocalStorage } from '@/lib/hooks/usePageState'
+import { Settings, DollarSign, Gift, Bell, Users, Lock, AlertCircle, CheckCircle, XCircle } from 'lucide-react'
 
 type TabType = 'system' | 'financial' | 'bonuses' | 'notifications' | 'support' | 'security'
 
 export default function AdminSettings() {
-  const [activeTab, setActiveTab] = useState<TabType>('system')
+  const [activeTab, setActiveTab] = useLocalStorage<TabType>('settings_active_tab', 'system')
   const [settings, setSettings] = useState({
     siteName: 'BingoX',
     maintenanceMode: false,
@@ -43,6 +45,7 @@ export default function AdminSettings() {
   const [isSaving, setIsSaving] = useState(false)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+  const [isEnforcing, setIsEnforcing] = useState(false)
 
   useEffect(() => {
     fetchSettings()
@@ -151,13 +154,29 @@ export default function AdminSettings() {
     }
   }
 
-  const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'system', label: 'System', icon: '⚙️' },
-    { id: 'financial', label: 'Financial', icon: '💰' },
-    { id: 'bonuses', label: 'Bonuses', icon: '🎁' },
-    { id: 'notifications', label: 'Notifications', icon: '🔔' },
-    { id: 'support', label: 'Support', icon: '👥' },
-    { id: 'security', label: 'Security', icon: '🔒' },
+  // Run retroactive enforcement to reject pending withdrawals from users
+  // with no deposits, convert real->bonus, and notify users.
+  async function enforceBonusRules() {
+    try {
+      setIsEnforcing(true)
+      const res = await fetch('/api/admin/withdrawals/enforce', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to enforce rules')
+      showNotification('success', `Processed ${data.processed} withdrawal(s) using bonus rules`)
+    } catch (e: any) {
+      showNotification('error', e.message || 'Failed to enforce rules')
+    } finally {
+      setIsEnforcing(false)
+    }
+  }
+
+  const tabs: { id: TabType; label: string; icon: any }[] = [
+    { id: 'system', label: 'System', icon: Settings },
+    { id: 'financial', label: 'Financial', icon: DollarSign },
+    { id: 'bonuses', label: 'Bonuses', icon: Gift },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'support', label: 'Support', icon: Users },
+    { id: 'security', label: 'Security', icon: Lock },
   ]
 
   const SettingInput = ({ label, value, onChange, type = 'text', description }: any) => (
@@ -209,9 +228,16 @@ export default function AdminSettings() {
       <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Settings</h1>
-              <p className="text-slate-400 text-sm mt-1">Configure system, financial, and security settings</p>
+            <div className="flex items-center gap-3">
+              <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Link>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Settings</h1>
+                <p className="text-slate-400 text-sm mt-1">Configure system, financial, and security settings</p>
+              </div>
             </div>
             <div className="flex gap-3 w-full sm:w-auto">
               {hasChanges && (
@@ -234,7 +260,7 @@ export default function AdminSettings() {
                     : 'bg-slate-700 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                {isSaving ? '💾 Saving...' : '💾 Save Changes'}
+                {isSaving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -244,20 +270,23 @@ export default function AdminSettings() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Tabs */}
         <div className="flex flex-wrap gap-1 sm:gap-2 mb-6 sm:mb-8 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-1 sm:p-2 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap text-xs sm:text-base ${
-                activeTab === tab.id
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-transparent text-slate-400 hover:text-slate-300'
-              }`}
-            >
-              <span>{tab.icon}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
+          {tabs.map((tab) => {
+            const IconComponent = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap text-xs sm:text-base ${
+                  activeTab === tab.id
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-transparent text-slate-400 hover:text-slate-300'
+                }`}
+              >
+                <IconComponent className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            )
+          })}
         </div>
 
         {/* Tab Content */}
@@ -502,6 +531,27 @@ export default function AdminSettings() {
                   type="number"
                   description="Time window for rate limiting"
                 />
+              </div>
+              <div className="pt-6 border-t border-slate-700">
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <div className="text-amber-300 font-semibold">Enforce Bonus Withdrawal Rules</div>
+                      <div className="text-xs text-amber-200/80 mt-1">Reject all current pending withdrawals from users with no real deposit, convert their Real Balance to Bonus Wallet, and notify them.</div>
+                    </div>
+                    <button
+                      onClick={enforceBonusRules} 
+                      disabled={isEnforcing}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-colors border ${
+                        isEnforcing
+                          ? 'bg-slate-700/50 text-slate-400 border-slate-600 cursor-not-allowed'
+                          : 'bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      {isEnforcing ? 'Enforcing…' : 'Run Enforcement Now'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

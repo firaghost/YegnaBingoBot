@@ -69,9 +69,16 @@ export default function BotStatsPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       <div className="container mx-auto px-4 sm:px-6 py-6">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-white">Bot Statistics</h1>
-            <p className="text-gray-300 text-sm">Performance overview and quick filters</p>
+          <div className="flex items-center gap-3">
+            <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold text-white">Bot Statistics</h1>
+              <p className="text-gray-300 text-sm">Performance overview and quick filters</p>
+            </div>
           </div>
           <Link href="/mgmt-portal-x7k9p2/bots" className="text-blue-300 hover:text-blue-200 underline text-sm">← Manage Bots</Link>
         </div>
