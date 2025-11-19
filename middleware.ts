@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 const maintenanceAllowedPaths = [
   '/mgmt-portal-x7k9p2', // Admin panel
   '/api/admin', // Admin APIs
+  '/api/maintenance', // Maintenance helper APIs (bypass)
   '/maintenance', // Maintenance page
   '/_next', // Next.js assets
   '/favicon.ico',
@@ -24,20 +25,54 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // If this browser has an explicit maintenance bypass cookie, allow
+  try {
+    const bypass = request.cookies.get('maintenance_bypass')?.value
+    if (bypass === '1') {
+      return NextResponse.next()
+    }
+  } catch {}
+
   try {
     // Check if maintenance mode is enabled
-    const { data: maintenanceConfig } = await supabaseAdmin
+    const { data: configs } = await supabaseAdmin
       .from('admin_config')
-      .select('config_value')
-      .eq('config_key', 'maintenance_mode')
+      .select('config_key, config_value')
+      .in('config_key', ['maintenance_mode','maintenance_bypass_user_ids','maintenance_bypass_telegram_ids','maintenance_bypass_usernames'])
       .eq('is_active', true)
-      .single()
 
-    const isMaintenanceMode = maintenanceConfig?.config_value === 'true' || maintenanceConfig?.config_value === true
+    const getVal = (key: string) => {
+      const row = (configs || []).find((r: any) => r.config_key === key)
+      return row?.config_value
+    }
+
+    const mmVal = getVal('maintenance_mode')
+    const isMaintenanceMode = mmVal === 'true' || mmVal === true
 
     if (isMaintenanceMode && pathname !== '/maintenance') {
-      // Redirect to maintenance page
-      return NextResponse.redirect(new URL('/maintenance', request.url))
+      // Check user whitelist from cookies
+      const uid = request.cookies.get('uid')?.value || ''
+      const tgid = request.cookies.get('tgid')?.value || ''
+      const uname = request.cookies.get('uname')?.value || ''
+
+      const parseArray = (v: any): string[] => {
+        try {
+          if (Array.isArray(v)) return v.map(String)
+          if (typeof v === 'string') return JSON.parse(v)
+        } catch {}
+        return []
+      }
+
+      const wUserIds = parseArray(getVal('maintenance_bypass_user_ids'))
+      const wTgIds = parseArray(getVal('maintenance_bypass_telegram_ids'))
+      const wUsernames = parseArray(getVal('maintenance_bypass_usernames'))
+
+      const isWhitelisted = (uid && wUserIds.includes(uid)) || (tgid && wTgIds.includes(tgid)) || (uname && wUsernames.includes(uname))
+
+      if (!isWhitelisted) {
+        // Redirect to maintenance page
+        return NextResponse.redirect(new URL('/maintenance', request.url))
+      }
     }
 
     // If maintenance mode is disabled and user is on maintenance page, redirect them

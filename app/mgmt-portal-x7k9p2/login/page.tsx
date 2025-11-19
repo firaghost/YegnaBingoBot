@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
+import { Lock } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 export default function AdminLoginPage() {
@@ -57,27 +58,19 @@ export default function AdminLoginPage() {
     try {
       setLoading(true)
       setError(null)
-
-      // Query admin_users table with username and password
-      const { data: admin, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('username', username)
-        .eq('password_hash', password)
-        .maybeSingle()
-
-      if (error) {
-        console.error('Database error:', error)
-        throw error
-      }
-
-      if (!admin) {
-        setError('Invalid username or password')
+      // Call secure login API (verifies hashed password)
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        setError(json.error || 'Invalid username or password')
         setLoading(false)
         return
       }
-
-      // Store admin ID in localStorage
+      const admin = json.data
       localStorage.setItem('admin_id', admin.id)
       router.push('/mgmt-portal-x7k9p2')
     } catch (err: any) {
@@ -87,13 +80,16 @@ export default function AdminLoginPage() {
       setLoading(false)
     }
   }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-6">
       <div className="max-w-md w-full">
         <div className="bg-white/10 backdrop-blur-md rounded-3xl shadow-2xl p-10 border border-white/20">
           <div className="text-center mb-8">
-            <div className="text-7xl mb-4">🔐</div>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
+                <Lock className="w-8 h-8 text-blue-300" />
+              </div>
+            </div>
             <h1 className="text-4xl font-bold text-white mb-2">Admin Access</h1>
             <p className="text-gray-300">BingoX Dashboard</p>
           </div>
@@ -154,9 +150,6 @@ export default function AdminLoginPage() {
                 >
                   {loading ? 'Logging in...' : 'Login'}
                 </button>
-                <p className="text-xs text-gray-400 text-center">
-                  Default: admin / admin123
-                </p>
               </form>
             ) : (
               <button

@@ -56,6 +56,20 @@ export default function LobbyPage() {
     }
     loadCommission()
     
+    // Send a heartbeat once user is known so identity cookies are set (uid/tgid/uname)
+    ;(async () => {
+      try {
+        // user may not be ready immediately; guard below useEffect covers changes too
+        if (user?.id) {
+          await fetch('/api/telemetry/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
+          })
+        }
+      } catch {}
+    })()
+    
     // Subscribe to real-time updates
     const roomsChannel = supabase
       .channel('lobby-updates')
@@ -87,6 +101,20 @@ export default function LobbyPage() {
       clearInterval(intervalId)
     }
   }, [])
+
+  // Also resend heartbeat when user id becomes available later
+  useEffect(() => {
+    if (!user?.id) return
+    ;(async () => {
+      try {
+        await fetch('/api/telemetry/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
+        })
+      } catch {}
+    })()
+  }, [user?.id])
 
   // Prefetch game routes for top visible rooms to make join nearly instant
   useEffect(() => {

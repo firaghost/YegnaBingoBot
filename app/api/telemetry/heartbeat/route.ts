@@ -48,6 +48,13 @@ export async function POST(request: NextRequest) {
       }
     } catch {}
 
+    // Fetch user to set identity cookies
+    const { data: u } = await supabase
+      .from('users')
+      .select('id, username, telegram_id')
+      .eq('id', userId)
+      .single()
+
     // Log event
     await supabase.from('user_location_events').insert({
       user_id: userId,
@@ -60,7 +67,14 @@ export async function POST(request: NextRequest) {
       longitude: geo?.longitude || null,
     })
 
-    return NextResponse.json({ ok: true })
+    const res = NextResponse.json({ ok: true })
+    try {
+      if (u?.id) res.cookies.set('uid', String(u.id), { path: '/', httpOnly: true, sameSite: 'lax', secure: true, maxAge: 60 * 60 * 24 * 30 })
+      if (u?.telegram_id) res.cookies.set('tgid', String(u.telegram_id), { path: '/', httpOnly: true, sameSite: 'lax', secure: true, maxAge: 60 * 60 * 24 * 30 })
+      if (u?.username) res.cookies.set('uname', String(u.username), { path: '/', httpOnly: true, sameSite: 'lax', secure: true, maxAge: 60 * 60 * 24 * 30 })
+    } catch {}
+
+    return res
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Failed' }, { status: 500 })
   }

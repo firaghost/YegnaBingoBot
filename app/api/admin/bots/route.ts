@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requirePermission } from '@/lib/server/admin-permissions'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  await requirePermission(req, 'admin_manage')
   const { data, error } = await supabaseAdmin
     .from('bots')
     .select('*')
@@ -12,6 +14,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    await requirePermission(req, 'admin_manage')
     const body = await req.json()
 
     if (Array.isArray(body?.seed_names)) {

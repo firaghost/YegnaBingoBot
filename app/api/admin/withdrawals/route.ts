@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
 
 const supabase = supabaseAdmin
 
 export async function GET(request: NextRequest) {
   try {
+    await requireAnyPermission(request, ['transactions_view','withdrawals_manage'])
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status') || 'pending'
 
@@ -56,6 +58,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await requirePermission(request, 'withdrawals_manage')
     const { action, withdrawalId, adminNote } = await request.json()
 
     if (!action || !withdrawalId) {

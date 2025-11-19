@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requirePermission } from '@/lib/server/admin-permissions'
 
 const BOT_TOKEN = process.env.BOT_TOKEN!
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`
 
 export async function POST(request: NextRequest) {
   try {
+    await requirePermission(request, 'broadcast_manage')
     const { title, message, filters } = await request.json()
 
     if (!title || !message) {

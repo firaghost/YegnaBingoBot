@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requirePermission } from '@/lib/server/admin-permissions'
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  await requirePermission(req, 'admin_manage')
   const { id } = params
   const { data, error } = await supabaseAdmin.from('bots').select('*').eq('id', id).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
@@ -9,6 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  await requirePermission(req, 'admin_manage')
   const { id } = params
   const body = await req.json()
   const patch: any = {}
@@ -25,7 +28,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ bot: data })
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  await requirePermission(req, 'admin_manage')
   const { id } = params
   const { error } = await supabaseAdmin.from('bots').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
