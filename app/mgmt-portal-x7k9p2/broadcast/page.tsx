@@ -14,6 +14,7 @@ interface UserResult {
 }
 
 export default function AdminBroadcast() {
+  const bucketName = process.env.NEXT_PUBLIC_BROADCAST_BUCKET || process.env.BROADCAST_BUCKET || 'broadcasts'
   const [title, setTitle] = useState('')
   const [message, setMessage] = useState('')
   const [imageUrl, setImageUrl] = useState('')
@@ -219,23 +220,28 @@ export default function AdminBroadcast() {
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
       const fileName = `broadcast-${Date.now()}.${fileExt}`
-      const filePath = `broadcasts/${fileName}`
+      const filePath = `${bucketName === 'broadcasts' ? '' : 'broadcasts/'}${fileName}`.replace(/^\//, '')
 
-      const { error: uploadError } = await supabase.storage
-        .from('assets')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        })
+      const storageClient = supabase.storage.from(bucketName)
+      const { error: uploadError } = await storageClient.upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      })
 
       if (uploadError) {
         console.error('Upload failed:', uploadError)
-        showNotification('error', 'Failed to upload image. Please try again.')
+
+        if (uploadError.message?.toLowerCase().includes('bucket not found')) {
+          showNotification('error', `Upload bucket "${bucketName}" is missing. Please create this bucket in Supabase Storage and retry.`)
+        } else {
+          showNotification('error', 'Failed to upload image. Please try again.')
+        }
+
         return ''
       }
 
       const { data: { publicUrl } } = supabase.storage
-        .from('assets')
+        .from(bucketName)
         .getPublicUrl(filePath)
 
       setImageUrl(publicUrl)

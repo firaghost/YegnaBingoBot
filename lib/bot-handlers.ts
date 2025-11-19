@@ -164,34 +164,53 @@ export function setupBotHandlers(bot: Telegraf) {
       const code = `ref_${userId}`
       const referralLink = buildReferralLink(userId, botUsername)
 
-      const messageLines: string[] = [
-        '🎉 Invite Friends & Earn!',
+      const captionLines: string[] = [
+        '*🎉 Invite Friends & Earn!*',
         '',
+        'Share your BingoX link and get rewarded when friends join.',
         referralLink ? `🔗 Join: ${referralLink}` : '',
-        `🧾 Your code: ${code}`
+        `🧾 Your code: \`${code}\``
       ].filter(Boolean)
 
-      const results = [
-        {
-          type: 'article',
-          id: 'invite-share-' + userId,
-          title: 'Share your BingoX invite',
-          description: 'Send your personal referral link to this chat',
-          input_message_content: {
-            message_text: messageLines.join('\n')
-          },
-          thumb_url: BOT_LOGO_URL || undefined,
-          thumb_width: BOT_LOGO_URL ? 200 : undefined,
-          thumb_height: BOT_LOGO_URL ? 200 : undefined,
-          reply_markup: referralLink
-            ? {
-                inline_keyboard: [[{ text: '🎮 Join BingoX', url: referralLink }]]
-              }
-            : undefined
-        } as any
-      ]
+      const caption = captionLines.join('\n')
 
-      await ctx.answerInlineQuery(results, { is_personal: true, cache_time: 0 })
+      const results = BOT_LOGO_URL
+        ? [
+            {
+              type: 'photo',
+              id: 'invite-share-' + userId,
+              photo_url: BOT_LOGO_URL,
+              thumb_url: BOT_LOGO_URL,
+              photo_width: 800,
+              photo_height: 800,
+              caption,
+              parse_mode: 'Markdown',
+              reply_markup: referralLink
+                ? {
+                    inline_keyboard: [[{ text: '🎮 Join BingoX', url: referralLink }]]
+                  }
+                : undefined
+            }
+          ]
+        : [
+            {
+              type: 'article',
+              id: 'invite-share-' + userId,
+              title: 'Share your BingoX invite',
+              description: 'Send your personal referral link to this chat',
+              input_message_content: {
+                message_text: caption,
+                parse_mode: 'Markdown'
+              },
+              reply_markup: referralLink
+                ? {
+                    inline_keyboard: [[{ text: '🎮 Join BingoX', url: referralLink }]]
+                  }
+                : undefined
+            }
+          ]
+
+      await ctx.answerInlineQuery(results as any, { is_personal: true, cache_time: 0 })
     } catch (e) {
       console.error('inline_query error:', e)
       try {

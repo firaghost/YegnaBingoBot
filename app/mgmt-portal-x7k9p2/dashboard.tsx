@@ -1,14 +1,171 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
+
 import { getAllConfig } from '@/lib/admin-config'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { Users, Gamepad2, CreditCard, TrendingDown, BarChart3, Home, Building2, Megaphone, Settings } from 'lucide-react'
+import { Users, Gamepad2, CreditCard, TrendingDown, BarChart3, Home, Building2, Megaphone, Settings, Share2 } from 'lucide-react'
+
+type ChartGrouping = 'daily' | 'weekly' | 'monthly' | 'yearly'
+
+type ChartPoint = {
+  label: string
+  sortKey: number
+  revenue: number
+  commission: number
+  newUsers: number
+  referralEarnings: number
+  games: number
+}
+
+const GROUPING_SETTINGS: Record<ChartGrouping, { label: string; bucketCount: number }> = {
+  daily: { label: 'Daily', bucketCount: 1 },
+  weekly: { label: 'Weekly', bucketCount: 12 },
+  monthly: { label: 'Monthly', bucketCount: 12 },
+  yearly: { label: 'Yearly', bucketCount: 5 }
+}
+
+function alignDateToGrouping(date: Date, grouping: ChartGrouping): Date {
+  const aligned = new Date(date)
+  aligned.setSeconds(0, 0)
+  switch (grouping) {
+    case 'daily': {
+      aligned.setMinutes(0, 0, 0)
+      break
+    }
+    case 'weekly': {
+      aligned.setHours(0, 0, 0, 0)
+      const day = aligned.getDay()
+      const diff = (day + 6) % 7 // align to Monday
+      aligned.setDate(aligned.getDate() - diff)
+      break
+    }
+    case 'monthly': {
+      aligned.setHours(0, 0, 0, 0)
+      aligned.setDate(1)
+      break
+    }
+    case 'yearly': {
+      aligned.setHours(0, 0, 0, 0)
+      aligned.setMonth(0, 1)
+      break
+    }
+  }
+  return aligned
+}
+
+function addInterval(date: Date, grouping: ChartGrouping, amount: number): Date {
+  const next = new Date(date)
+  switch (grouping) {
+    case 'daily':
+      next.setHours(next.getHours() + amount)
+      break
+    case 'weekly':
+      next.setDate(next.getDate() + amount * 7)
+      break
+    case 'monthly':
+      next.setMonth(next.getMonth() + amount)
+      break
+    case 'yearly':
+      next.setFullYear(next.getFullYear() + amount)
+      break
+  }
+  return alignDateToGrouping(next, grouping)
+}
+
+function formatBucketLabel(date: Date, grouping: ChartGrouping): string {
+  switch (grouping) {
+    case 'daily':
+      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: undefined })
+    case 'weekly': {
+      const end = new Date(date)
+      end.setDate(end.getDate() + 6)
+      return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    }
+    case 'monthly':
+      return date.toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+    case 'yearly':
+      return date.getFullYear().toString()
+    default:
+      return date.toLocaleDateString()
+  }
+}
+
+function generateBucketDates(grouping: ChartGrouping, rangeStart: Date, rangeEnd: Date): Date[] {
+  if (grouping === 'daily') {
+    const dayStart = startOfDay(rangeStart)
+    const buckets: Date[] = []
+    for (let hour = 0; hour < 24; hour += 1) {
+      const bucket = new Date(dayStart)
+      bucket.setHours(hour, 0, 0, 0)
+      buckets.push(bucket)
+    }
+    return buckets
+  }
+
+  const buckets: Date[] = []
+  let current = alignDateToGrouping(rangeStart, grouping)
+  const endAligned = alignDateToGrouping(rangeEnd, grouping)
+
+  while (current <= endAligned) {
+    buckets.push(new Date(current))
+    current = addInterval(current, grouping, 1)
+  }
+
+  if (buckets.length === 0) {
+    buckets.push(alignDateToGrouping(rangeStart, grouping))
+  }
+
+  return buckets
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+function endOfDay(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(23, 59, 59, 999)
+  return d
+}
+
+function getDefaultRangeForGrouping(grouping: ChartGrouping): { start: Date; end: Date } {
+  const now = new Date()
+  if (grouping === 'daily') {
+    return { start: startOfDay(now), end: endOfDay(now) }
+  }
+
+  const alignedEnd = alignDateToGrouping(now, grouping)
+  const span = GROUPING_SETTINGS[grouping].bucketCount - 1
+  const alignedStart = addInterval(alignedEnd, grouping, -span)
+  return {
+    start: alignDateToGrouping(alignedStart, grouping),
+    end: alignDateToGrouping(addInterval(alignedEnd, grouping, 0), grouping)
+  }
+}
+
+function toDateInputValue(date: Date): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().substring(0, 10)
+}
+
+function parseDateInput(value: string): Date | null {
+  if (!value) return null
+  const parts = value.split('-').map(Number)
+  if (parts.length !== 3) return null
+  const [year, month, day] = parts
+  if (!year || !month || !day) return null
+  const date = new Date(year, month - 1, day)
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
 
 export default function ProfessionalDashboard() {
   const router = useRouter()
@@ -28,122 +185,171 @@ export default function ProfessionalDashboard() {
     totalTransactions: 0,
     totalCommission: 0,
     todayCommission: 0,
+    totalReferrals: 0,
+    totalReferralEarnings: 0,
   })
 
-  const [chartData, setChartData] = useState<any>(null)
+  const [chartData, setChartData] = useState<ChartPoint[]>([])
+  const [grouping, setGrouping] = useState<ChartGrouping>('daily')
+  const [rangeStart, setRangeStart] = useState<Date>(() => getDefaultRangeForGrouping('daily').start)
+  const [rangeEnd, setRangeEnd] = useState<Date>(() => getDefaultRangeForGrouping('daily').end)
   const [pendingDeposits, setPendingDeposits] = useState(0)
 
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.push('/mgmt-portal-x7k9p2/login')
-    } else if (isAuthenticated) {
-      fetchDashboardData()
-    }
-  }, [authLoading, isAuthenticated, router])
+  const handleGroupingChange = (next: ChartGrouping) => {
+    setGrouping(next)
+    const { start, end } = getDefaultRangeForGrouping(next)
+    setRangeStart(start)
+    setRangeEnd(end)
+  }
 
-  const fetchDashboardData = async () => {
+  const handleSingleDateChange = (value: string) => {
+    const date = parseDateInput(value)
+    if (!date) return
+    const dayStart = startOfDay(date)
+    setRangeStart(dayStart)
+    setRangeEnd(endOfDay(date))
+  }
+
+  const handleRangeStartChange = (value: string) => {
+    const date = parseDateInput(value)
+    if (!date) return
+    const normalized = startOfDay(date)
+    setRangeStart(normalized)
+    setRangeEnd(prev => (normalized > prev ? endOfDay(normalized) : prev))
+  }
+
+  const handleRangeEndChange = (value: string) => {
+    const date = parseDateInput(value)
+    if (!date) return
+    const normalized = endOfDay(date)
+    setRangeEnd(normalized)
+    setRangeStart(prev => (normalized < prev ? startOfDay(date) : prev))
+  }
+
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true)
 
-      // Fetch users stats
-      const { count: totalUsers } = await supabase
+      const normalizedRangeStart = startOfDay(rangeStart)
+      const normalizedRangeEnd = endOfDay(rangeEnd)
+      if (normalizedRangeStart > normalizedRangeEnd) {
+        normalizedRangeEnd.setTime(normalizedRangeStart.getTime())
+      }
+
+      const rangeStartIso = normalizedRangeStart.toISOString()
+      const rangeEndIso = normalizedRangeEnd.toISOString()
+
+      const { count: totalUsers } = await supabaseAdmin
         .from('users')
         .select('*', { count: 'exact', head: true })
 
-      // Active users (updated in last 7 days)
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const { count: activeUsers } = await supabase
+      const { count: activeUsers } = await supabaseAdmin
         .from('users')
         .select('*', { count: 'exact', head: true })
         .gte('updated_at', sevenDaysAgo.toISOString())
 
-      // Fetch games stats
-      const { count: totalGames } = await supabase
+      const { count: totalGames } = await supabaseAdmin
         .from('games')
         .select('*', { count: 'exact', head: true })
 
-      const { count: activeGames } = await supabase
+      const { count: activeGames } = await supabaseAdmin
         .from('games')
         .select('*', { count: 'exact', head: true })
         .in('status', ['waiting', 'countdown', 'active'])
 
-      // Fetch commission rate from config (fallback 10%)
       const config = await getAllConfig()
       const commissionRate = Number((config as any)?.gameCommissionRate) || 0.1
 
-      // Revenue = completed deposits (real), with separate deposit bonus totals
       const today = new Date().toDateString()
-      const { data: depositTxs } = await supabase
+
+      const depositTxsRes = await supabaseAdmin
         .from('transactions')
         .select('amount, created_at')
         .eq('type', 'deposit')
         .eq('status', 'completed')
+      if (depositTxsRes.error) throw depositTxsRes.error
 
-      const { data: depositBonusTxs } = await supabase
+      const depositBonusTxsRes = await supabaseAdmin
         .from('transactions')
         .select('amount, created_at')
         .eq('type', 'bonus')
         .eq('status', 'completed')
         .ilike('description', 'Deposit bonus%')
+      if (depositBonusTxsRes.error) throw depositBonusTxsRes.error
+
+      const stakeTxsRes = await supabaseAdmin
+        .from('transactions')
+        .select('created_at, metadata, amount')
+        .eq('type', 'stake')
+        .eq('status', 'completed')
+      if (stakeTxsRes.error) throw stakeTxsRes.error
+
+      const referralUsersRes = await supabaseAdmin
+        .from('users')
+        .select('total_referrals, referral_earnings')
+        .limit(10000)
+      if (referralUsersRes.error) throw referralUsersRes.error
 
       let totalRevenueReal = 0
       let totalRevenueBonus = 0
       let todayRevenueReal = 0
       let todayRevenueBonus = 0
 
-      depositTxs?.forEach((tx: any) => {
+      depositTxsRes.data?.forEach((tx: any) => {
         const amt = Number(tx?.amount || 0)
         totalRevenueReal += amt
-        if (new Date(tx.created_at).toDateString() === today) todayRevenueReal += amt
+        if (new Date(tx.created_at).toDateString() === today) {
+          todayRevenueReal += amt
+        }
       })
-      depositBonusTxs?.forEach((tx: any) => {
+
+      depositBonusTxsRes.data?.forEach((tx: any) => {
         const amt = Number(tx?.amount || 0)
         totalRevenueBonus += amt
-        if (new Date(tx.created_at).toDateString() === today) todayRevenueBonus += amt
+        if (new Date(tx.created_at).toDateString() === today) {
+          todayRevenueBonus += amt
+        }
       })
 
-      // Commission still based on real stakes only
-      const { data: stakeTxs } = await supabase
-        .from('transactions')
-        .select('created_at, metadata, amount')
-        .eq('type', 'stake')
-        .eq('status', 'completed')
-
-      // Sum real stake volume (for commission)
       let realStakeTotal = 0
       let realStakeToday = 0
-      stakeTxs?.forEach((tx: any) => {
+      stakeTxsRes.data?.forEach((tx: any) => {
         const md = (tx?.metadata || {}) as any
         let main = Number(md?.main_deducted ?? 0)
-        if (!main || isNaN(main)) {
-          // Legacy fallback: stake amount is negative
+        if (!main || Number.isNaN(main)) {
           main = Math.abs(Number(tx?.amount ?? 0))
         }
         realStakeTotal += main
-        if (new Date(tx.created_at).toDateString() === today) realStakeToday += main
+        if (new Date(tx.created_at).toDateString() === today) {
+          realStakeToday += main
+        }
       })
 
-      // Fetch pending deposits
-      const { count: pendingDepositsCount } = await supabase
+      let totalReferrals = 0
+      let totalReferralEarnings = 0
+      referralUsersRes.data?.forEach((row: any) => {
+        totalReferrals += Number(row?.total_referrals || 0)
+        totalReferralEarnings += Number(row?.referral_earnings || 0)
+      })
+
+      const { count: pendingDepositsCount } = await supabaseAdmin
         .from('transactions')
         .select('*', { count: 'exact', head: true })
         .eq('type', 'deposit')
         .eq('status', 'pending')
       setPendingDeposits(pendingDepositsCount || 0)
 
-      // Fetch pending withdrawals
-      const { count: pendingWithdrawals } = await supabase
+      const { count: pendingWithdrawals } = await supabaseAdmin
         .from('withdrawals')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending')
 
-      // Fetch transactions count
-      const { count: totalTransactions } = await supabase
+      const { count: totalTransactions } = await supabaseAdmin
         .from('transactions')
         .select('*', { count: 'exact', head: true })
 
-      // Commission (from real stake volume only)
       const totalCommission = realStakeTotal * commissionRate
       const todayCommission = realStakeToday * commissionRate
 
@@ -160,60 +366,162 @@ export default function ProfessionalDashboard() {
         totalTransactions: totalTransactions || 0,
         totalCommission,
         todayCommission,
+        totalReferrals,
+        totalReferralEarnings,
       })
 
-      // Fetch chart data (last 30 days)
-      const last30Days = new Date()
-      last30Days.setDate(last30Days.getDate() - 30)
-      // Games per day
-      const { data: gamesData } = await supabase
-        .from('games')
-        .select('created_at')
-        .gte('created_at', last30Days.toISOString())
-        .order('created_at', { ascending: true })
-
-      // Real deposits per day (for chart)
-      const { data: depositChart } = await supabase
-        .from('transactions')
-        .select('created_at, amount')
-        .eq('type', 'deposit')
-        .eq('status', 'completed')
-        .gte('created_at', last30Days.toISOString())
-        .order('created_at', { ascending: true })
-
-      const revenueByDate: Record<string, number> = {}
-      const gamesByDate: Record<string, number> = {}
-
-      depositChart?.forEach((tx: any) => {
-        const d = new Date(tx.created_at).toLocaleDateString()
-        const amt = Number(tx?.amount || 0)
-        revenueByDate[d] = (revenueByDate[d] || 0) + amt
+      const bucketDates = generateBucketDates(grouping, normalizedRangeStart, normalizedRangeEnd)
+      const bucketKeyToIndex = new Map<string, number>()
+      const chartPoints: ChartPoint[] = bucketDates.map((date, idx) => {
+        const aligned = alignDateToGrouping(date, grouping)
+        const key = aligned.toISOString()
+        bucketKeyToIndex.set(key, idx)
+        return {
+          label: formatBucketLabel(aligned, grouping),
+          sortKey: aligned.getTime(),
+          revenue: 0,
+          commission: 0,
+          newUsers: 0,
+          referralEarnings: 0,
+          games: 0,
+        }
       })
 
-      gamesData?.forEach((g: any) => {
-        const d = new Date(g.created_at).toLocaleDateString()
-        gamesByDate[d] = (gamesByDate[d] || 0) + 1
-      })
+      if (bucketDates.length > 0) {
+        const [
+          depositChartRes,
+          stakeChartRes,
+          newUsersRes,
+          referralChartRes,
+          gamesChartRes,
+        ] = await Promise.all([
+          supabaseAdmin
+            .from('transactions')
+            .select('created_at, amount')
+            .eq('type', 'deposit')
+            .eq('status', 'completed')
+            .gte('created_at', rangeStartIso)
+            .lte('created_at', rangeEndIso)
+            .order('created_at', { ascending: true }),
+          supabaseAdmin
+            .from('transactions')
+            .select('created_at, metadata, amount')
+            .eq('type', 'stake')
+            .eq('status', 'completed')
+            .gte('created_at', rangeStartIso)
+            .lte('created_at', rangeEndIso)
+            .order('created_at', { ascending: true }),
+          supabaseAdmin
+            .from('users')
+            .select('created_at')
+            .gte('created_at', rangeStartIso)
+            .lte('created_at', rangeEndIso)
+            .order('created_at', { ascending: true }),
+          supabaseAdmin
+            .from('referrals')
+            .select('created_at, bonus_amount, status')
+            .eq('status', 'completed')
+            .gte('created_at', rangeStartIso)
+            .lte('created_at', rangeEndIso)
+            .order('created_at', { ascending: true }),
+          supabaseAdmin
+            .from('games')
+            .select('created_at, status')
+            .gte('created_at', rangeStartIso)
+            .lte('created_at', rangeEndIso)
+            .order('created_at', { ascending: true }),
+        ])
 
-      const labelSet = new Set<string>([...Object.keys(revenueByDate), ...Object.keys(gamesByDate)])
-      const labels = Array.from(labelSet).sort((a, b) => new Date(a).getTime() - new Date(b).getTime()).slice(-30)
-      const revenueData = labels.map(d => revenueByDate[d] || 0)
-      const gamesCountData = labels.map(d => gamesByDate[d] || 0)
+        if (depositChartRes.error) {
+          console.error('Deposit chart fetch failed:', depositChartRes.error)
+        }
+        if (stakeChartRes.error) {
+          console.error('Stake chart fetch failed:', stakeChartRes.error)
+        }
+        if (newUsersRes.error) {
+          console.error('New users chart fetch failed:', newUsersRes.error)
+        }
+        if (referralChartRes.error) {
+          console.error('Referral chart fetch failed:', referralChartRes.error)
+        }
+        if (gamesChartRes.error) {
+          console.error('Games chart fetch failed:', gamesChartRes.error)
+        }
 
-      setChartData({ labels, revenue: revenueData, gamesCount: gamesCountData })
+        depositChartRes.data?.forEach((tx: any) => {
+          const key = alignDateToGrouping(new Date(tx.created_at), grouping).toISOString()
+          const idx = bucketKeyToIndex.get(key)
+          if (idx === undefined) return
+          chartPoints[idx].revenue += Number(tx?.amount || 0)
+        })
+
+        stakeChartRes.data?.forEach((tx: any) => {
+          const key = alignDateToGrouping(new Date(tx.created_at), grouping).toISOString()
+          const idx = bucketKeyToIndex.get(key)
+          if (idx === undefined) return
+          const md = (tx?.metadata || {}) as any
+          let main = Number(md?.main_deducted ?? 0)
+          if (!main || Number.isNaN(main)) {
+            main = Math.abs(Number(tx?.amount ?? 0))
+          }
+          chartPoints[idx].commission += main * commissionRate
+        })
+
+        newUsersRes.data?.forEach((user: any) => {
+          const key = alignDateToGrouping(new Date(user.created_at), grouping).toISOString()
+          const idx = bucketKeyToIndex.get(key)
+          if (idx === undefined) return
+          chartPoints[idx].newUsers += 1
+        })
+
+        referralChartRes.data?.forEach((ref: any) => {
+          const key = alignDateToGrouping(new Date(ref.created_at), grouping).toISOString()
+          const idx = bucketKeyToIndex.get(key)
+          if (idx === undefined) return
+          chartPoints[idx].referralEarnings += Number(ref?.bonus_amount || 0)
+        })
+
+        gamesChartRes.data?.forEach((game: any) => {
+          const key = alignDateToGrouping(new Date(game.created_at), grouping).toISOString()
+          const idx = bucketKeyToIndex.get(key)
+          if (idx === undefined) return
+          chartPoints[idx].games += 1
+        })
+      }
+
+      setChartData(chartPoints)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [grouping, rangeStart, rangeEnd])
 
-  // Transform chart data for Recharts
-  const chartDataFormatted = chartData?.labels?.map((label: string, index: number) => ({
-    date: label,
-    revenue: chartData.revenue[index] || 0,
-    games: chartData.gamesCount[index] || 0,
-  })) || []
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/mgmt-portal-x7k9p2/login')
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      fetchDashboardData()
+    }
+  }, [authLoading, isAuthenticated, fetchDashboardData])
+
+  const groupingEntries = Object.entries(GROUPING_SETTINGS) as Array<[
+    ChartGrouping,
+    { label: string; bucketCount: number }
+  ]>
+
+  const chartDataFormatted = chartData.map((point) => ({
+    label: point.label,
+    revenue: Number(point.revenue.toFixed(2)),
+    commission: Number(point.commission.toFixed(2)),
+    referralEarnings: Number(point.referralEarnings.toFixed(2)),
+    newUsers: point.newUsers,
+    games: point.games,
+  }))
 
   if (authLoading) {
     return (
@@ -316,7 +624,7 @@ export default function ProfessionalDashboard() {
         {/* Main Content */}
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 overflow-y-auto">
         {/* KPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
           {/* Total Users */}
           <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 backdrop-blur-md rounded-lg p-6 border border-blue-500/30 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
@@ -383,6 +691,18 @@ export default function ProfessionalDashboard() {
             <p className="text-yellow-400 text-xs mt-2">Today: {formatCurrency(stats.todayCommission)}</p>
           </div>
 
+          {/* Referral Performance */}
+          <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/20 backdrop-blur-md rounded-lg p-6 border border-teal-500/30 shadow-lg hover:shadow-xl transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-slate-400 text-sm font-medium">Referral Program</span>
+              <div className="w-10 h-10 bg-teal-500/20 rounded-lg flex items-center justify-center">
+                <Share2 className="w-5 h-5 text-teal-300" />
+              </div>
+            </div>
+            <div className="text-3xl font-bold text-white">{stats.totalReferrals}</div>
+            <p className="text-teal-300 text-xs mt-2">Earnings: {formatCurrency(stats.totalReferralEarnings)}</p>
+          </div>
+
           {/* Pending Withdrawals */}
           <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 backdrop-blur-md rounded-lg p-6 border border-red-500/30 shadow-lg hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
@@ -400,27 +720,98 @@ export default function ProfessionalDashboard() {
 
         {/* Chart Section */}
         <div className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 shadow-lg mb-8">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-2">Analytics</h2>
-            <p className="text-slate-400 text-sm">Last 30 days performance</p>
+          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-2">Analytics</h2>
+              <p className="text-slate-400 text-sm">Trend of revenue, commission, referral bonus, and new users</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {groupingEntries.map(([key, value]) => {
+                const isActive = grouping === key
+                return (
+                  <button
+                    key={key}
+                    onClick={() => handleGroupingChange(key)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      isActive
+                        ? 'bg-cyan-600/80 border-cyan-400 text-white shadow-cyan-500/40 shadow'
+                        : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white hover:border-cyan-400/60'
+                    }`}
+                  >
+                    {value.label}
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex flex-wrap gap-3 items-center">
+              {grouping === 'daily' ? (
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <span>Day</span>
+                  <input
+                    type="date"
+                    value={toDateInputValue(rangeStart)}
+                    onChange={(e) => handleSingleDateChange(e.target.value)}
+                    className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                  />
+                </label>
+              ) : (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                    <span>Start</span>
+                    <input
+                      type="date"
+                      value={toDateInputValue(rangeStart)}
+                      onChange={(e) => handleRangeStartChange(e.target.value)}
+                      className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-300">
+                    <span>End</span>
+                    <input
+                      type="date"
+                      value={toDateInputValue(rangeEnd)}
+                      onChange={(e) => handleRangeEndChange(e.target.value)}
+                      className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
+                    />
+                  </label>
+                </>
+              )}
+            </div>
           </div>
           <div className="bg-slate-900/50 rounded-lg p-6 border border-slate-700/30 w-full h-96">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartDataFormatted} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.2)" />
-                <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis stroke="#3b82f6" style={{ fontSize: '12px' }} label={{ value: 'Real Revenue (ETB)', angle: -90, position: 'insideLeft' }} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.9)', border: '1px solid #3b82f6', borderRadius: '8px' }}
-                  labelStyle={{ color: '#fff' }}
-                  formatter={(value: any, name: string) => {
-                    if (name === 'revenue') return [formatCurrency(value), 'Real Revenue (ETB)']
-                    return [Math.round(value), 'Games Played']
+                <XAxis dataKey="label" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+                <YAxis
+                  yAxisId="left"
+                  stroke="#38bdf8"
+                  style={{ fontSize: '12px' }}
+                  label={{ value: 'Amount (ETB)', angle: -90, position: 'insideLeft', fill: '#38bdf8' }}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  stroke="#f97316"
+                  style={{ fontSize: '12px' }}
+                  label={{ value: 'New Users', angle: 90, position: 'insideRight', fill: '#f97316' }}
+                />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
+                  labelStyle={{ color: '#cbd5f5' }}
+                  formatter={(value: number, name) => {
+                    if (name === 'New Users' || name === 'Games') {
+                      return [value, name]
+                    }
+                    return [formatCurrency(Number(value)), name]
                   }}
                 />
-                <Legend wrapperStyle={{ color: '#9ca3af' }} />
-                <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 3 }} activeDot={{ r: 5 }} />
-                <Line type="monotone" dataKey="games" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 3 }} activeDot={{ r: 5 }} yAxisId="right" />
+                <Legend />
+                <Line yAxisId="left" type="monotone" dataKey="revenue" name="Revenue (ETB)" stroke="#6366f1" strokeWidth={3} dot={false} />
+                <Line yAxisId="left" type="monotone" dataKey="commission" name="Commission (ETB)" stroke="#facc15" strokeWidth={2} dot={false} strokeDasharray="6 2" />
+                <Line yAxisId="left" type="monotone" dataKey="referralEarnings" name="Referral Bonus (ETB)" stroke="#14b8a6" strokeWidth={2} dot={false} strokeDasharray="4 4" />
+                <Line yAxisId="right" type="monotone" dataKey="newUsers" name="New Users" stroke="#f97316" strokeWidth={2} dot={false} />
+                <Line yAxisId="right" type="monotone" dataKey="games" name="Games" stroke="#38bdf8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
               </LineChart>
             </ResponsiveContainer>
           </div>
