@@ -10,6 +10,8 @@ export default function AdminRoomsPage() {
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingRoom, setEditingRoom] = useState<any>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [formData, setFormData] = useState({
     id: '',
     name: '',
@@ -40,6 +42,11 @@ export default function AdminRoomsPage() {
     }
   }
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 4000)
+  }
+
   const toggleRoomStatus = async (roomId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
@@ -50,13 +57,15 @@ export default function AdminRoomsPage() {
 
       if (error) throw error
       
-      alert(`Room ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully!`)
+      showNotification('success', `Room ${newStatus === 'active' ? 'activated' : 'deactivated'} successfully!`)
       fetchRooms()
     } catch (error) {
       console.error('Error updating room:', error)
-      alert('Failed to update room status')
+      showNotification('error', 'Failed to update room status')
     }
   }
+
+  
 
   const handleCreateRoom = () => {
     setEditingRoom(null)
@@ -164,250 +173,260 @@ export default function AdminRoomsPage() {
     }
   }
 
+  const filteredRooms = rooms.filter(room =>
+    room.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    room.id.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${
+          notification.type === 'success'
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+        }`}>
+          {notification.message}
+        </div>
+      )}
+
       {/* Header */}
-      <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Link href="/mgmt-portal-x7k9p2" className="text-2xl text-white hover:opacity-70">←</Link>
-              <h1 className="text-2xl font-bold text-white">Room Management</h1>
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Rooms Management</h1>
+              <p className="text-slate-400 text-sm mt-1">Create, edit, and manage game rooms</p>
             </div>
+            <button
+              onClick={handleCreateRoom}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
+            >
+              <span>+</span> New Room
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Create Room Button */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Search Bar */}
         <div className="mb-6">
-          <button
-            onClick={handleCreateRoom}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            + Create New Room
-          </button>
+          <input
+            type="text"
+            placeholder="Search rooms by name or ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+          />
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4">
+            <p className="text-slate-400 text-xs sm:text-sm">Total Rooms</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{rooms.length}</p>
+          </div>
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4">
+            <p className="text-slate-400 text-xs sm:text-sm">Active Rooms</p>
+            <p className="text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">{rooms.filter(r => r.status === 'active').length}</p>
+          </div>
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4">
+            <p className="text-slate-400 text-xs sm:text-sm">Avg Entry Fee</p>
+            <p className="text-2xl sm:text-3xl font-bold text-cyan-400 mt-1">{formatCurrency(rooms.length > 0 ? rooms.reduce((sum, r) => sum + r.stake, 0) / rooms.length : 0)}</p>
+          </div>
         </div>
 
         {/* Rooms Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {loading ? (
-            <div className="col-span-full bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-12 text-center text-gray-400">
+            <div className="col-span-full bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-12 text-center text-slate-400">
+              <div className="w-8 h-8 border-4 border-slate-600 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
               Loading rooms...
             </div>
-          ) : rooms.length === 0 ? (
-            <div className="col-span-full bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-12 text-center text-gray-400">
-              No rooms found
+          ) : filteredRooms.length === 0 ? (
+            <div className="col-span-full bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-12 text-center text-slate-400">
+              {searchTerm ? 'No rooms match your search' : 'No rooms found'}
             </div>
           ) : (
-            rooms.map((room) => (
-              <div key={room.id} className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-white mb-2">{room.name}</h3>
-                    <p className="text-gray-400 text-sm">{room.description}</p>
+            filteredRooms.map((room) => (
+              <div key={room.id} className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-5 hover:border-slate-600/50 transition-all group">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-0 mb-3 sm:mb-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-emerald-400 transition-colors truncate">{room.name}</h3>
+                    <p className="text-xs text-slate-500 mt-1 truncate">ID: {room.id}</p>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    room.status === 'active' ? 'bg-green-500/20 text-green-400' :
-                    'bg-red-500/20 text-red-400'
+                  <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap flex-shrink-0 ${
+                    room.status === 'active' 
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                      : 'bg-slate-600/20 text-slate-400 border border-slate-600/30'
                   }`}>
-                    {room.status}
+                    {room.status === 'active' ? '● Active' : '○ Inactive'}
                   </span>
                 </div>
 
-                <div className="space-y-3 mb-6">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Entry Fee:</span>
-                    <span className="font-bold text-white">{formatCurrency(room.stake)}</span>
+                {/* Description */}
+                {room.description && (
+                  <p className="text-xs sm:text-sm text-slate-400 mb-3 sm:mb-4 line-clamp-2">{room.description}</p>
+                )}
+
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4 sm:mb-5 pb-4 sm:pb-5 border-b border-slate-700/30">
+                  <div>
+                    <p className="text-xs text-slate-500">Entry Fee</p>
+                    <p className="text-xs sm:text-sm font-semibold text-cyan-400">{formatCurrency(room.stake)}</p>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Max Players:</span>
-                    <span className="font-bold text-white">{room.max_players}</span>
+                  <div>
+                    <p className="text-xs text-slate-500">Max Players</p>
+                    <p className="text-xs sm:text-sm font-semibold text-white">{room.max_players}</p>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Current Players:</span>
-                    <span className="font-bold text-blue-400">{room.current_players || 0}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Game Level:</span>
-                    <span className="font-bold text-white">
+                  <div>
+                    <p className="text-xs text-slate-500">Difficulty</p>
+                    <p className="text-xs sm:text-sm font-semibold">
                       {(room.game_level || room.default_level) === 'easy' ? '🟢 Easy' : 
                        (room.game_level || room.default_level) === 'hard' ? '🔴 Hard' : '🟡 Medium'}
-                    </span>
+                    </p>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Prize Pool:</span>
-                    <span className="font-bold text-blue-400">Dynamic</span>
+                  <div>
+                    <p className="text-xs text-slate-500">Prize Pool</p>
+                    <p className="text-xs sm:text-sm font-semibold text-emerald-400">Dynamic</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                {/* Actions */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <button
                     onClick={() => handleEditRoom(room)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
+                    className="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-600/30 py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg font-semibold transition-colors text-xs"
+                    title="Edit room"
                   >
-                    Edit
+                    ✎ Edit
                   </button>
                   <button
                     onClick={() => toggleRoomStatus(room.id, room.status)}
-                    className={`py-2 rounded-lg font-semibold transition-colors text-sm ${
+                    className={`py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg font-semibold transition-colors text-xs border ${
                       room.status === 'active'
-                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                        : 'bg-green-600 hover:bg-green-700 text-white'
+                        ? 'bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border-amber-600/30'
+                        : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border-emerald-600/30'
                     }`}
+                    title={room.status === 'active' ? 'Disable room' : 'Enable room'}
                   >
-                    {room.status === 'active' ? 'Disable' : 'Enable'}
+                    {room.status === 'active' ? '⊘' : '✓'}
                   </button>
                   <button
                     onClick={() => handleDeleteRoom(room.id)}
-                    className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
+                    className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg font-semibold transition-colors text-xs"
+                    title="Delete room"
                   >
-                    Delete
+                    🗑
                   </button>
                 </div>
               </div>
             ))
           )}
         </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Total Rooms</div>
-            <div className="text-3xl font-bold text-white">{rooms.length}</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Active Rooms</div>
-            <div className="text-3xl font-bold text-green-400">
-              {rooms.filter(r => r.status === 'active').length}
-            </div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-            <div className="text-sm text-gray-400 mb-1">Total Players</div>
-            <div className="text-3xl font-bold text-blue-400">
-              {rooms.reduce((sum, r) => sum + (r.current_players || 0), 0)}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-white mb-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold text-white mb-1">
               {editingRoom ? 'Edit Room' : 'Create New Room'}
             </h2>
+            <p className="text-slate-400 text-sm mb-6">Manage room settings and configurations</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-gray-300 mb-2">Room ID</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Room ID</label>
                 <input
                   type="text"
                   value={formData.id}
                   onChange={(e) => setFormData({...formData, id: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="speed-bingo"
                   disabled={!!editingRoom}
                   required={!editingRoom}
                 />
+                <p className="text-xs text-slate-500 mt-1">Unique identifier (cannot be changed)</p>
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Room Name</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Room Name</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="Speed Bingo"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Entry Fee (ETB)</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Entry Fee (ETB)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={formData.stake}
                   onChange={(e) => setFormData({...formData, stake: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="5.00"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Max Players</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Max Players</label>
                 <input
                   type="number"
                   value={formData.max_players}
                   onChange={(e) => setFormData({...formData, max_players: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="200"
                   required
                 />
               </div>
-              <div className="bg-blue-900/30 border border-blue-500/30 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-blue-400">💡</span>
-                  <label className="text-blue-300 font-medium">Prize Pool</label>
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span>💡</span>
+                  <label className="text-cyan-300 font-medium text-sm">Prize Pool</label>
                 </div>
-                <p className="text-blue-200 text-sm">
-                  Prize pools are now <strong>calculated dynamically</strong> based on waiting players:
-                </p>
-                <p className="text-blue-100 text-xs mt-1">
-                  Prize = (Entry Fee × Waiting Players × 90%)
+                <p className="text-cyan-200/80 text-xs">
+                  Calculated dynamically: Entry Fee × Waiting Players × 90%
                 </p>
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Description</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Description</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="Fast-paced action! Numbers called every 2 seconds."
                   rows={3}
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Color Gradient</label>
-                <select
-                  value={formData.color}
-                  onChange={(e) => setFormData({...formData, color: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
-                >
-                  <option value="from-blue-500 to-blue-700">Blue</option>
-                  <option value="from-green-500 to-green-700">Green</option>
-                  <option value="from-purple-500 to-purple-700">Purple</option>
-                  <option value="from-red-500 to-red-700">Red</option>
-                  <option value="from-yellow-500 to-yellow-700">Yellow</option>
-                  <option value="from-pink-500 to-pink-700">Pink</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-gray-300 mb-2">Default Difficulty Level</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Default Difficulty</label>
                 <select
                   value={formData.default_level}
                   onChange={(e) => setFormData({...formData, default_level: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                 >
-                  <option value="easy">🟢 Easy (1s intervals, 3 matches, 10 XP)</option>
-                  <option value="medium">🟡 Medium (2s intervals, 5 matches, 25 XP)</option>
-                  <option value="hard">🔴 Hard (3s intervals, 7 matches, 50 XP)</option>
+                  <option value="easy">🟢 Easy</option>
+                  <option value="medium">🟡 Medium</option>
+                  <option value="hard">🔴 Hard</option>
                 </select>
-                <p className="text-gray-400 text-sm mt-1">
-                  Players can still choose their preferred difficulty when joining
-                </p>
+                <p className="text-slate-400 text-xs mt-1">Players can choose their preferred difficulty when joining</p>
               </div>
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
                 <button
                   type="submit"
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-semibold transition-colors"
                 >
                   {editingRoom ? 'Update Room' : 'Create Room'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 rounded-lg font-semibold transition-colors"
                 >
                   Cancel
                 </button>

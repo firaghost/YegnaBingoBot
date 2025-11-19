@@ -536,7 +536,8 @@ export default function GamePage() {
           // Try bonus-first deduction via RPC (atomic)
           const { data: deductionResult, error: deductErr } = await supabase.rpc('deduct_stake_with_bonus', {
             p_user_id: user.id,
-            p_amount: roomData.stake
+            p_amount: roomData.stake,
+            p_game_id: gameId
           })
 
           if (deductErr) {
@@ -573,17 +574,28 @@ export default function GamePage() {
             if (updateErr) {
               throw updateErr
             }
+
+            // Log stake transaction with metadata so prize pool computation can use it
+            try {
+              await supabase.from('transactions').insert({
+                user_id: user.id,
+                type: 'stake',
+                amount: -roomData.stake,
+                game_id: gameId,
+                status: 'completed',
+                metadata: {
+                  source: mainDeduct === 0 ? 'bonus' : (bonusDeduct === 0 ? 'main' : 'mixed'),
+                  bonus_deducted: bonusDeduct,
+                  main_deducted: mainDeduct,
+                  total_deducted: roomData.stake
+                }
+              })
+            } catch (e) {
+              console.warn('⚠️ Failed to log fallback stake transaction:', e)
+            }
           }
 
-          // Create transaction record
-          const { error: txErr } = await supabase.from('transactions').insert({
-            user_id: user.id,
-            type: 'stake',
-            amount: -roomData.stake,
-            game_id: gameId,
-            status: 'completed'
-          })
-          if (txErr) console.warn('⚠️ Failed to log stake transaction:', txErr)
+          // Note: When RPC succeeds, it already logs the stake with metadata.
           
           setStakeDeducted(true)
           console.log('💰 Stake deducted (bonus-first):', roomData.stake)

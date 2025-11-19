@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
             bots: [],
             called_numbers: [],
             stake,
-            prize_pool: stake,
+            prize_pool: 0,
             started_at: new Date().toISOString(),
           })
           .select()
@@ -147,14 +147,12 @@ export async function POST(request: NextRequest) {
     // Join existing game (or rejoin if already in)
     if (!actualGame.players.includes(userId)) {
       const updatedPlayers = [...actualGame.players, userId];
-      const updatedPrizePool = actualGame.prize_pool + stake;
       let newStatus = actualGame.status === 'countdown' ? 'countdown' : 'waiting';
 
       const { data: updatedGame, error: joinError } = await supabase
         .from('games')
         .update({
           players: updatedPlayers,
-          prize_pool: updatedPrizePool,
           status: newStatus
         })
         .eq('id', actualGame.id)

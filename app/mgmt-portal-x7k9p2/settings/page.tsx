@@ -5,7 +5,10 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { getAllConfig, setConfig } from '@/lib/admin-config'
 
+type TabType = 'system' | 'financial' | 'bonuses' | 'notifications' | 'support' | 'security'
+
 export default function AdminSettings() {
+  const [activeTab, setActiveTab] = useState<TabType>('system')
   const [settings, setSettings] = useState({
     siteName: 'BingoX',
     maintenanceMode: false,
@@ -14,6 +17,9 @@ export default function AdminSettings() {
     minWithdrawal: 100 as number | string,
     maxWithdrawal: 100000 as number | string,
     withdrawalFee: 0 as number | string,
+    minRequiredDeposit: 50 as number | string,
+    dailyWithdrawalLimit: 5000 as number | string,
+    weeklyWithdrawalLimit: 2000 as number | string,
     commissionRate: 10 as number | string,
     welcomeBonus: 5 as number | string,
     depositBonus: 10 as number | string,
@@ -28,23 +34,28 @@ export default function AdminSettings() {
     supportEmail: 'support@bingox.com',
     supportTelegram: '@bingox_support',
     supportPhone: '+251 911 234 567',
+    requireOtpOnWithdrawal: false,
+    ipWithdrawMaxPerMin: 5 as number | string,
+    ipWithdrawWindowSeconds: 60 as number | string,
   })
 
-  // Keep track of original settings to detect changes
   const [originalSettings, setOriginalSettings] = useState(settings)
   const [isSaving, setIsSaving] = useState(false)
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
 
   useEffect(() => {
     fetchSettings()
   }, [])
 
+  useEffect(() => {
+    setHasChanges(JSON.stringify(settings) !== JSON.stringify(originalSettings))
+  }, [settings, originalSettings])
+
   const fetchSettings = async () => {
     try {
-      // First try to get from new admin_config table
       const config = await getAllConfig()
-      
       if (Object.keys(config).length > 0) {
-        // Map new config keys to old settings format
         const mappedSettings = {
           siteName: config.appName || 'BingoX',
           maintenanceMode: config.maintenanceMode || false,
@@ -52,8 +63,11 @@ export default function AdminSettings() {
           registrationEnabled: config.registrationEnabled ?? true,
           minWithdrawal: Number(config.minWithdrawalAmount) || 100,
           maxWithdrawal: Number(config.maxWithdrawalAmount) || 100000,
-          withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100, // Convert to percentage with proper rounding
-          commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100, // Convert to percentage with proper rounding
+          withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100,
+          commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100,
+          minRequiredDeposit: Number(config.minRequiredDeposit) || 50,
+          dailyWithdrawalLimit: Number(config.dailyWithdrawalLimit) || 5000,
+          weeklyWithdrawalLimit: Number(config.weeklyWithdrawalLimit) || 20000,
           welcomeBonus: Number(config.welcomeBonus) || 5,
           depositBonus: Number(config.depositBonus) || 10,
           referralBonus: Number(config.referralBonus) || 50,
@@ -67,20 +81,27 @@ export default function AdminSettings() {
           supportEmail: config.supportEmail || 'support@bingox.com',
           supportTelegram: config.telegramSupport || '@bingox_support',
           supportPhone: config.supportPhone || '+251 911 234 567',
+          requireOtpOnWithdrawal: Boolean(config.requireOtpOnWithdrawal),
+          ipWithdrawMaxPerMin: Number(config.ipWithdrawMaxPerMin) || 5,
+          ipWithdrawWindowSeconds: Number(config.ipWithdrawWindowSeconds) || 60,
         }
-        
         setSettings(prev => ({ ...prev, ...mappedSettings }))
         setOriginalSettings(prev => ({ ...prev, ...mappedSettings }))
       }
     } catch (error) {
       console.error('Error fetching settings:', error)
+      showNotification('error', 'Failed to load settings')
     }
+  }
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 4000)
   }
 
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Detect only changed settings
       const changedSettings: { [key: string]: any } = {}
       
       if (settings.siteName !== originalSettings.siteName) changedSettings.app_name = settings.siteName
@@ -91,6 +112,9 @@ export default function AdminSettings() {
       if (Number(settings.maxWithdrawal) !== Number(originalSettings.maxWithdrawal)) changedSettings.max_withdrawal_amount = Number(settings.maxWithdrawal) || 0
       if (Number(settings.withdrawalFee) !== Number(originalSettings.withdrawalFee)) changedSettings.withdrawal_fee_rate = (Number(settings.withdrawalFee) || 0) / 100
       if (Number(settings.commissionRate) !== Number(originalSettings.commissionRate)) changedSettings.game_commission_rate = (Number(settings.commissionRate) || 0) / 100
+      if (Number(settings.minRequiredDeposit) !== Number(originalSettings.minRequiredDeposit)) changedSettings.min_required_deposit = Number(settings.minRequiredDeposit) || 0
+      if (Number(settings.dailyWithdrawalLimit) !== Number(originalSettings.dailyWithdrawalLimit)) changedSettings.daily_withdrawal_limit = Number(settings.dailyWithdrawalLimit) || 0
+      if (Number(settings.weeklyWithdrawalLimit) !== Number(originalSettings.weeklyWithdrawalLimit)) changedSettings.weekly_withdrawal_limit = Number(settings.weeklyWithdrawalLimit) || 0
       if (Boolean(settings.autoApproveDeposits) !== Boolean(originalSettings.autoApproveDeposits)) changedSettings.auto_approve_deposits = Boolean(settings.autoApproveDeposits)
       if (Boolean(settings.autoApproveWithdrawals) !== Boolean(originalSettings.autoApproveWithdrawals)) changedSettings.auto_approve_withdrawals = Boolean(settings.autoApproveWithdrawals)
       if (Number(settings.welcomeBonus) !== Number(originalSettings.welcomeBonus)) changedSettings.welcome_bonus = Number(settings.welcomeBonus) || 0
@@ -104,455 +128,383 @@ export default function AdminSettings() {
       if (settings.socketUrl !== originalSettings.socketUrl) changedSettings.socket_url = settings.socketUrl
       if (Boolean(settings.emailNotifications) !== Boolean(originalSettings.emailNotifications)) changedSettings.email_notifications = Boolean(settings.emailNotifications)
       if (Boolean(settings.telegramNotifications) !== Boolean(originalSettings.telegramNotifications)) changedSettings.telegram_notifications = Boolean(settings.telegramNotifications)
+      if (Boolean(settings.requireOtpOnWithdrawal) !== Boolean(originalSettings.requireOtpOnWithdrawal)) changedSettings.require_otp_on_withdrawal = Boolean(settings.requireOtpOnWithdrawal)
+      if (Number(settings.ipWithdrawMaxPerMin) !== Number(originalSettings.ipWithdrawMaxPerMin)) changedSettings.ip_withdraw_max_per_min = Number(settings.ipWithdrawMaxPerMin) || 0
+      if (Number(settings.ipWithdrawWindowSeconds) !== Number(originalSettings.ipWithdrawWindowSeconds)) changedSettings.ip_withdraw_window_seconds = Number(settings.ipWithdrawWindowSeconds) || 0
 
-      const changedCount = Object.keys(changedSettings).length
-      
-      if (changedCount === 0) {
-        alert('No changes detected!')
+      if (Object.keys(changedSettings).length === 0) {
+        showNotification('error', 'No changes to save')
         return
       }
 
-      console.log(`Saving ${changedCount} changed settings:`, changedSettings)
-      
-      // Save only changed settings
-      const results = []
       for (const [key, value] of Object.entries(changedSettings)) {
-        results.push(await setConfig(key, value))
+        await setConfig(key, value)
       }
       
-      console.log('Save results:', results)
-      const failedSaves = results.filter(result => result === false)
-      if (failedSaves.length > 0) {
-        throw new Error(`${failedSaves.length} settings failed to save`)
-      }
-
-      // Update original settings to current settings
       setOriginalSettings({ ...settings })
-
-      // Clear cache to force refresh
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      alert(`Successfully saved ${changedCount} setting${changedCount > 1 ? 's' : ''}!`)
+      showNotification('success', `${Object.keys(changedSettings).length} settings saved successfully!`)
     } catch (error: any) {
       console.error('Error saving settings:', error)
-      alert(`Failed to save settings: ${error.message || 'Unknown error'}`)
+      showNotification('error', error.message || 'Failed to save settings')
     } finally {
       setIsSaving(false)
     }
   }
 
+  const tabs: { id: TabType; label: string; icon: string }[] = [
+    { id: 'system', label: 'System', icon: '⚙️' },
+    { id: 'financial', label: 'Financial', icon: '💰' },
+    { id: 'bonuses', label: 'Bonuses', icon: '🎁' },
+    { id: 'notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'support', label: 'Support', icon: '👥' },
+    { id: 'security', label: 'Security', icon: '🔒' },
+  ]
+
+  const SettingInput = ({ label, value, onChange, type = 'text', description }: any) => (
+    <div>
+      <label className="block text-slate-300 text-sm font-medium mb-2">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
+      />
+      {description && <p className="text-xs text-slate-500 mt-1">{description}</p>}
+    </div>
+  )
+
+  const SettingToggle = ({ label, value, onChange, description }: any) => (
+    <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-700">
+      <div>
+        <p className="text-slate-300 font-medium">{label}</p>
+        {description && <p className="text-xs text-slate-500 mt-1">{description}</p>}
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        className={`relative w-12 h-6 rounded-full transition-colors ${
+          value ? 'bg-emerald-600' : 'bg-slate-600'
+        }`}
+      >
+        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+          value ? 'translate-x-6' : 'translate-x-1'
+        }`} />
+      </button>
+    </div>
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
-      <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${
+          notification.type === 'success'
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+        }`}>
+          {notification.message}
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
-                ← Back to Dashboard
-              </Link>
-              <h1 className="text-2xl font-bold text-white">System Settings</h1>
-              <p className="text-gray-400 text-sm">Configure system-wide settings</p>
+              <h1 className="text-3xl font-bold text-white">Settings</h1>
+              <p className="text-slate-400 text-sm mt-1">Configure system, financial, and security settings</p>
             </div>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition-all disabled:bg-gray-600 flex items-center gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Saving...
-                </>
-              ) : (
-                <>Save Changes</>
+            <div className="flex gap-3 w-full sm:w-auto">
+              {hasChanges && (
+                <button
+                  onClick={() => {
+                    setSettings(originalSettings)
+                    showNotification('error', 'Changes discarded')
+                  }}
+                  className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-6 py-2.5 rounded-lg font-semibold transition-colors"
+                >
+                  Discard
+                </button>
               )}
-            </button>
+              <button
+                onClick={handleSave}
+                disabled={!hasChanges || isSaving}
+                className={`px-6 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 ${
+                  hasChanges && !isSaving
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                {isSaving ? '💾 Saving...' : '💾 Save Changes'}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* General Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">General Settings</h2>
-            
-            <div className="space-y-4">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Tabs */}
+        <div className="flex flex-wrap gap-1 sm:gap-2 mb-6 sm:mb-8 bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-1 sm:p-2 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-1 sm:gap-2 whitespace-nowrap text-xs sm:text-base ${
+                activeTab === tab.id
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-transparent text-slate-400 hover:text-slate-300'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-6 sm:p-8">
+          {/* System Settings */}
+          {activeTab === 'system' && (
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Site Name</label>
-                <input
-                  type="text"
-                  value={settings.siteName}
-                  onChange={(e) => setSettings({...settings, siteName: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
+                <h2 className="text-2xl font-bold text-white mb-6">System Settings</h2>
               </div>
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Maintenance Mode</div>
-                  <div className="text-sm text-gray-400">Disable site for maintenance</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.maintenanceMode}
-                    onChange={(e) => setSettings({...settings, maintenanceMode: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
-
+              <SettingInput
+                label="Site Name"
+                value={settings.siteName}
+                onChange={(e: any) => setSettings({ ...settings, siteName: e.target.value })}
+                description="Your application name"
+              />
+              <SettingToggle
+                label="Maintenance Mode"
+                value={settings.maintenanceMode}
+                onChange={(value: boolean) => setSettings({ ...settings, maintenanceMode: value })}
+                description="Disable user access to the platform"
+              />
               {settings.maintenanceMode && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Maintenance Message</label>
-                  <textarea
-                    value={settings.maintenanceMessage}
-                    onChange={(e) => setSettings({...settings, maintenanceMessage: e.target.value})}
-                    rows={3}
-                    className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500 resize-none"
-                    placeholder="Enter message to show during maintenance..."
-                  />
-                  <p className="text-xs text-gray-400 mt-1">This message will be displayed to users during maintenance</p>
-                </div>
+                <SettingInput
+                  label="Maintenance Message"
+                  value={settings.maintenanceMessage}
+                  onChange={(e: any) => setSettings({ ...settings, maintenanceMessage: e.target.value })}
+                  description="Message shown to users during maintenance"
+                />
               )}
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Registration Enabled</div>
-                  <div className="text-sm text-gray-400">Allow new user registrations</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.registrationEnabled}
-                    onChange={(e) => setSettings({...settings, registrationEnabled: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
+              <SettingToggle
+                label="Registration Enabled"
+                value={settings.registrationEnabled}
+                onChange={(value: boolean) => setSettings({ ...settings, registrationEnabled: value })}
+                description="Allow new users to register"
+              />
+              <SettingInput
+                label="Socket URL"
+                value={settings.socketUrl}
+                onChange={(e: any) => setSettings({ ...settings, socketUrl: e.target.value })}
+                description="WebSocket server URL for real-time updates"
+              />
+              <SettingInput
+                label="Telegram Bot Token"
+                value={settings.telegramBotToken}
+                onChange={(e: any) => setSettings({ ...settings, telegramBotToken: e.target.value })}
+                type="password"
+                description="Your Telegram bot token (keep secret)"
+              />
             </div>
-          </div>
+          )}
 
-          {/* Payment Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">Payment Settings</h2>
-            
-            <div className="space-y-4">
+          {/* Financial Settings */}
+          {activeTab === 'financial' && (
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Min Withdrawal (ETB)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <h2 className="text-2xl font-bold text-white mb-6">Financial Settings</h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <SettingInput
+                  label="Min Withdrawal (ETB)"
                   value={settings.minWithdrawal}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, minWithdrawal: ''})
-                    } else {
-                      setSettings({...settings, minWithdrawal: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Minimum amount users can withdraw (supports decimals like 0.5)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Max Withdrawal (ETB)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, minWithdrawal: e.target.value })}
                   type="number"
-                  step="0.01"
-                  min="0"
+                  description="Minimum withdrawal amount"
+                />
+                <SettingInput
+                  label="Max Withdrawal (ETB)"
                   value={settings.maxWithdrawal}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, maxWithdrawal: ''})
-                    } else {
-                      setSettings({...settings, maxWithdrawal: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Maximum amount users can withdraw per transaction</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Withdrawal Fee (%)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, maxWithdrawal: e.target.value })}
                   type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
+                  description="Maximum withdrawal amount"
+                />
+                <SettingInput
+                  label="Withdrawal Fee (%)"
                   value={settings.withdrawalFee}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, withdrawalFee: ''})
-                    } else {
-                      setSettings({...settings, withdrawalFee: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Percentage fee charged on withdrawals (0 = free withdrawals)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Game Commission Rate (%)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, withdrawalFee: e.target.value })}
                   type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
+                  description="Fee charged on withdrawals"
+                />
+                <SettingInput
+                  label="Min Deposit (ETB)"
+                  value={settings.minRequiredDeposit}
+                  onChange={(e: any) => setSettings({ ...settings, minRequiredDeposit: e.target.value })}
+                  type="number"
+                  description="Minimum deposit amount"
+                />
+                <SettingInput
+                  label="Daily Withdrawal Limit (ETB)"
+                  value={settings.dailyWithdrawalLimit}
+                  onChange={(e: any) => setSettings({ ...settings, dailyWithdrawalLimit: e.target.value })}
+                  type="number"
+                  description="Max withdrawal per day"
+                />
+                <SettingInput
+                  label="Weekly Withdrawal Limit (ETB)"
+                  value={settings.weeklyWithdrawalLimit}
+                  onChange={(e: any) => setSettings({ ...settings, weeklyWithdrawalLimit: e.target.value })}
+                  type="number"
+                  description="Max withdrawal per week"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-slate-700">
+                <SettingInput
+                  label="Commission Rate (%)"
                   value={settings.commissionRate}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, commissionRate: ''})
-                    } else {
-                      setSettings({...settings, commissionRate: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  onChange={(e: any) => setSettings({ ...settings, commissionRate: e.target.value })}
+                  type="number"
+                  description="Platform commission on games"
                 />
-                <p className="text-xs text-gray-400 mt-1">Commission deducted from prize pool before awarding winner</p>
               </div>
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Auto-Approve Deposits</div>
-                  <div className="text-sm text-gray-400">Automatically approve deposits</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.autoApproveDeposits}
-                    onChange={(e) => setSettings({...settings, autoApproveDeposits: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Auto-Approve Withdrawals</div>
-                  <div className="text-sm text-gray-400">Automatically approve withdrawals</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.autoApproveWithdrawals}
-                    onChange={(e) => setSettings({...settings, autoApproveWithdrawals: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-slate-700">
+                <SettingToggle
+                  label="Auto-Approve Deposits"
+                  value={settings.autoApproveDeposits}
+                  onChange={(value: boolean) => setSettings({ ...settings, autoApproveDeposits: value })}
+                  description="Automatically approve deposit requests"
+                />
+                <SettingToggle
+                  label="Auto-Approve Withdrawals"
+                  value={settings.autoApproveWithdrawals}
+                  onChange={(value: boolean) => setSettings({ ...settings, autoApproveWithdrawals: value })}
+                  description="Automatically approve withdrawal requests"
+                />
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Bonus Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">Bonus Settings</h2>
-            
-            <div className="space-y-4">
+          {/* Bonuses */}
+          {activeTab === 'bonuses' && (
+            <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Welcome Bonus (ETB)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <h2 className="text-2xl font-bold text-white mb-6">Bonus Settings</h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <SettingInput
+                  label="Welcome Bonus (ETB)"
                   value={settings.welcomeBonus}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, welcomeBonus: ''})
-                    } else {
-                      setSettings({...settings, welcomeBonus: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Bonus amount given to new users upon registration (supports decimals)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Deposit Bonus (%)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, welcomeBonus: e.target.value })}
                   type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
+                  description="Bonus for new registrations"
+                />
+                <SettingInput
+                  label="Deposit Bonus (%)"
                   value={settings.depositBonus}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, depositBonus: ''})
-                    } else {
-                      setSettings({...settings, depositBonus: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Percentage bonus on deposits (0 = no bonus, 10 = 10% bonus)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Referral Bonus (ETB)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, depositBonus: e.target.value })}
                   type="number"
-                  step="0.01"
-                  min="0"
+                  description="Bonus percentage on deposits"
+                />
+                <SettingInput
+                  label="Referral Bonus (ETB)"
                   value={settings.referralBonus}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, referralBonus: ''})
-                    } else {
-                      setSettings({...settings, referralBonus: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Amount given for successful referrals (supports decimals)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Daily Streak Bonus (ETB)</label>
-                <input
+                  onChange={(e: any) => setSettings({ ...settings, referralBonus: e.target.value })}
                   type="number"
-                  step="0.01"
-                  min="0"
+                  description="Bonus for successful referrals"
+                />
+                <SettingInput
+                  label="Daily Streak Bonus (ETB)"
                   value={settings.dailyStreakBonus}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '') {
-                      setSettings({...settings, dailyStreakBonus: ''})
-                    } else {
-                      setSettings({...settings, dailyStreakBonus: parseFloat(value) || 0})
-                    }
-                  }}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Amount given for completing daily streaks (supports decimals)</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Support Contact Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">Support Contact Information</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Support Email</label>
-                <input
-                  type="email"
-                  value={settings.supportEmail}
-                  onChange={(e) => setSettings({...settings, supportEmail: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  placeholder="support@bingox.com"
-                />
-                <p className="text-xs text-gray-400 mt-1">Email address shown to users for support</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Support Telegram</label>
-                <input
-                  type="text"
-                  value={settings.supportTelegram}
-                  onChange={(e) => setSettings({...settings, supportTelegram: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  placeholder="@bingox_support"
-                />
-                <p className="text-xs text-gray-400 mt-1">Telegram username for support (include @)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Support Phone</label>
-                <input
-                  type="text"
-                  value={settings.supportPhone}
-                  onChange={(e) => setSettings({...settings, supportPhone: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                  placeholder="+251 911 234 567"
-                />
-                <p className="text-xs text-gray-400 mt-1">Phone number for support contact</p>
-              </div>
-            </div>
-          </div>
-
-          {/* API Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-            <h2 className="text-xl font-bold text-white mb-6">API Settings</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Telegram Bot Token</label>
-                <input
-                  type="password"
-                  value={settings.telegramBotToken}
-                  onChange={(e) => setSettings({...settings, telegramBotToken: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Socket.IO URL</label>
-                <input
-                  type="text"
-                  value={settings.socketUrl}
-                  onChange={(e) => setSettings({...settings, socketUrl: e.target.value})}
-                  className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  onChange={(e: any) => setSettings({ ...settings, dailyStreakBonus: e.target.value })}
+                  type="number"
+                  description="Bonus for daily login streaks"
                 />
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Notification Settings */}
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 lg:col-span-2">
-            <h2 className="text-xl font-bold text-white mb-6">Notification Settings</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Email Notifications</div>
-                  <div className="text-sm text-gray-400">Send email notifications</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.emailNotifications}
-                    onChange={(e) => setSettings({...settings, emailNotifications: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
+          {/* Notifications */}
+          {activeTab === 'notifications' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-6">Notification Settings</h2>
               </div>
+              <SettingToggle
+                label="Email Notifications"
+                value={settings.emailNotifications}
+                onChange={(value: boolean) => setSettings({ ...settings, emailNotifications: value })}
+                description="Send email notifications to users"
+              />
+              <SettingToggle
+                label="Telegram Notifications"
+                value={settings.telegramNotifications}
+                onChange={(value: boolean) => setSettings({ ...settings, telegramNotifications: value })}
+                description="Send Telegram notifications to users"
+              />
+            </div>
+          )}
 
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                <div>
-                  <div className="font-medium text-white">Telegram Notifications</div>
-                  <div className="text-sm text-gray-400">Send Telegram notifications</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={settings.telegramNotifications}
-                    onChange={(e) => setSettings({...settings, telegramNotifications: e.target.checked})}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-                </label>
+          {/* Support */}
+          {activeTab === 'support' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-6">Support Settings</h2>
+              </div>
+              <SettingInput
+                label="Support Email"
+                value={settings.supportEmail}
+                onChange={(e: any) => setSettings({ ...settings, supportEmail: e.target.value })}
+                type="email"
+                description="Email for support inquiries"
+              />
+              <SettingInput
+                label="Support Telegram"
+                value={settings.supportTelegram}
+                onChange={(e: any) => setSettings({ ...settings, supportTelegram: e.target.value })}
+                description="Telegram handle for support (@username)"
+              />
+              <SettingInput
+                label="Support Phone"
+                value={settings.supportPhone}
+                onChange={(e: any) => setSettings({ ...settings, supportPhone: e.target.value })}
+                type="tel"
+                description="Phone number for support"
+              />
+            </div>
+          )}
+
+          {/* Security */}
+          {activeTab === 'security' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-6">Security Settings</h2>
+              </div>
+              <SettingToggle
+                label="Require OTP on Withdrawal"
+                value={settings.requireOtpOnWithdrawal}
+                onChange={(value: boolean) => setSettings({ ...settings, requireOtpOnWithdrawal: value })}
+                description="Require one-time password for withdrawals"
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-slate-700">
+                <SettingInput
+                  label="Max Withdrawals Per Minute (Per IP)"
+                  value={settings.ipWithdrawMaxPerMin}
+                  onChange={(e: any) => setSettings({ ...settings, ipWithdrawMaxPerMin: e.target.value })}
+                  type="number"
+                  description="Rate limit for withdrawals"
+                />
+                <SettingInput
+                  label="Rate Limit Window (Seconds)"
+                  value={settings.ipWithdrawWindowSeconds}
+                  onChange={(e: any) => setSettings({ ...settings, ipWithdrawWindowSeconds: e.target.value })}
+                  type="number"
+                  description="Time window for rate limiting"
+                />
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
 import { LuArrowLeft, LuBanknote, LuCheck, LuX, LuInfo, LuChevronDown } from 'react-icons/lu'
+import { getDeviceHash } from '@/lib/fingerprint'
 
 export default function WithdrawPage() {
   const router = useRouter()
@@ -18,6 +19,13 @@ export default function WithdrawPage() {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState('')
   const [showBankDropdown, setShowBankDropdown] = useState(false)
+  // OTP state
+  const [otpRequired, setOtpRequired] = useState(false)
+  const [otpSending, setOtpSending] = useState(false)
+  const [otpTokenId, setOtpTokenId] = useState<string | null>(null)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState('')
+  const [otpHint, setOtpHint] = useState('')
   
   const quickAmounts = [50, 100, 500, 1000]
   
@@ -37,6 +45,24 @@ export default function WithdrawPage() {
       router.push('/login')
     }
   }, [authLoading, isAuthenticated, router])
+
+  // Register device fingerprint (best-effort)
+  useEffect(() => {
+    const register = async () => {
+      try {
+        if (!user?.id) return
+        const hash = await getDeviceHash()
+        await fetch('/api/security/register-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, deviceHash: hash })
+        })
+      } catch (e) {
+        // soft fail
+      }
+    }
+    register()
+  }, [user?.id])
 
   const userBalance = user?.balance || 0
 
@@ -59,23 +85,42 @@ export default function WithdrawPage() {
     
     setLoading(true)
     setError('')
+    setOtpError('')
 
     try {
+      const payload: any = {
+        userId: user?.id,
+        amount: withdrawAmount,
+        bankName,
+        accountNumber,
+        accountHolder
+      }
+      if (otpTokenId && otpCode) {
+        payload.otpTokenId = otpTokenId
+        payload.otpCode = otpCode
+      }
+
       const response = await fetch('/api/wallet/withdraw', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user?.id,
-          amount: withdrawAmount,
-          bankName,
-          accountNumber,
-          accountHolder
-        })
+        body: JSON.stringify(payload)
       })
 
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401 && data?.error === 'OTP_REQUIRED') {
+          setOtpRequired(true)
+          // Request OTP now
+          await requestOtp()
+          setLoading(false)
+          return
+        }
+        if (response.status === 401 && data?.error === 'OTP_INVALID') {
+          setOtpError('Invalid OTP code. Please try again.')
+          setLoading(false)
+          return
+        }
         throw new Error(data.error || 'Withdrawal failed')
       }
 
@@ -84,6 +129,30 @@ export default function WithdrawPage() {
       setError(err.message || 'Failed to process withdrawal')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const requestOtp = async () => {
+    if (!user?.id) return
+    try {
+      setOtpSending(true)
+      setOtpError('')
+      setOtpHint('')
+      const res = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, purpose: 'withdraw' })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send OTP')
+      }
+      setOtpTokenId(data.tokenId)
+      setOtpHint('We sent a 6-digit code to your Telegram DM. Enter it below.')
+    } catch (e: any) {
+      setOtpError(e.message || 'Failed to send OTP')
+    } finally {
+      setOtpSending(false)
     }
   }
 
@@ -279,6 +348,36 @@ export default function WithdrawPage() {
               </div>
             </div>
 
+            {/* OTP Gate */}
+            {otpRequired && (
+              <div className="bg-white rounded-xl p-5 border border-slate-200 space-y-3">
+                <div className="text-sm font-medium text-slate-900">OTP Verification</div>
+                {otpHint && <div className="text-xs text-slate-600">{otpHint}</div>}
+                {otpError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-700">{otpError}</div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={requestOtp}
+                    disabled={otpSending}
+                    className="px-4 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50"
+                  >
+                    {otpSending ? 'Sending...' : 'Resend'}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Submit Button */}
             <button
               onClick={handleWithdraw}
@@ -289,7 +388,8 @@ export default function WithdrawPage() {
                 !accountHolder || 
                 parseFloat(amount) > userBalance ||
                 parseFloat(amount) < 50 ||
-                loading
+                loading ||
+                (otpRequired && (!otpTokenId || otpCode.length !== 6))
               }
               className="w-full bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >

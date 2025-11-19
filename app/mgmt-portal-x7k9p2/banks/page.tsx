@@ -21,6 +21,7 @@ export default function BankManagement() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingBank, setEditingBank] = useState<BankAccount | null>(null)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
   
   const [formData, setFormData] = useState({
     bank_name: '',
@@ -159,212 +160,232 @@ export default function BankManagement() {
     }
   }
 
+  const filteredBanks = banks.filter(bank =>
+    bank.bank_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    bank.account_holder.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    bank.account_number.includes(searchTerm)
+  )
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${
+          notification.type === 'success'
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+        }`}>
+          {notification.message}
+        </div>
+      )}
+
       {/* Header */}
-      <header className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <Link href="/mgmt-portal-x7k9p2" className="text-2xl text-white hover:opacity-70">←</Link>
-              <h1 className="text-2xl font-bold text-white">Bank Account Management</h1>
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Bank Accounts</h1>
+              <p className="text-slate-400 text-sm mt-1">Manage withdrawal bank accounts</p>
             </div>
+            <button
+              onClick={handleCreateBank}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-semibold transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
+            >
+              <span>+</span> Add Account
+            </button>
           </div>
         </div>
       </header>
 
-      <div className="container mx-auto px-6 py-8">
-        {/* Notification Toast */}
-        {notification && (
-          <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border animate-slide-in ${
-            notification.type === 'success'
-              ? 'bg-green-500/90 border-green-400 text-white'
-              : 'bg-red-500/90 border-red-400 text-white'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-              }`}>
-                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {notification.type === 'success' ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  )}
-                </svg>
-              </div>
-              <span className="font-medium">{notification.message}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Create Bank Button */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* Search Bar */}
         <div className="mb-6">
-          <button
-            onClick={handleCreateBank}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            + Add Bank Account
-          </button>
+          <input
+            type="text"
+            placeholder="Search by bank name, account holder, or account number..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+          />
         </div>
 
-        {/* Banks Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4">
+            <p className="text-slate-400 text-xs sm:text-sm">Total Accounts</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{banks.length}</p>
+          </div>
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4">
+            <p className="text-slate-400 text-xs sm:text-sm">Active Accounts</p>
+            <p className="text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">{banks.filter(b => b.is_active).length}</p>
+          </div>
+        </div>
+
+        {/* Banks Table */}
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
           {loading ? (
-            <div className="col-span-full bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-12 text-center text-gray-400">
+            <div className="p-12 text-center text-slate-400">
+              <div className="w-8 h-8 border-4 border-slate-600 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
               Loading bank accounts...
             </div>
-          ) : banks.length === 0 ? (
-            <div className="col-span-full bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-12 text-center text-gray-400">
-              No bank accounts found
+          ) : filteredBanks.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">
+              {searchTerm ? 'No accounts match your search' : 'No bank accounts found'}
             </div>
           ) : (
-            banks.map((bank) => (
-              <div key={bank.id} className="bg-white/10 backdrop-blur-md rounded-xl border border-white/20 p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-white mb-1">{bank.bank_name}</h3>
-                    <p className="text-gray-400 text-sm">{bank.account_holder}</p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    bank.is_active ? 'bg-green-500/20 text-green-400' :
-                    'bg-red-500/20 text-red-400'
-                  }`}>
-                    {bank.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-
-                <div className="space-y-2 mb-6">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Account Number:</span>
-                    <span className="font-mono text-white">{bank.account_number}</span>
-                  </div>
-                  {bank.branch && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">Branch:</span>
-                      <span className="text-white">{bank.branch}</span>
-                    </div>
-                  )}
-                  {bank.swift_code && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400">SWIFT Code:</span>
-                      <span className="font-mono text-white">{bank.swift_code}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => handleEditBank(bank)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => toggleBankStatus(bank.id, bank.is_active)}
-                    className={`py-2 rounded-lg font-semibold transition-colors text-sm ${
-                      bank.is_active
-                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    }`}
-                  >
-                    {bank.is_active ? 'Disable' : 'Enable'}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteBank(bank.id)}
-                    className="bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-semibold transition-colors text-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-700/50 border-b border-slate-700">
+                  <tr>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Bank Name</th>
+                    <th className="hidden sm:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Account Holder</th>
+                    <th className="hidden md:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Account Number</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Status</th>
+                    <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs sm:text-sm font-semibold text-slate-300">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-700/50">
+                  {filteredBanks.map((bank) => (
+                    <tr key={bank.id} className="hover:bg-slate-700/30 transition-colors">
+                      <td className="px-3 sm:px-6 py-3 sm:py-4">
+                        <div className="font-semibold text-white text-xs sm:text-sm">{bank.bank_name}</div>
+                        {bank.branch && <div className="text-xs text-slate-400 mt-1 hidden sm:block">{bank.branch}</div>}
+                        <div className="text-xs text-slate-400 sm:hidden">{bank.account_holder}</div>
+                      </td>
+                      <td className="hidden sm:table-cell px-6 py-4 text-slate-300 text-sm">{bank.account_holder}</td>
+                      <td className="hidden md:table-cell px-6 py-4">
+                        <code className="bg-slate-700/50 text-cyan-400 px-2 py-1 rounded text-xs">{bank.account_number}</code>
+                      </td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4">
+                        <span className={`px-2 sm:px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${
+                          bank.is_active
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-600/20 text-slate-400 border border-slate-600/30'
+                        }`}>
+                          {bank.is_active ? '●' : '○'}
+                        </span>
+                      </td>
+                      <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
+                        <div className="flex justify-end gap-1 sm:gap-2">
+                          <button
+                            onClick={() => handleEditBank(bank)}
+                            className="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 border border-cyan-600/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-semibold transition-colors text-xs"
+                            title="Edit account"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => toggleBankStatus(bank.id, bank.is_active)}
+                            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-semibold transition-colors text-xs border ${
+                              bank.is_active
+                                ? 'bg-amber-600/20 hover:bg-amber-600/40 text-amber-400 border-amber-600/30'
+                                : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 border-emerald-600/30'
+                            }`}
+                            title={bank.is_active ? 'Disable account' : 'Enable account'}
+                          >
+                            {bank.is_active ? '⊘' : '✓'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteBank(bank.id)}
+                            className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-semibold transition-colors text-xs"
+                            title="Delete account"
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
 
       {/* Create/Edit Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-800 rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-white mb-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h2 className="text-2xl font-bold text-white mb-1">
               {editingBank ? 'Edit Bank Account' : 'Add Bank Account'}
             </h2>
+            <p className="text-slate-400 text-sm mb-6">Manage bank account details</p>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-gray-300 mb-2">Bank Name *</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Bank Name *</label>
                 <input
                   type="text"
                   value={formData.bank_name}
                   onChange={(e) => setFormData({...formData, bank_name: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="Commercial Bank of Ethiopia"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Account Number *</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Account Number *</label>
                 <input
                   type="text"
                   value={formData.account_number}
                   onChange={(e) => setFormData({...formData, account_number: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors font-mono"
                   placeholder="1000123456789"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Account Holder *</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Account Holder *</label>
                 <input
                   type="text"
                   value={formData.account_holder}
                   onChange={(e) => setFormData({...formData, account_holder: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="BingoX Gaming Ltd"
                   required
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">Branch</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">Branch</label>
                 <input
                   type="text"
                   value={formData.branch}
                   onChange={(e) => setFormData({...formData, branch: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors"
                   placeholder="Addis Ababa Main Branch"
                 />
               </div>
               <div>
-                <label className="block text-gray-300 mb-2">SWIFT Code</label>
+                <label className="block text-slate-300 text-sm font-medium mb-2">SWIFT Code</label>
                 <input
                   type="text"
                   value={formData.swift_code}
                   onChange={(e) => setFormData({...formData, swift_code: e.target.value})}
-                  className="w-full bg-gray-700 text-white px-4 py-2 rounded-lg"
+                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-4 py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors font-mono"
                   placeholder="CBETETAA"
                 />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 p-3 bg-slate-700/30 rounded-lg border border-slate-700">
                 <input
                   type="checkbox"
                   id="is_active"
                   checked={formData.is_active}
                   onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
-                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  className="w-4 h-4 rounded accent-emerald-500"
                 />
-                <label htmlFor="is_active" className="text-gray-300">Active</label>
+                <label htmlFor="is_active" className="text-slate-300 text-sm font-medium">Mark as active</label>
               </div>
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-4 border-t border-slate-700">
                 <button
                   type="submit"
-                  className="flex-1 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg font-semibold transition-colors"
                 >
-                  {editingBank ? 'Update Bank' : 'Add Bank'}
+                  {editingBank ? 'Update Account' : 'Add Account'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-lg font-semibold transition-colors"
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 rounded-lg font-semibold transition-colors"
                 >
                   Cancel
                 </button>

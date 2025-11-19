@@ -187,14 +187,15 @@ export default function ProfessionalDashboard() {
   }
 
   const navItems = [
-    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: null, badge: null },
-    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: null, badge: null },
-    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: null, badge: pendingDeposits },
-    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: null, badge: stats.pendingWithdrawals },
-    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: null, badge: null },
-    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: null, badge: null },
-    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: null, badge: null },
-    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: null, badge: null },
+    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: '👥', badge: null },
+    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: '🎮', badge: null },
+    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: '💳', badge: pendingDeposits },
+    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: '💸', badge: stats.pendingWithdrawals },
+    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: '📊', badge: null },
+    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: '🏠', badge: null },
+    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: '🏦', badge: null },
+    { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: '📢', badge: null },
+    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: '⚙️', badge: null },
   ]
 
   return (

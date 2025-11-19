@@ -32,6 +32,8 @@ export interface AdminConfig {
   maxWithdrawalAmount: number
   withdrawalFeeRate: number
   dailyWithdrawalLimit: number
+  weeklyWithdrawalLimit: number
+  minRequiredDeposit: number
 
   // Contact
   supportEmail: string
@@ -66,6 +68,11 @@ export interface AdminConfig {
   // Rooms
   roomColors: Record<string, string>
   roomDescriptions: Record<string, string>
+
+  // Anti-abuse / Security
+  requireOtpOnWithdrawal?: boolean
+  ipWithdrawMaxPerMin?: number
+  ipWithdrawWindowSeconds?: number
 }
 
 /**
@@ -246,6 +253,8 @@ export const DEFAULT_CONFIG: AdminConfig = {
   maxWithdrawalAmount: 50000,
   withdrawalFeeRate: 0.02,
   dailyWithdrawalLimit: 5000,
+  weeklyWithdrawalLimit: 20000,
+  minRequiredDeposit: 50,
   supportEmail: 'support@bingox.com',
   supportPhone: '+251911234567',
   telegramSupport: '@BingoXSupport',
@@ -266,6 +275,9 @@ export const DEFAULT_CONFIG: AdminConfig = {
   telegramNotifications: true,
   telegramBotToken: '',
   socketUrl: '',
+  requireOtpOnWithdrawal: false,
+  ipWithdrawMaxPerMin: 5,
+  ipWithdrawWindowSeconds: 60,
   roomColors: {
     easy: 'from-green-500 to-green-700',
     medium: 'from-blue-500 to-blue-700',

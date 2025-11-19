@@ -14,6 +14,8 @@ export default function AdminBroadcast() {
   const [estimatedRecipients, setEstimatedRecipients] = useState(0)
   const [isSending, setIsSending] = useState(false)
   const [previousBroadcasts, setPreviousBroadcasts] = useState<any[]>([])
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchEstimatedRecipients()
@@ -25,7 +27,7 @@ export default function AdminBroadcast() {
       let query = supabase
         .from('users')
         .select('*', { count: 'exact', head: true })
-        .not('telegram_id', 'is', null) // Only count users with Telegram ID
+        .not('telegram_id', 'is', null)
 
       if (activeOnly) {
         const yesterday = new Date()
@@ -48,9 +50,31 @@ export default function AdminBroadcast() {
     }
   }
 
+  const fetchPreviousBroadcasts = async () => {
+    try {
+      setLoading(true)
+      const { data } = await supabase
+        .from('broadcasts')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10)
+      
+      setPreviousBroadcasts(data || [])
+    } catch (error) {
+      console.error('Error fetching broadcasts:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message })
+    setTimeout(() => setNotification(null), 4000)
+  }
+
   const handleSend = async () => {
     if (!title || !message) {
-      alert('Please fill in title and message')
+      showNotification('error', 'Please fill in title and message')
       return
     }
 
@@ -80,218 +104,262 @@ export default function AdminBroadcast() {
         throw new Error(data.error || 'Failed to send broadcast')
       }
 
-      const errorDetails = data.results.errors && data.results.errors.length > 0
-        ? `\n\nErrors:\n${data.results.errors.join('\n')}`
-        : ''
-
-      alert(
-        `${data.results.sent > 0 ? '✅' : '❌'} Broadcast ${data.results.sent > 0 ? 'completed' : 'failed'}!\n\n` +
-        `Total: ${data.results.total}\n` +
-        `Sent: ${data.results.sent}\n` +
-        `Failed: ${data.results.failed}` +
-        errorDetails
-      )
-      
+      showNotification('success', `Broadcast sent to ${data.results.sent} users!`)
       setTitle('')
       setMessage('')
-      
-      // Refresh previous broadcasts
       fetchPreviousBroadcasts()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending broadcast:', error)
-      alert(`Failed to send broadcast: ${error}`)
+      showNotification('error', error.message || 'Failed to send broadcast')
     } finally {
       setIsSending(false)
     }
   }
 
-  const fetchPreviousBroadcasts = async () => {
-    try {
-      const { data } = await supabase
-        .from('broadcasts')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      setPreviousBroadcasts(data || [])
-    } catch (error) {
-      console.error('Error fetching broadcasts:', error)
-    }
-  }
-
-  const handlePreview = () => {
-    alert(`Preview:\n\nTitle: ${title}\n\nMessage: ${message}\n\nRecipients: ${estimatedRecipients}`)
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
-      <div className="bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <Link href="/mgmt-portal-x7k9p2" className="text-blue-400 hover:text-blue-300 text-sm mb-2 inline-block">
-                ← Back to Dashboard
-              </Link>
-              <h1 className="text-2xl font-bold text-white">📢 Broadcast Messages</h1>
-              <p className="text-gray-400 text-sm">Send notifications to users</p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base ${
+          notification.type === 'success'
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+        }`}>
+          {notification.message}
+        </div>
+      )}
+
+      {/* Header */}
+      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Broadcast Messages</h1>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram</p>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="container mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Compose Broadcast */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 mb-6">
-              <h2 className="text-xl font-bold text-white mb-6">Compose Broadcast</h2>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+          {/* Compose Section */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Compose Card */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-6">Compose Message</h2>
+              
+              <div className="space-y-6">
+                {/* Title */}
+                <div>
+                  <label className="block text-slate-300 text-sm font-medium mb-2">Title</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Announcement title"
+                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                  />
+                </div>
 
-              {/* Title */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter broadcast title"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
-              </div>
+                {/* Message */}
+                <div>
+                  <label className="block text-slate-300 text-sm font-medium mb-2">Message</label>
+                  <textarea
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="Your broadcast message..."
+                    rows={5}
+                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm"
+                  />
+                  <p className="text-xs text-slate-500 mt-2">{message.length} characters</p>
+                </div>
 
-              {/* Message */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Message</label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Enter your message..."
-                  rows={6}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 resize-none"
-                />
-                <div className="text-sm text-gray-400 mt-1">{message.length} characters</div>
-              </div>
+                {/* Filters Section */}
+                <div className="pt-6 border-t border-slate-700">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Target Audience</h3>
+                  
+                  <div className="space-y-3 sm:space-y-4">
+                    {/* Target All Toggle */}
+                    <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-700/30 rounded-lg border border-slate-700">
+                      <div>
+                        <p className="text-slate-300 font-medium text-sm">Send to All Users</p>
+                        <p className="text-xs text-slate-500 mt-1">Include all users with Telegram connected</p>
+                      </div>
+                      <button
+                        onClick={() => setTargetAll(!targetAll)}
+                        className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                          targetAll ? 'bg-emerald-600' : 'bg-slate-600'
+                        }`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                          targetAll ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                      </button>
+                    </div>
 
-              {/* Target Audience */}
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-white mb-4">Target Audience</h3>
-                
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={targetAll}
-                      onChange={(e) => setTargetAll(e.target.checked)}
-                      className="w-5 h-5 rounded"
-                    />
-                    <span className="text-white">All Users ({estimatedRecipients.toLocaleString()})</span>
-                  </label>
+                    {/* Active Only */}
+                    <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-700/30 rounded-lg border border-slate-700">
+                      <div>
+                        <p className="text-slate-300 font-medium text-sm">Active Users Only</p>
+                        <p className="text-xs text-slate-500 mt-1">Last active in the past 24 hours</p>
+                      </div>
+                      <button
+                        onClick={() => setActiveOnly(!activeOnly)}
+                        className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
+                          activeOnly ? 'bg-emerald-600' : 'bg-slate-600'
+                        }`}
+                      >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                          activeOnly ? 'translate-x-6' : 'translate-x-1'
+                        }`} />
+                      </button>
+                    </div>
 
-                  <label className="flex items-center gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={activeOnly}
-                      onChange={(e) => setActiveOnly(e.target.checked)}
-                      className="w-5 h-5 rounded"
-                    />
-                    <span className="text-white">Active Users Only (last 24h)</span>
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-4">
+                    {/* Min Balance */}
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Min Balance (ETB)</label>
+                      <label className="block text-slate-300 text-sm font-medium mb-2">Minimum Balance (ETB)</label>
                       <input
                         type="number"
                         value={minBalance}
                         onChange={(e) => setMinBalance(e.target.value)}
-                        placeholder="0"
-                        className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        placeholder="Leave empty for no limit"
+                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
                       />
                     </div>
+
+                    {/* Min Games */}
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Min Games Played</label>
+                      <label className="block text-slate-300 text-sm font-medium mb-2">Minimum Games Played</label>
                       <input
                         type="number"
                         value={minGames}
                         onChange={(e) => setMinGames(e.target.value)}
-                        placeholder="0"
-                        className="w-full px-4 py-2 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        placeholder="Leave empty for no limit"
+                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
                       />
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Estimated Recipients */}
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">👥</span>
-                  <div>
-                    <div className="text-sm text-blue-300">Estimated Recipients</div>
-                    <div className="text-2xl font-bold text-blue-400">{estimatedRecipients.toLocaleString()}</div>
-                  </div>
+                {/* Send Button */}
+                <div className="pt-6 border-t border-slate-700">
+                  <button
+                    onClick={handleSend}
+                    disabled={isSending || !title || !message}
+                    className={`w-full py-2.5 sm:py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base ${
+                      isSending || !title || !message
+                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    {isSending ? (
+                      <>
+                        <span className="animate-spin">⏳</span>
+                        <span className="hidden sm:inline">Sending to {estimatedRecipients} users...</span>
+                        <span className="sm:hidden">Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>📢</span>
+                        <span>Send Broadcast</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-3">
-                <button
-                  onClick={handlePreview}
-                  className="flex-1 bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold transition-all"
-                >
-                  👁️ Preview
-                </button>
-                <button
-                  onClick={handleSend}
-                  disabled={isSending || !title || !message}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-all disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isSending ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Sending...
-                    </>
-                  ) : (
-                    <>📢 Send Broadcast</>
-                  )}
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Previous Broadcasts */}
-          <div>
-            <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
-              <h2 className="text-xl font-bold text-white mb-6">Previous Broadcasts</h2>
-              
-              <div className="space-y-3">
-                {previousBroadcasts.length === 0 ? (
-                  <div className="text-center text-gray-400 py-8">
-                    No previous broadcasts
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Recipients Card */}
+            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 backdrop-blur-md rounded-lg border border-emerald-500/30 p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-slate-400 text-xs sm:text-sm">Estimated Recipients</p>
+                <span className="text-xl sm:text-2xl">👥</span>
+              </div>
+              <p className="text-3xl sm:text-4xl font-bold text-emerald-400">{estimatedRecipients.toLocaleString()}</p>
+              <p className="text-xs text-emerald-300 mt-2">Users will receive via Telegram</p>
+            </div>
+
+            {/* Filter Summary */}
+            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6">
+              <h3 className="text-sm font-semibold text-white mb-4">Active Filters</h3>
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">All Users:</span>
+                  <span className={targetAll ? 'text-emerald-400' : 'text-slate-500'}>
+                    {targetAll ? '✓ Yes' : '✗ No'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Active Only:</span>
+                  <span className={activeOnly ? 'text-emerald-400' : 'text-slate-500'}>
+                    {activeOnly ? '✓ Yes' : '✗ No'}
+                  </span>
+                </div>
+                {minBalance && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Min Balance:</span>
+                    <span className="text-emerald-400">{minBalance} ETB</span>
                   </div>
-                ) : (
-                  previousBroadcasts.map(broadcast => (
-                    <div key={broadcast.id} className="bg-white/5 rounded-lg p-4 border border-white/10">
-                      <div className="font-semibold text-white mb-2">{broadcast.title}</div>
-                      <div className="text-sm text-gray-400 mb-2">
-                        Sent: {broadcast.sent}/{broadcast.recipients}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(broadcast.created_at).toLocaleString()}
-                      </div>
-                      <span className={`inline-block mt-2 px-2 py-1 text-xs rounded ${
-                        broadcast.failed === 0 
-                          ? 'bg-green-500/20 text-green-400'
-                          : 'bg-yellow-500/20 text-yellow-400'
-                      }`}>
-                        {broadcast.failed === 0 ? 'Success' : `${broadcast.failed} failed`}
-                      </span>
-                    </div>
-                  ))
+                )}
+                {minGames && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Min Games:</span>
+                    <span className="text-emerald-400">{minGames}</span>
+                  </div>
                 )}
               </div>
             </div>
+          </div>
+        </div>
 
-            
+        {/* Previous Broadcasts */}
+        <div className="mt-12">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-6">Recent Broadcasts</h2>
+          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
+            {loading ? (
+              <div className="p-8 sm:p-12 text-center text-slate-400">
+                <div className="w-8 h-8 border-4 border-slate-600 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
+                Loading broadcasts...
+              </div>
+            ) : previousBroadcasts.length === 0 ? (
+              <div className="p-8 sm:p-12 text-center text-slate-400">
+                No broadcasts sent yet
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-700/50 border-b border-slate-700">
+                    <tr>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Title</th>
+                      <th className="hidden sm:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Recipients</th>
+                      <th className="hidden md:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Status</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {previousBroadcasts.map((broadcast: any) => (
+                      <tr key={broadcast.id} className="hover:bg-slate-700/30 transition-colors">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4">
+                          <p className="font-medium text-white text-xs sm:text-sm">{broadcast.title}</p>
+                          <p className="text-xs text-slate-500 mt-1 line-clamp-1 hidden sm:block">{broadcast.message}</p>
+                        </td>
+                        <td className="hidden sm:table-cell px-6 py-4 text-slate-300 text-sm">{broadcast.recipients_count || 0}</td>
+                        <td className="hidden md:table-cell px-6 py-4">
+                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            ✓ Sent
+                          </span>
+                        </td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-slate-400 text-xs sm:text-sm">
+                          {new Date(broadcast.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </div>
