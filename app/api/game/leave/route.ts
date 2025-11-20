@@ -146,8 +146,33 @@ export async function POST(request: NextRequest) {
       // Get commission rate from admin config
       const commissionRateDecimal = await getConfig('game_commission_rate') || 0.1
       const commissionRate = commissionRateDecimal * 100 // Convert to percentage for display
-      const commissionAmount = Math.round((game.prize_pool * commissionRate / 100) * 100) / 100
-      const netPrize = Math.round((game.prize_pool - commissionAmount) * 100) / 100
+
+      // Compute TOTAL prize pool (real + bonus) from stake transactions
+      let realPrizePool = 0
+      let bonusPrizePool = 0
+      try {
+        const { data: realPoolData, error: realErr } = await supabase.rpc('compute_real_prize_pool', { p_game_id: gameId })
+        if (!realErr && typeof realPoolData === 'number') realPrizePool = realPoolData
+      } catch (e) {
+        realPrizePool = 0
+      }
+
+      try {
+        const { data: bonusPoolData, error: bonusErr } = await supabase.rpc('compute_bonus_prize_pool', { p_game_id: gameId })
+        if (!bonusErr && typeof bonusPoolData === 'number') bonusPrizePool = bonusPoolData
+      } catch (e) {
+        bonusPrizePool = 0
+      }
+
+      let totalPrizePool = realPrizePool + bonusPrizePool
+
+      // Fallback: if RPCs not available, use existing game.prize_pool
+      if (!totalPrizePool && game.prize_pool) {
+        totalPrizePool = game.prize_pool
+      }
+
+      const commissionAmount = Math.round((totalPrizePool * commissionRate / 100) * 100) / 100
+      const netPrize = Math.round((totalPrizePool - commissionAmount) * 100) / 100
 
       // Update game with winner and commission info
       await supabase
@@ -159,31 +184,21 @@ export async function POST(request: NextRequest) {
           players: updatedPlayers,
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
-          net_prize: netPrize
+          net_prize: netPrize,
+          prize_pool: totalPrizePool
         })
         .eq('id', gameId)
 
-      // Add NET winnings to winner (after commission)
-      await supabase.rpc('add_balance', {
-        user_id: winnerId,
-        amount: netPrize
-      })
-
-      // Create transaction for winner with commission details
-      await supabase.from('transactions').insert({
-        user_id: winnerId,
-        type: 'win',
-        amount: netPrize,
-        game_id: gameId,
-        status: 'completed',
-        metadata: {
-          gross_prize: game.prize_pool,
-          commission_rate: commissionRate,
-          commission_amount: commissionAmount,
-          net_prize: netPrize,
-          auto_win: true
-        }
-      })
+      // Credit NET winnings to correct wallet based on stake breakdown
+      try {
+        await supabase.rpc('credit_win', {
+          p_user_id: winnerId,
+          p_game_id: gameId,
+          p_amount: netPrize
+        })
+      } catch (e) {
+        console.error('Error crediting auto-win via credit_win:', e)
+      }
 
       // Update winner stats with NET winnings
       await supabase.rpc('update_user_stats', {
@@ -192,7 +207,7 @@ export async function POST(request: NextRequest) {
         winnings: netPrize
       })
 
-      console.log(`💰 Auto-win prize: ${netPrize} ETB (after ${commissionRate}% commission)`)
+      console.log(`💰 Auto-win prize: ${netPrize} ETB (after ${commissionRate}% commission, Total Pool: ${totalPrizePool} ETB)`)
 
       // Stop number calling and force-sync cache
       try {

@@ -324,6 +324,14 @@ export default function AdminTransactionsPage() {
                       const bwAfter = tx?.metadata?.bonus_win_balance_after
                       const hasReal = typeof rBefore === 'number' && typeof rAfter === 'number'
                       const hasBonusWin = typeof bwBefore === 'number' && typeof bwAfter === 'number'
+                      const source = tx?.metadata?.source as string | undefined
+                      const creditedTo = tx?.metadata?.credited_to as string | undefined
+                      let walletBadge: string | null = null
+                      if (tx.type === 'stake') {
+                        walletBadge = source === 'main' ? 'Cash' : source === 'bonus' ? 'Bonus' : source === 'mixed' ? 'Mixed' : null
+                      } else if (tx.type === 'win') {
+                        walletBadge = creditedTo === 'real' ? 'Cash Win' : creditedTo === 'bonus_win' ? 'Bonus Win' : null
+                      }
                       return (
                       <tr key={tx.id} className="hover:bg-slate-700/20 transition-colors">
                         <td className="px-4 sm:px-6 py-4">
@@ -351,21 +359,34 @@ export default function AdminTransactionsPage() {
                           </span>
                         </td>
                         <td className="px-4 sm:px-6 py-4 text-xs text-slate-300">
-                          {hasReal ? (
-                            <span>
-                              <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
-                            </span>
-                          ) : hasBonusWin ? (
-                            <span>
-                              <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
-                            </span>
-                          ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
-                            <span>
-                              <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">—</span>
-                          )}
+                          <div className="space-y-1">
+                            {hasReal ? (
+                              <div>
+                                <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
+                              </div>
+                            ) : hasBonusWin ? (
+                              <div>
+                                <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
+                              </div>
+                            ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
+                              <div>
+                                <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
+                              </div>
+                            ) : (
+                              <div className="text-slate-500">—</div>
+                            )}
+                            {walletBadge && (
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                                walletBadge === 'Cash' || walletBadge === 'Cash Win'
+                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                                  : walletBadge === 'Bonus' || walletBadge === 'Bonus Win'
+                                    ? 'bg-purple-500/10 text-purple-300 border-purple-500/40'
+                                    : 'bg-amber-500/10 text-amber-300 border-amber-500/40'
+                              }`}>
+                                {walletBadge}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 sm:px-6 py-4">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -393,6 +414,14 @@ export default function AdminTransactionsPage() {
                   const bwAfter = tx?.metadata?.bonus_win_balance_after
                   const hasReal = typeof rBefore === 'number' && typeof rAfter === 'number'
                   const hasBonusWin = typeof bwBefore === 'number' && typeof bwAfter === 'number'
+                  const source = tx?.metadata?.source as string | undefined
+                  const creditedTo = tx?.metadata?.credited_to as string | undefined
+                  let walletBadge: string | null = null
+                  if (tx.type === 'stake') {
+                    walletBadge = source === 'main' ? 'Cash' : source === 'bonus' ? 'Bonus' : source === 'mixed' ? 'Mixed' : null
+                  } else if (tx.type === 'win') {
+                    walletBadge = creditedTo === 'real' ? 'Cash Win' : creditedTo === 'bonus_win' ? 'Bonus Win' : null
+                  }
                   return (
                   <div key={tx.id} className="bg-slate-700/30 rounded-lg border border-slate-700/50 p-4 space-y-3">
                     <div className="flex items-start justify-between">
@@ -425,21 +454,32 @@ export default function AdminTransactionsPage() {
                       </div>
                       <div className="col-span-2">
                         <div className="text-xs text-slate-400">Wallet</div>
-                        <div className="text-slate-300 text-xs">
+                        <div className="text-slate-300 text-xs space-y-1">
                           {hasReal ? (
-                            <span>
+                            <div>
                               <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
-                            </span>
+                            </div>
                           ) : hasBonusWin ? (
-                            <span>
+                            <div>
                               <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
-                            </span>
+                            </div>
                           ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
-                            <span>
+                            <div>
                               <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
-                            </span>
+                            </div>
                           ) : (
-                            <span className="text-slate-500">—</span>
+                            <div className="text-slate-500">—</div>
+                          )}
+                          {walletBadge && (
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                              walletBadge === 'Cash' || walletBadge === 'Cash Win'
+                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                                : walletBadge === 'Bonus' || walletBadge === 'Bonus Win'
+                                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/40'
+                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/40'
+                            }`}>
+                              {walletBadge}
+                            </span>
                           )}
                         </div>
                       </div>

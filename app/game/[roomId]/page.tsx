@@ -522,6 +522,9 @@ export default function GamePage() {
 
   // Deduct stake when game transitions to countdown/active
   const [stakeDeducted, setStakeDeducted] = useState(false)
+  const [stakeSource, setStakeSource] = useState<string | null>(null)
+  const [stakeMainAmount, setStakeMainAmount] = useState<number | null>(null)
+  const [stakeBonusAmount, setStakeBonusAmount] = useState<number | null>(null)
   
   useEffect(() => {
     if (!gameState || !user || !gameId || !roomData) return
@@ -559,8 +562,9 @@ export default function GamePage() {
               throw new Error('Insufficient total balance for stake deduction')
             }
 
-            const bonusDeduct = Math.min(bonusAvailable, roomData.stake)
-            const mainDeduct = roomData.stake - bonusDeduct
+            // REAL-FIRST fallback: use main balance first, then bonus for the remainder
+            const mainDeduct = Math.min(mainAvailable, roomData.stake)
+            const bonusDeduct = roomData.stake - mainDeduct
 
             const { error: updateErr } = await supabase
               .from('users')
@@ -607,6 +611,35 @@ export default function GamePage() {
       deductStake()
     }
   }, [gameState?.status, user, gameId, roomData, stakeDeducted, isSpectator])
+
+  // After stake is deducted, fetch stake source (cash vs bonus) from history view
+  useEffect(() => {
+    if (!stakeDeducted || !user || !gameId) return
+
+    const fetchStakeSource = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_transaction_history')
+          .select('source, main_deducted, bonus_deducted')
+          .eq('user_id', user.id)
+          .eq('game_id', gameId)
+          .eq('type', 'stake')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (!error && data) {
+          setStakeSource((data as any).source || null)
+          setStakeMainAmount(typeof (data as any).main_deducted === 'number' ? (data as any).main_deducted : null)
+          setStakeBonusAmount(typeof (data as any).bonus_deducted === 'number' ? (data as any).bonus_deducted : null)
+        }
+      } catch (e) {
+        console.warn('Failed to fetch stake source for live game:', e)
+      }
+    }
+
+    fetchStakeSource()
+  }, [stakeDeducted, user?.id, gameId])
 
   // Track previous latest number for haptic feedback
   const prevLatestNumberRef = useRef<number | null>(null)
@@ -1818,7 +1851,20 @@ export default function GamePage() {
               <span className="mx-3 text-slate-300">|</span>
               <span>Players: <span className="font-bold text-slate-900">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</span></span>
               <span className="mx-3 text-slate-300">|</span>
-              <span>Net Win Pool: <span className="font-bold text-emerald-600">{formatCurrency(typeof gameState?.net_prize === 'number' ? gameState.net_prize : netPrizePool)}</span></span>
+              <span>Prize Pool: <span className="font-bold text-emerald-600">{formatCurrency(netPrizePool)}</span></span>
+              <span className="mx-3 text-slate-300">|</span>
+              <span>
+                Wallet:
+                <span className="font-bold text-slate-900 ml-1">
+                  {stakeSource === 'main'
+                    ? 'Cash'
+                    : stakeSource === 'bonus'
+                      ? 'Bonus'
+                      : stakeSource === 'mixed'
+                        ? 'Cash + Bonus'
+                        : '—'}
+                </span>
+              </span>
             </div>
 
             {/* Number Called Section - Beautiful card */}

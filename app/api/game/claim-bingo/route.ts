@@ -221,19 +221,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Initialize prize calculation using REAL-ONLY prize pool
+    // Initialize prize calculation using TOTAL prize pool (real + bonus) to avoid zero-birr wins
     let commissionRateDecimal = await getConfig('game_commission_rate') || 0.1
     let commissionRate = commissionRateDecimal * 100
-    let realPrizePool = game.prize_pool || 0
+    let realPrizePool = 0
+    let bonusPrizePool = 0
     try {
       const { data: poolData, error: poolErr } = await supabase.rpc('compute_real_prize_pool', { p_game_id: gameId })
       if (!poolErr && typeof poolData === 'number') realPrizePool = poolData
     } catch (e) {
-      // Fallback to game's prize_pool if RPC not available
-      realPrizePool = game.prize_pool || 0
+      // Ignore, will fall back to game.prize_pool if everything fails
+      realPrizePool = 0
     }
-    let commissionAmount = Math.round((realPrizePool * commissionRate / 100) * 100) / 100
-    let netPrize = Math.round((realPrizePool - commissionAmount) * 100) / 100
+
+    try {
+      const { data: bonusPoolData, error: bonusErr } = await supabase.rpc('compute_bonus_prize_pool', { p_game_id: gameId })
+      if (!bonusErr && typeof bonusPoolData === 'number') bonusPrizePool = bonusPoolData
+    } catch (e) {
+      // If bonus pool RPC is unavailable, treat bonus pool as zero (legacy safety)
+      bonusPrizePool = 0
+    }
+
+    let totalPrizePool = realPrizePool + bonusPrizePool
+
+    // Fallback: if both RPCs failed or returned 0, use game.prize_pool as last resort
+    if (!totalPrizePool && game.prize_pool) {
+      totalPrizePool = game.prize_pool
+    }
+
+    let commissionAmount = Math.round((totalPrizePool * commissionRate / 100) * 100) / 100
+    let netPrize = Math.round((totalPrizePool - commissionAmount) * 100) / 100
 
     // Determine bingo pattern from the marked cells (reusable for both branches)
     let bingoPattern: 'row' | 'column' | 'diagonal' | 'unknown' = 'unknown'
@@ -336,7 +353,7 @@ export async function POST(request: NextRequest) {
 
       // Winner! The atomic resolver already set winner_id; update financials and visuals
       console.log(`🏆 ATOMIC WINNER! User ${userId} won with ${patternString || bingoPattern}`)
-      console.log(`💰 Real Prize Pool: ${realPrizePool} ETB`)
+      console.log(`💰 Total Prize Pool: ${totalPrizePool} ETB (Real: ${realPrizePool} ETB, Bonus: ${bonusPrizePool} ETB)`)
       console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
       console.log(`🎁 Net Prize: ${netPrize} ETB`)
 
@@ -348,7 +365,7 @@ export async function POST(request: NextRequest) {
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
           net_prize: netPrize,
-          prize_pool: realPrizePool,
+          prize_pool: totalPrizePool,
           winner_card: card,
           winner_pattern: patternString || bingoPattern
         })
@@ -390,7 +407,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log(`💰 Prize Pool: ${game.prize_pool} ETB`)
+      console.log(`💰 Total Prize Pool: ${totalPrizePool} ETB (Real: ${realPrizePool} ETB, Bonus: ${bonusPrizePool} ETB)`)
       console.log(`📊 Commission (${commissionRate}%): ${commissionAmount} ETB`)
       console.log(`🎁 Net Prize: ${netPrize} ETB`)
 
@@ -404,7 +421,7 @@ export async function POST(request: NextRequest) {
           commission_rate: commissionRate,
           commission_amount: commissionAmount,
           net_prize: netPrize,
-          prize_pool: realPrizePool,
+          prize_pool: totalPrizePool,
           winner_card: card,
           winner_pattern: patternString || bingoPattern
         })
@@ -529,7 +546,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`🎉 User ${userId} won game ${gameId}`)
-    console.log(`💵 Gross Prize: ${game.prize_pool} ETB`)
+    console.log(`💵 Gross Prize (Total Pool): ${totalPrizePool} ETB`)
     console.log(`💰 Net Prize (after ${commissionRate}% commission): ${netPrize} ETB`)
 
     // Stop number calling by calling the Railway server

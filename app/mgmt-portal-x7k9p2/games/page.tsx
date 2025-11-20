@@ -131,8 +131,29 @@ export default function AdminGamesPage() {
         const winnerInfo = game.winner_id ? userMap.get(game.winner_id) || null : null
         return { ...game, player_details: playerDetails, winner_info: winnerInfo }
       })
+      // Third pass: compute wallet mix (Cash / Bonus / Mixed) using prize pool composition
+      const gamesWithWallet = await Promise.all(
+        gamesWithDetails.map(async (game: any) => {
+          let wallet_source: 'cash' | 'bonus' | 'mixed' | null = null
+          try {
+            const [{ data: realPoolData, error: realErr }, { data: bonusPoolData, error: bonusErr }] = await Promise.all([
+              supabase.rpc('compute_real_prize_pool', { p_game_id: game.id }).then((res: any) => ({ data: res.data, error: res.error })),
+              supabase.rpc('compute_bonus_prize_pool', { p_game_id: game.id }).then((res: any) => ({ data: res.data, error: res.error })),
+            ])
+            const realPool = !realErr && typeof realPoolData === 'number' ? Number(realPoolData) : 0
+            const bonusPool = !bonusErr && typeof bonusPoolData === 'number' ? Number(bonusPoolData) : 0
+            if (realPool > 0 && bonusPool === 0) wallet_source = 'cash'
+            else if (bonusPool > 0 && realPool === 0) wallet_source = 'bonus'
+            else if (realPool > 0 && bonusPool > 0) wallet_source = 'mixed'
+          } catch (e) {
+            // Soft-fail: leave wallet_source as null
+            console.warn('Failed to compute wallet mix for game', game.id, e)
+          }
+          return { ...game, wallet_source }
+        })
+      )
 
-      setAllGames(gamesWithDetails)
+      setAllGames(gamesWithWallet)
     } catch (error) {
       console.error('Error fetching games:', error)
     } finally {
@@ -382,6 +403,22 @@ export default function AdminGamesPage() {
                         </div>
                       )}
                     </div>
+                    {game.wallet_source && (
+                      <div className="mt-1 text-[11px] text-slate-400">
+                        Wallet mix:
+                        <span
+                          className={`ml-1 inline-flex px-2 py-0.5 rounded-full font-semibold border ${
+                            game.wallet_source === 'cash'
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                              : game.wallet_source === 'bonus'
+                                ? 'bg-purple-500/10 text-purple-300 border-purple-500/40'
+                                : 'bg-amber-500/10 text-amber-300 border-amber-500/40'
+                          }`}
+                        >
+                          {game.wallet_source === 'cash' ? 'Cash' : game.wallet_source === 'bonus' ? 'Bonus' : 'Mixed'}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions */}

@@ -225,8 +225,11 @@ export default function AccountPage() {
     )
   }
 
+  const cashBalance = user.balance || 0
   const bonusBalance = user.bonus_balance || 0
-  const totalBalance = user.balance + bonusBalance
+  const bonusWinBalance = (user as any).bonus_win_balance || 0
+  const totalBonusBalance = bonusBalance + bonusWinBalance
+  const totalBalance = cashBalance + totalBonusBalance
   const isSuspended = (user as any).status === 'inactive'
 
   return (
@@ -395,7 +398,10 @@ export default function AccountPage() {
               </div>
               <div>
                 <h4 className="font-semibold text-slate-900 mb-2">What is bonus balance?</h4>
-                <p className="text-sm text-slate-600">Bonus balance is promotional credit that can be used to play games. It cannot be withdrawn directly.</p>
+                <p className="text-sm text-slate-600">
+                  Bonus balance is promotional credit that can be used to play games. It cannot be withdrawn directly. Any winnings generated from bonus play are
+                  stored as <strong>Bonus Wins</strong> and are also non-withdrawable unless they are manually converted by an admin.
+                </p>
               </div>
               <div>
                 <h4 className="font-semibold text-slate-900 mb-2">How do I claim the daily streak bonus?</h4>
@@ -491,7 +497,7 @@ export default function AccountPage() {
         {/* Balance Overview */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-slate-900">Total Balance</h3>
+            <h3 className="text-base font-semibold text-slate-900">Wallet Overview</h3>
             <button 
               onClick={handleRefresh}
               disabled={refreshing}
@@ -507,12 +513,22 @@ export default function AccountPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-50 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Main Balance</div>
-              <div className="text-lg font-semibold text-slate-900">{formatCurrency(user.balance)}</div>
+              <div className="text-xs text-slate-500 mb-1">Cash Wallet (Withdrawable)</div>
+              <div className="text-lg font-semibold text-slate-900">{formatCurrency(cashBalance)}</div>
             </div>
             <div className="bg-emerald-50 rounded-lg p-3">
-              <div className="text-xs text-emerald-600 mb-1">Bonus Balance</div>
-              <div className="text-lg font-semibold text-emerald-600">{formatCurrency(bonusBalance)}</div>
+              <div className="text-xs text-emerald-600 mb-1">Bonus Wallet</div>
+              <div className="text-lg font-semibold text-emerald-600">{formatCurrency(totalBonusBalance)}</div>
+              {(bonusWinBalance > 0 || bonusBalance > 0) && (
+                <div className="mt-1 text-[11px] text-emerald-700">
+                  <span>Bonus: {formatCurrency(bonusBalance)}</span>
+                  <span className="mx-1">•</span>
+                  <span>Bonus Wins: {formatCurrency(bonusWinBalance)}</span>
+                  <p className="mt-0.5 text-[10px] text-emerald-700">
+                    Bonus Wins cannot be withdrawn unless converted by an admin.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

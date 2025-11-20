@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 
 type SortField = 'username' | 'balance' | 'games_played' | 'games_won' | 'created_at' | 'total_referrals' | 'referral_earnings'
 type SortOrder = 'asc' | 'desc'
@@ -64,6 +65,8 @@ export default function AdminUsersPage() {
     }
     return 'all'
   })
+  const { admin } = useAdminAuth()
+  const [walletActionLoading, setWalletActionLoading] = useState(false)
 
   // Save preferences to localStorage
   useEffect(() => {
@@ -219,6 +222,56 @@ export default function AdminUsersPage() {
       alert(error.message || 'Failed to update user status')
     } finally {
       setDeletingUser(false)
+    }
+  }
+
+  const handleConvertBonusWins = async () => {
+    if (!selectedUser) return
+    if (!admin) {
+      alert('Admin session missing. Please log in again.')
+      return
+    }
+
+    const bonusWins = Number(selectedUser.bonus_win_balance || 0)
+    if (!bonusWins || bonusWins <= 0) {
+      alert('This user has no Bonus Wins to convert.')
+      return
+    }
+
+    const confirmMsg = `Convert ${formatCurrency(bonusWins)} Bonus Wins to Cash for ${selectedUser.username || 'this user'}?` 
+      + '\n\nThis will move funds from Bonus Wins to the Cash Wallet and will be logged.'
+    if (!window.confirm(confirmMsg)) return
+
+    try {
+      setWalletActionLoading(true)
+      const res = await fetch('/api/admin/wallet/convert-bonus-wins', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-id': admin.id
+        },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          amount: bonusWins,
+          reason: 'manual_admin_conversion'
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to convert Bonus Wins')
+      }
+
+      if (data.user) {
+        setSelectedUser((prev: any) => (prev && prev.id === data.user.id ? { ...prev, ...data.user } : prev))
+        setUsers(prev => prev.map(u => (u.id === data.user.id ? { ...u, ...data.user } : u)))
+      }
+
+      alert(`Converted ${formatCurrency(data.convertedAmount || bonusWins)} Bonus Wins to Cash Wallet.`)
+    } catch (error: any) {
+      console.error('Error converting Bonus Wins:', error)
+      alert(error.message || 'Failed to convert Bonus Wins')
+    } finally {
+      setWalletActionLoading(false)
     }
   }
 
@@ -568,7 +621,14 @@ export default function AdminUsersPage() {
                             {user.username?.charAt(0) || 'U'}
                           </div>
                           <div>
-                            <div className="font-semibold text-white">{user.username || 'Unknown'}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-semibold text-white">{user.username || 'Unknown'}</div>
+                              {user.status === 'inactive' && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/20 text-red-300 border border-red-500/40">
+                                  Suspended
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-slate-500">ID: {user.id.slice(0, 8)}</div>
                           </div>
                         </div>
@@ -752,7 +812,14 @@ export default function AdminUsersPage() {
                     {user.username?.charAt(0) || 'U'}
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold text-white text-lg">{user.username || 'Unknown'}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="font-semibold text-white text-lg">{user.username || 'Unknown'}</div>
+                      {user.status === 'inactive' && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/20 text-red-300 border border-red-500/40">
+                          Suspended
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-slate-500">ID: {user.id.slice(0, 8)}</div>
                   </div>
                 </div>
@@ -980,6 +1047,35 @@ export default function AdminUsersPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Wallet Management */}
+                <div className="space-y-2 pt-3 border-t border-slate-700/50 mt-2">
+                  <div className="text-xs font-semibold text-slate-300">Wallet</div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-[11px] mb-0.5">Cash</div>
+                      <div className="text-emerald-400 font-bold text-sm">{formatCurrency(selectedUser.balance || 0)}</div>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-[11px] mb-0.5">Bonus</div>
+                      <div className="text-emerald-300 font-bold text-sm">{formatCurrency(selectedUser.bonus_balance || 0)}</div>
+                    </div>
+                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
+                      <div className="text-slate-400 text-[11px] mb-0.5">Bonus Wins</div>
+                      <div className="text-emerald-200 font-bold text-sm">{formatCurrency(selectedUser.bonus_win_balance || 0)}</div>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Bonus Wins are non-withdrawable. As super admin, you can manually convert them into Cash Wallet for special cases.
+                  </p>
+                  <button
+                    onClick={handleConvertBonusWins}
+                    disabled={walletActionLoading || !admin || !(Number(selectedUser.bonus_win_balance || 0) > 0)}
+                    className="w-full bg-emerald-600/20 hover:bg-emerald-600/40 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-emerald-500/30 text-xs flex items-center justify-center gap-2"
+                  >
+                    {walletActionLoading ? 'Converting…' : 'Convert All Bonus Wins to Cash'}
+                  </button>
                 </div>
 
 

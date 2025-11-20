@@ -398,6 +398,16 @@ export default function HistoryPage() {
                       const shortId = (game.id || '').toString().slice(0, 8).toUpperCase()
                       // Calculate net prize after commission
                       const netPrize = game.prize_pool * (1 - commissionRate)
+                      // Determine stake source for this game from transaction history
+                      const stakeTx = transactions.find(tx => tx.type === 'stake' && tx.game_id === game.id)
+                      const stakeSource = stakeTx?.source || null
+                      const stakeSourceLabel = stakeSource === 'main'
+                        ? 'Cash'
+                        : stakeSource === 'bonus'
+                          ? 'Bonus'
+                          : stakeSource === 'mixed'
+                            ? 'Cash + Bonus'
+                            : null
                       return (
                         <div key={game.id} className="px-3 py-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-all">
                           {/* Header: game name + status pill */}
@@ -439,6 +449,18 @@ export default function HistoryPage() {
                               <p className="font-semibold text-slate-900">{winnersCount}</p>
                             </div>
                           </div>
+
+                          {stakeSourceLabel && (
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Wallet used: <span className="font-semibold text-slate-800">{stakeSourceLabel}</span>
+                              {typeof (stakeTx?.main_deducted) === 'number' || typeof (stakeTx?.bonus_deducted) === 'number' ? (
+                                <>
+                                  {' '}
+                                  <span className="text-slate-400">(Cash {formatCurrency(stakeTx?.main_deducted || 0)} / Bonus {formatCurrency(stakeTx?.bonus_deducted || 0)})</span>
+                                </>
+                              ) : null}
+                            </p>
+                          )}
 
                           {isFinished && game.ended_at && (
                             <div className="mt-2 pt-2 border-t border-slate-200">
