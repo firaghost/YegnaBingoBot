@@ -23,10 +23,13 @@ export default function AdminSettings() {
     maintenanceMode: false,
     maintenanceMessage: 'System under maintenance. Please try again later.',
     registrationEnabled: true,
+    requireChannelJoin: true,
     minWithdrawal: 100 as number | string,
     maxWithdrawal: 100000 as number | string,
     withdrawalFee: 0 as number | string,
     minRequiredDeposit: 50 as number | string,
+    depositMax: 100000 as number | string,
+    depositFee: 0 as number | string,
     dailyWithdrawalLimit: 5000 as number | string,
     weeklyWithdrawalLimit: 2000 as number | string,
     commissionRate: 10 as number | string,
@@ -53,6 +56,9 @@ export default function AdminSettings() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [isEnforcing, setIsEnforcing] = useState(false)
+  // Payment methods state (Chapa / Manual)
+  const [pmLoading, setPmLoading] = useState(false)
+  const [paymentMethods, setPaymentMethods] = useState<any[]>([])
   // Admin management
   const [admins, setAdmins] = useState<any[]>([])
   const [loadingAdmins, setLoadingAdmins] = useState(false)
@@ -139,11 +145,14 @@ export default function AdminSettings() {
           maintenanceMode: config.maintenanceMode || false,
           maintenanceMessage: config.maintenanceMessage || 'System under maintenance. Please try again later.',
           registrationEnabled: config.registrationEnabled ?? true,
+          requireChannelJoin: (config as any).requireChannelJoin ?? true,
           minWithdrawal: Number(config.minWithdrawalAmount) || 100,
           maxWithdrawal: Number(config.maxWithdrawalAmount) || 100000,
           withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100,
           commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100,
           minRequiredDeposit: Number(config.minRequiredDeposit) || 50,
+          depositMax: Number((config as any).depositMax) || 100000,
+          depositFee: Math.round((Number((config as any).depositFee) || 0) * 100 * 100) / 100,
           dailyWithdrawalLimit: Number(config.dailyWithdrawalLimit) || 5000,
           weeklyWithdrawalLimit: Number(config.weeklyWithdrawalLimit) || 20000,
           welcomeBonus: Number(config.welcomeBonus) || 5,
@@ -172,6 +181,8 @@ export default function AdminSettings() {
           setWlTgIds(Array.isArray(c.maintenanceBypassTelegramIds) ? c.maintenanceBypassTelegramIds.map(String) : [])
           setWlUsernames(Array.isArray(c.maintenanceBypassUsernames) ? c.maintenanceBypassUsernames.map(String) : [])
         } catch {}
+        // Load payment methods after settings
+        try { await loadPaymentMethods() } catch {}
       }
     } catch (error) {
       console.error('Error fetching settings:', error)
@@ -182,6 +193,51 @@ export default function AdminSettings() {
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message })
     setTimeout(() => setNotification(null), 4000)
+  }
+
+  async function loadPaymentMethods() {
+    if (!admin) return
+    try {
+      setPmLoading(true)
+      const res = await fetch('/api/admin/payment-methods', { headers: { 'x-admin-id': admin.id } })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to load payment methods')
+      setPaymentMethods(Array.isArray(data.data) ? data.data : [])
+    } catch (e: any) {
+      showNotification('error', e.message || 'Failed to load payment methods')
+    } finally {
+      setPmLoading(false)
+    }
+  }
+
+  async function savePaymentMethods() {
+    if (!admin) return showNotification('error', 'Admin session missing')
+    try {
+      setPmLoading(true)
+      const payload = paymentMethods.map(pm => ({
+        id: pm.id,
+        name: pm.name,
+        enabled: !!pm.enabled,
+        instructions: pm.instructions ?? null,
+        min_amount: pm.min_amount != null ? Number(pm.min_amount) : null,
+        max_amount: pm.max_amount != null ? Number(pm.max_amount) : null,
+        fee_rate: pm.fee_rate != null ? Number(pm.fee_rate) : null,
+        bonus_percent: pm.bonus_percent != null ? Number(pm.bonus_percent) : null
+      }))
+      const res = await fetch('/api/admin/payment-methods', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to save payment methods')
+      setPaymentMethods(Array.isArray(data.data) ? data.data : [])
+      showNotification('success', 'Payment methods saved')
+    } catch (e: any) {
+      showNotification('error', e.message || 'Failed to save payment methods')
+    } finally {
+      setPmLoading(false)
+    }
   }
 
   async function loadAdmins() {
@@ -266,11 +322,14 @@ export default function AdminSettings() {
       if (Boolean(settings.maintenanceMode) !== Boolean(originalSettings.maintenanceMode)) changedSettings.maintenance_mode = Boolean(settings.maintenanceMode)
       if (settings.maintenanceMessage !== originalSettings.maintenanceMessage) changedSettings.maintenance_message = settings.maintenanceMessage
       if (Boolean(settings.registrationEnabled) !== Boolean(originalSettings.registrationEnabled)) changedSettings.registration_enabled = Boolean(settings.registrationEnabled)
+      if (Boolean(settings.requireChannelJoin) !== Boolean(originalSettings.requireChannelJoin)) changedSettings.require_channel_join = Boolean(settings.requireChannelJoin)
       if (Number(settings.minWithdrawal) !== Number(originalSettings.minWithdrawal)) changedSettings.min_withdrawal_amount = Number(settings.minWithdrawal) || 0
       if (Number(settings.maxWithdrawal) !== Number(originalSettings.maxWithdrawal)) changedSettings.max_withdrawal_amount = Number(settings.maxWithdrawal) || 0
       if (Number(settings.withdrawalFee) !== Number(originalSettings.withdrawalFee)) changedSettings.withdrawal_fee_rate = (Number(settings.withdrawalFee) || 0) / 100
       if (Number(settings.commissionRate) !== Number(originalSettings.commissionRate)) changedSettings.game_commission_rate = (Number(settings.commissionRate) || 0) / 100
       if (Number(settings.minRequiredDeposit) !== Number(originalSettings.minRequiredDeposit)) changedSettings.min_required_deposit = Number(settings.minRequiredDeposit) || 0
+      if (Number(settings.depositMax) !== Number(originalSettings.depositMax)) changedSettings.deposit_max = Number(settings.depositMax) || 0
+      if (Number(settings.depositFee) !== Number(originalSettings.depositFee)) changedSettings.deposit_fee = (Number(settings.depositFee) || 0) / 100
       if (Number(settings.dailyWithdrawalLimit) !== Number(originalSettings.dailyWithdrawalLimit)) changedSettings.daily_withdrawal_limit = Number(settings.dailyWithdrawalLimit) || 0
       if (Number(settings.weeklyWithdrawalLimit) !== Number(originalSettings.weeklyWithdrawalLimit)) changedSettings.weekly_withdrawal_limit = Number(settings.weeklyWithdrawalLimit) || 0
       if (Boolean(settings.autoApproveDeposits) !== Boolean(originalSettings.autoApproveDeposits)) changedSettings.auto_approve_deposits = Boolean(settings.autoApproveDeposits)
@@ -491,6 +550,12 @@ export default function AdminSettings() {
                 onChange={(value: boolean) => setSettings({ ...settings, registrationEnabled: value })}
                 description="Allow new users to register"
               />
+              <SettingToggle
+                label="Require Telegram Channel Join"
+                value={settings.requireChannelJoin}
+                onChange={(value: boolean) => setSettings({ ...settings, requireChannelJoin: value })}
+                description="Ask users to join your Telegram channel before playing (ignored in development)"
+              />
               <SettingInput
                 label="Socket URL"
                 value={settings.socketUrl}
@@ -543,6 +608,13 @@ export default function AdminSettings() {
                   description="Minimum deposit amount"
                 />
                 <SettingInput
+                  label="Max Deposit (ETB)"
+                  value={settings.depositMax}
+                  onChange={(e: any) => setSettings({ ...settings, depositMax: e.target.value })}
+                  type="number"
+                  description="Maximum deposit amount"
+                />
+                <SettingInput
                   label="Daily Withdrawal Limit (ETB)"
                   value={settings.dailyWithdrawalLimit}
                   onChange={(e: any) => setSettings({ ...settings, dailyWithdrawalLimit: e.target.value })}
@@ -565,6 +637,94 @@ export default function AdminSettings() {
                   type="number"
                   description="Platform commission on games"
                 />
+                <SettingInput
+                  label="Deposit Fee (%)"
+                  value={settings.depositFee}
+                  onChange={(e: any) => setSettings({ ...settings, depositFee: e.target.value })}
+                  type="number"
+                  description="Fee applied to deposits (for reporting/charges)"
+                />
+              </div>
+              {/* Payment Methods Management */}
+              <div className="pt-6 border-t border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-white font-semibold text-lg">Payment Methods</h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={loadPaymentMethods}
+                      className="px-3 py-1.5 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 text-sm"
+                      disabled={pmLoading}
+                    >
+                      {pmLoading ? 'Loading…' : 'Reload'}
+                    </button>
+                    <button
+                      onClick={savePaymentMethods}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-sm"
+                      disabled={pmLoading}
+                    >
+                      Save Methods
+                    </button>
+                  </div>
+                </div>
+                {paymentMethods.length === 0 ? (
+                  <div className="text-slate-400 text-sm">No methods configured.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {paymentMethods.map((pm, idx) => (
+                      <div key={pm.id || pm.name || idx} className="p-4 rounded-lg border border-slate-700 bg-slate-800/40">
+                        <div className="flex items-center justify-between">
+                          <div className="text-white font-semibold">{pm.name}</div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-slate-400 text-xs">Enabled</span>
+                            <button
+                              onClick={() => setPaymentMethods(ms => ms.map(m => m === pm ? { ...m, enabled: !m.enabled } : m))}
+                              className={`relative w-12 h-6 rounded-full transition-colors ${pm.enabled ? 'bg-emerald-600' : 'bg-slate-600'}`}
+                            >
+                              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${pm.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-slate-400 text-xs mb-1">Min Amount (ETB)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-900/50 border border-slate-700 text-white px-3 py-2 rounded-md focus:outline-none focus:border-emerald-500/50"
+                              value={pm.min_amount ?? ''}
+                              onChange={(e) => setPaymentMethods(ms => ms.map(m => m === pm ? { ...m, min_amount: Number(e.target.value) } : m))}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-slate-400 text-xs mb-1">Max Amount (ETB)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-900/50 border border-slate-700 text-white px-3 py-2 rounded-md focus:outline-none focus:border-emerald-500/50"
+                              value={pm.max_amount ?? ''}
+                              onChange={(e) => setPaymentMethods(ms => ms.map(m => m === pm ? { ...m, max_amount: Number(e.target.value) } : m))}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-slate-400 text-xs mb-1">Fee Rate (%)</label>
+                            <input
+                              type="number"
+                              className="w-full bg-slate-900/50 border border-slate-700 text-white px-3 py-2 rounded-md focus:outline-none focus:border-emerald-500/50"
+                              value={pm.fee_rate ?? ''}
+                              onChange={(e) => setPaymentMethods(ms => ms.map(m => m === pm ? { ...m, fee_rate: Number(e.target.value) } : m))}
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <label className="block text-slate-400 text-xs mb-1">Instructions (Manual only)</label>
+                          <textarea
+                            className="w-full bg-slate-900/50 border border-slate-700 text-white px-3 py-2 rounded-md focus:outline-none focus:border-emerald-500/50 min-h-[70px]"
+                            value={pm.instructions || ''}
+                            onChange={(e) => setPaymentMethods(ms => ms.map(m => m === pm ? { ...m, instructions: e.target.value } : m))}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-6 border-t border-slate-700">
                 <SettingToggle

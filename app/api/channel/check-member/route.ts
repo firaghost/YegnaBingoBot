@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getConfig } from '@/lib/admin-config'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
 const CHANNEL_USERNAME = process.env.TELEGRAM_CHANNEL_USERNAME || process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME
@@ -19,6 +20,29 @@ export async function POST(request: NextRequest) {
 
     if (!telegramId) {
       return NextResponse.json({ isMember: false, error: 'telegramId is required' }, { status: 200 })
+    }
+
+    // Bypass in development environment
+    const isDev = process.env.NODE_ENV !== 'production'
+    if (isDev) {
+      return NextResponse.json({ isMember: true, bypass: 'dev' }, { status: 200 })
+    }
+
+    // Check admin-config toggle to optionally disable membership requirement
+    try {
+      const cfg = await getConfig('require_channel_join')
+      let requireJoin: boolean
+      if (typeof cfg === 'boolean') requireJoin = cfg
+      else if (cfg == null) requireJoin = true
+      else {
+        const s = String(cfg).trim().toLowerCase()
+        requireJoin = !(s === 'false' || s === '0' || s === 'no')
+      }
+      if (!requireJoin) {
+        return NextResponse.json({ isMember: true, bypass: 'disabled' }, { status: 200 })
+      }
+    } catch {
+      // If config fetch fails, default to requiring join (fall through)
     }
 
     if (!BOT_TOKEN) {

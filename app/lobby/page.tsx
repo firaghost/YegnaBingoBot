@@ -35,6 +35,7 @@ export default function LobbyPage() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
   const [commissionLoaded, setCommissionLoaded] = useState<boolean>(false)
+  const [requireChannelJoin, setRequireChannelJoin] = useState<boolean>(true)
   const [showChannelPrompt, setShowChannelPrompt] = useState(false)
   const [checkingChannelStatus, setCheckingChannelStatus] = useState(false)
   const [channelCheckError, setChannelCheckError] = useState<string | null>(null)
@@ -109,6 +110,27 @@ export default function LobbyPage() {
     }
   }, [])
 
+  // Load channel join requirement from admin config
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const cfg = await getConfig('require_channel_join')
+        let val: boolean
+        if (typeof cfg === 'boolean') val = cfg
+        else if (cfg == null) val = true
+        else {
+          const s = String(cfg).trim().toLowerCase()
+          val = !(s === 'false' || s === '0' || s === 'no')
+        }
+        if (mounted) setRequireChannelJoin(val)
+      } catch {
+        if (mounted) setRequireChannelJoin(true)
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   // Also resend heartbeat when user id becomes available later
   useEffect(() => {
     if (!user?.id) return
@@ -160,6 +182,12 @@ export default function LobbyPage() {
   const checkChannelMembership = useCallback(async (force = false) => {
     if (!force && channelCheckAttempted.current) return
     if (checkingChannelStatus) return
+    // Bypass in development or when disabled by admin setting
+    const isDev = process.env.NODE_ENV !== 'production'
+    if (isDev || !requireChannelJoin) {
+      setShowChannelPrompt(false)
+      return
+    }
     channelCheckAttempted.current = true
     setCheckingChannelStatus(true)
     setChannelCheckError(null)
@@ -182,17 +210,17 @@ export default function LobbyPage() {
     } finally {
       setCheckingChannelStatus(false)
     }
-  }, [checkingChannelStatus, user?.telegram_id])
+  }, [checkingChannelStatus, user?.telegram_id, requireChannelJoin])
 
   useEffect(() => {
     if (authLoading) return
-    if (!user?.telegram_id) {
+    const isDev = process.env.NODE_ENV !== 'production'
+    if (!user?.telegram_id || isDev || !requireChannelJoin) {
       setShowChannelPrompt(false)
       return
     }
-
     checkChannelMembership()
-  }, [authLoading, user?.telegram_id, checkChannelMembership])
+  }, [authLoading, user?.telegram_id, checkChannelMembership, requireChannelJoin])
 
   useEffect(() => {
     if (!showChannelPrompt || !user?.telegram_id) return
