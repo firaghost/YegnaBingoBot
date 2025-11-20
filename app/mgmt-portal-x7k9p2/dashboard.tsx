@@ -543,6 +543,7 @@ export default function ProfessionalDashboard() {
 
   const navItems = [
     { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
+    { href: '/mgmt-portal-x7k9p2/suspended-users', label: 'Suspended', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
     { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null, permsAny: ['games_view','games_manage'] },
     { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits, permsAny: ['deposits_view','deposits_manage'] },
     { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals, permsAny: ['withdrawals_view','withdrawals_manage'] },

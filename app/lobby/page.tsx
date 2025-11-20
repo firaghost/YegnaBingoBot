@@ -1,5 +1,5 @@
 "use client"
-
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
@@ -553,6 +553,26 @@ export default function LobbyPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+        {/* Suspension Banner */}
+        {isAuthenticated && user?.status === 'inactive' && (
+          <div className="mb-4 sm:mb-6 bg-red-50 border-2 border-red-200 rounded-2xl p-4 sm:p-5 flex gap-3">
+            <div className="flex-shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <LuLock className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm sm:text-base font-semibold text-red-800 mb-1">Account Suspended</h3>
+              <p className="text-xs sm:text-sm text-red-700 mb-1">
+                You cannot join games or make deposits until your account is reviewed.
+              </p>
+              {user.suspension_reason && (
+                <p className="text-xs text-red-600"><span className="font-semibold">Reason:</span> {user.suspension_reason}</p>
+              )}
+            </div>
+          </div>
+        )}
+
         <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
           Game Rooms
         </h2>
@@ -683,7 +703,15 @@ export default function LobbyPage() {
                       <span>Loading...</span>
                     </button>
                   ) : isAuthenticated ? (
-                    hasInsufficientBalance ? (
+                    user?.status === 'inactive' ? (
+                      <button
+                        disabled
+                        className="w-full bg-slate-200 text-slate-500 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm sm:text-base cursor-not-allowed border border-slate-300"
+                      >
+                        <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span>Account suspended</span>
+                      </button>
+                    ) : hasInsufficientBalance ? (
                       <button 
                         onClick={() => handleInsufficientBalance(room.stake)}
                         className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"

@@ -39,6 +39,7 @@
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
+    "@vercel/speed-insights": "^1.2.0",
     "autoprefixer": "^10.4.21",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.0",

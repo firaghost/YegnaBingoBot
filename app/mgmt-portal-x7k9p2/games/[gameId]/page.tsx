@@ -1,5 +1,5 @@
 "use client"
-
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'

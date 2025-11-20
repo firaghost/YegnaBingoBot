@@ -227,6 +227,7 @@ export default function AccountPage() {
 
   const bonusBalance = user.bonus_balance || 0
   const totalBalance = user.balance + bonusBalance
+  const isSuspended = (user as any).status === 'inactive'
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -471,6 +472,22 @@ export default function AccountPage() {
           </div>
         </div>
 
+        {/* Account Suspended Info */}
+        {isSuspended && (
+          <div className="bg-red-50 rounded-xl p-4 mb-4 border border-red-200">
+            <h3 className="text-sm font-semibold text-red-800 mb-1">Account Suspended</h3>
+            <p className="text-xs text-red-700 mb-1">
+              Your account is currently suspended. You cannot deposit, withdraw, or join games until this is resolved.
+            </p>
+            {(user as any).suspension_reason && (
+              <p className="text-xs text-red-700"><span className="font-semibold">Reason:</span> {(user as any).suspension_reason}</p>
+            )}
+            <p className="text-[11px] text-red-600 mt-2">
+              If you believe this is a mistake, please contact support using the details below.
+            </p>
+          </div>
+        )}
+
         {/* Balance Overview */}
         <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
           <div className="flex items-center justify-between mb-4">
@@ -504,18 +521,20 @@ export default function AccountPage() {
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           <button 
-            onClick={() => router.push('/deposit')}
-            className="bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+            onClick={() => { if (!isSuspended) router.push('/deposit') }}
+            disabled={isSuspended}
+            className="bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
           >
             <LuPlus className="w-5 h-5" />
-            <span>Deposit</span>
+            <span>{isSuspended ? 'Suspended' : 'Deposit'}</span>
           </button>
           <button 
-            onClick={() => router.push('/withdraw')}
-            className="bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            onClick={() => { if (!isSuspended) router.push('/withdraw') }}
+            disabled={isSuspended}
+            className="bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
           >
             <LuMinus className="w-5 h-5" />
-            <span>Withdraw</span>
+            <span>{isSuspended ? 'Suspended' : 'Withdraw'}</span>
           </button>
         </div>
 

@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 
-type SortField = 'username' | 'balance' | 'games_played' | 'games_won' | 'created_at'
+type SortField = 'username' | 'balance' | 'games_played' | 'games_won' | 'created_at' | 'total_referrals' | 'referral_earnings'
 type SortOrder = 'asc' | 'desc'
 type StatusFilter = 'all' | 'active' | 'pending' | 'inactive'
 
@@ -35,6 +35,8 @@ export default function AdminUsersPage() {
   const [showGameHistory, setShowGameHistory] = useState(false)
   const [userTransactions, setUserTransactions] = useState<any[]>([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
+  const [actionMenuUserId, setActionMenuUserId] = useState<string | null>(null)
+  const [suspendReason, setSuspendReason] = useState('')
   const [searchTerm, setSearchTerm] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('userMgmt_searchTerm') || ''
@@ -162,44 +164,59 @@ export default function AdminUsersPage() {
   
   const totalPages = Math.ceil(filteredUsers.length / pageSize)
 
-  const handleDeleteUser = async () => {
+  const handleToggleSuspend = async () => {
     if (!selectedUser) return
 
     setDeletingUser(true)
     try {
-      // First, update any games where this user is the winner to set winner_id to null
-      const { error: gamesError } = await supabase
-        .from('games')
-        .update({ winner_id: null })
-        .eq('winner_id', selectedUser.id)
+      const nextStatus = selectedUser.status === 'inactive' ? 'active' : 'inactive'
 
-      if (gamesError) throw gamesError
+      const finalReason = suspendReason.trim() || 'Manual suspension from admin Users page'
+      const nowIso = new Date().toISOString()
+      const updates: any =
+        nextStatus === 'inactive'
+          ? {
+              status: nextStatus,
+              suspension_reason: finalReason,
+              suspended_at: nowIso,
+            }
+          : {
+              status: nextStatus,
+              suspension_reason: null,
+            }
 
-      // Delete user's transactions
-      const { error: transactionsError } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('user_id', selectedUser.id)
-
-      if (transactionsError) throw transactionsError
-
-      // Finally, delete the user
       const { error: userError } = await supabase
         .from('users')
-        .delete()
+        .update(updates)
         .eq('id', selectedUser.id)
 
       if (userError) throw userError
 
-      // Refresh the users list
-      fetchUsers()
+      if (nextStatus === 'inactive') {
+        try {
+          await supabase
+            .from('user_suspensions')
+            .insert({
+              user_id: selectedUser.id,
+              reason: finalReason,
+              source: 'manual_admin',
+              context: { from: 'users_page' },
+            } as any)
+        } catch (logErr) {
+          console.error('Failed to log manual suspension:', logErr)
+        }
+      }
+
+      await fetchUsers()
+      setSelectedUser((prev: any) => (prev ? { ...prev, status: nextStatus } : prev))
       setShowDeleteModal(false)
-      setShowUserModal(false)
-      setSelectedUser(null)
-      alert('User deleted successfully!')
+      const msg = nextStatus === 'inactive'
+        ? 'User suspended successfully.'
+        : 'User re-activated successfully.'
+      alert(msg)
     } catch (error: any) {
-      console.error('Error deleting user:', error)
-      alert(error.message || 'Failed to delete user')
+      console.error('Error updating user status:', error)
+      alert(error.message || 'Failed to update user status')
     } finally {
       setDeletingUser(false)
     }
@@ -277,11 +294,14 @@ export default function AdminUsersPage() {
 
   const stats = {
     total: users.length,
-    active: users.length, // All users are active (no approval system)
+    active: users.filter(u => u.status !== 'inactive').length,
     totalBalance: users.reduce((sum, u) => sum + (u.balance || 0), 0),
+    totalBonusBalance: users.reduce((sum, u) => sum + (u.bonus_balance || 0), 0),
     totalGames: users.reduce((sum, u) => sum + (u.games_played || 0), 0),
     totalWins: users.reduce((sum, u) => sum + (u.games_won || 0), 0),
     withPhone: users.filter(u => u.phone).length,
+    totalReferrals: users.reduce((sum, u) => sum + (u.total_referrals || 0), 0),
+    totalReferralEarnings: users.reduce((sum, u) => sum + Number(u.referral_earnings || 0), 0),
   }
 
   // City aggregation (prefer last_seen_city then registration_city)
@@ -363,8 +383,9 @@ export default function AdminUsersPage() {
             <div className="text-xl sm:text-2xl font-bold text-cyan-400">{stats.withPhone}</div>
           </div>
           <div className="bg-gradient-to-br from-purple-900/30 to-slate-900 rounded-lg border border-purple-700/30 p-3 sm:p-4 hover:border-purple-600/50 transition-all">
-            <div className="text-xs text-purple-400 mb-1">Total Balance</div>
+            <div className="text-xs text-purple-400 mb-1">Total Wallet</div>
             <div className="text-xl sm:text-2xl font-bold text-purple-400">{formatCurrency(stats.totalBalance)}</div>
+            <div className="text-xs text-purple-300 mt-1">Bonus: {formatCurrency(stats.totalBonusBalance)}</div>
           </div>
           <div className="bg-gradient-to-br from-orange-900/30 to-slate-900 rounded-lg border border-orange-700/30 p-3 sm:p-4 hover:border-orange-600/50 transition-all">
             <div className="text-xs text-orange-400 mb-1">Games Played</div>
@@ -373,6 +394,11 @@ export default function AdminUsersPage() {
           <div className="bg-gradient-to-br from-pink-900/30 to-slate-900 rounded-lg border border-pink-700/30 p-3 sm:p-4 hover:border-pink-600/50 transition-all">
             <div className="text-xs text-pink-400 mb-1">Total Wins</div>
             <div className="text-xl sm:text-2xl font-bold text-pink-400">{stats.totalWins}</div>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-900/30 to-slate-900 rounded-lg border border-indigo-700/30 p-3 sm:p-4 hover:border-indigo-600/50 transition-all">
+            <div className="text-xs text-indigo-300 mb-1">Referrals</div>
+            <div className="text-xl sm:text-2xl font-bold text-indigo-200">{stats.totalReferrals}</div>
+            <div className="text-xs text-indigo-400 mt-1">{formatCurrency(stats.totalReferralEarnings)} earned</div>
           </div>
         </div>
 
@@ -426,6 +452,8 @@ export default function AdminUsersPage() {
                   <option value="balance">Balance</option>
                   <option value="games_played">Games Played</option>
                   <option value="games_won">Games Won</option>
+                  <option value="total_referrals">Referrals</option>
+                  <option value="referral_earnings">Referral Earnings</option>
                 </select>
               </div>
               
@@ -493,7 +521,7 @@ export default function AdminUsersPage() {
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Telegram ID</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Phone</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('balance')}>
-                    <div className="flex items-center gap-2">Balance <SortIcon field="balance" /></div>
+                    <div className="flex items-center gap-2">Wallet <SortIcon field="balance" /></div>
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('games_played')}>
                     <div className="flex items-center gap-2">Games <SortIcon field="games_played" /></div>
@@ -503,6 +531,9 @@ export default function AdminUsersPage() {
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">
                     <div className="flex items-center gap-2">Lost</div>
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('total_referrals')}>
+                    <div className="flex items-center gap-2">Referrals <SortIcon field="total_referrals" /></div>
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">City</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Country</th>
@@ -553,67 +584,97 @@ export default function AdminUsersPage() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="font-semibold text-emerald-400">
+                        <div className="text-xs text-slate-400 mb-0.5">Real / Bonus</div>
+                        <div className="font-semibold text-emerald-400">
                           {formatCurrency(user.balance || 0)}
-                        </span>
+                          <span className="text-slate-400"> / </span>
+                          <span className="text-emerald-300">{formatCurrency(user.bonus_balance || 0)}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_played || 0}</td>
                       <td className="px-6 py-4 text-slate-300 font-medium">{user.games_won || 0}</td>
                       <td className="px-6 py-4 text-red-400 font-medium">{(user.games_played || 0) - (user.games_won || 0)}</td>
+                      <td className="px-6 py-4 text-slate-300 text-sm">
+                        <div className="font-medium text-indigo-300">{user.total_referrals || 0}</div>
+                        <div className="text-xs text-indigo-400">{formatCurrency(Number(user.referral_earnings || 0))}</div>
+                      </td>
                       <td className="px-6 py-4 text-slate-300">{user.last_seen_city || user.registration_city || '—'}</td>
                       <td className="px-6 py-4 text-slate-300">{user.last_seen_country || user.registration_country || '—'}</td>
                       <td className="px-6 py-4 text-sm text-slate-400">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-1 flex-wrap">
+                      <td className="px-6 py-4 text-right">
+                        <div className="relative inline-block text-left">
                           <button
-                            onClick={() => {
-                              setSelectedUser(user)
-                              setShowUserModal(true)
-                            }}
-                            className="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-cyan-500/30"
+                            onClick={() => setActionMenuUserId(actionMenuUserId === user.id ? null : user.id)}
+                            className="p-1.5 rounded-full hover:bg-slate-700/70 text-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
                           >
-                            View
+                            <span className="sr-only">Open user actions</span>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 9a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 9a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
+                            </svg>
                           </button>
-                          <button
-                            onClick={() => {
-                              openUserHistory(user)
-                            }}
-                            className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-purple-500/30"
-                          >
-                            History
-                          </button>
-                          {user.phone && (
-                            <a
-                              href={`tel:${user.phone}`}
-                              className="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-emerald-500/30"
-                            >
-                              Call
-                            </a>
+                          {actionMenuUserId === user.id && (
+                            <div className="origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-slate-900 border border-slate-700/70 z-20">
+                              <div className="py-1 text-xs text-slate-200">
+                                <button
+                                  onClick={() => {
+                                    setSelectedUser(user)
+                                    setShowUserModal(true)
+                                    setActionMenuUserId(null)
+                                  }}
+                                  className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                >
+                                  View profile
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    openUserHistory(user)
+                                    setActionMenuUserId(null)
+                                  }}
+                                  className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                >
+                                  History
+                                </button>
+                                {user.phone && (
+                                  <button
+                                    onClick={() => {
+                                      window.location.href = `tel:${user.phone}`
+                                      setActionMenuUserId(null)
+                                    }}
+                                    className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                  >
+                                    Call
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    const tgLink = `tg://user?id=${user.telegram_id}`
+                                    const httpLink = `https://t.me/${user.telegram_id}`
+                                    const w = window.open(tgLink, '_blank')
+                                    setTimeout(() => {
+                                      if (!w || w.closed) window.open(httpLink, '_blank')
+                                    }, 300)
+                                    setActionMenuUserId(null)
+                                  }}
+                                  className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                >
+                                  Open Telegram
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedUser(user)
+                                    setSuspendReason('Manual suspension from admin Users page')
+                                    setShowDeleteModal(true)
+                                    setActionMenuUserId(null)
+                                  }}
+                                  className="block w-full text-left px-3 py-1.5 text-red-300 hover:bg-red-500/10"
+                                >
+                                  {user.status === 'inactive' ? 'Reactivate user' : 'Suspend user'}
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          <button
-                            onClick={() => {
-                              const tgLink = `tg://user?id=${user.telegram_id}`
-                              const httpLink = `https://t.me/${user.telegram_id}`
-                              const w = window.open(tgLink, '_blank')
-                              setTimeout(() => {
-                                if (!w || w.closed) window.open(httpLink, '_blank')
-                              }, 300)
-                            }}
-                            className="bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-blue-500/30"
-                          >
-                            TG
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectedUser(user)
-                              setShowDeleteModal(true)
-                            }}
-                            className="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-2 py-1 rounded text-xs font-medium transition-colors border border-red-500/30"
-                          >
-                            Delete
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -760,11 +821,12 @@ export default function AdminUsersPage() {
                   <button
                     onClick={() => {
                       setSelectedUser(user)
+                      setSuspendReason('Manual suspension from admin Users page')
                       setShowDeleteModal(true)
                     }}
                     className="bg-red-600/20 hover:bg-red-600/40 text-red-400 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-red-500/30"
                   >
-                    Delete
+                    {user.status === 'inactive' ? 'Reactivate' : 'Suspend'}
                   </button>
                 </div>
               </div>
@@ -981,12 +1043,12 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {/* Delete Confirmation Modal */}
+        {/* Suspend / Reactivate Confirmation Modal */}
         {showDeleteModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <div className="bg-slate-800 rounded-xl border border-slate-700/50 p-6 max-w-md w-full shadow-2xl">
               <div className="flex justify-between items-start mb-6">
-                <h3 className="text-xl font-bold text-white">Delete User</h3>
+                <h3 className="text-xl font-bold text-white">{selectedUser.status === 'inactive' ? 'Reactivate User' : 'Suspend User'}</h3>
                 <button
                   onClick={() => setShowDeleteModal(false)}
                   className="text-slate-400 hover:text-white transition-colors"
@@ -1005,24 +1067,54 @@ export default function AdminUsersPage() {
                     </svg>
                   </div>
                   <div>
-                    <h4 className="font-semibold text-red-400 text-lg">Warning!</h4>
-                    <p className="text-red-300 text-sm">This action cannot be undone.</p>
+                    <h4 className="font-semibold text-red-400 text-lg">{selectedUser.status === 'inactive' ? 'Reactivate this user' : 'Suspend this user'}</h4>
+                    <p className="text-red-300 text-sm">{selectedUser.status === 'inactive' ? 'User will be able to log in and play again.' : 'User will be blocked from playing and deposits until reactivated.'}</p>
                   </div>
                 </div>
 
                 <p className="text-slate-300 mb-4">
-                  Are you sure you want to delete <strong className="text-white">{selectedUser.username || 'this user'}</strong>?
+                  Are you sure you want to {selectedUser.status === 'inactive' ? 'reactivate' : 'suspend'} <strong className="text-white">{selectedUser.username || 'this user'}</strong>?
                 </p>
                 
                 <div className="bg-slate-700/30 rounded-lg p-3 text-sm text-slate-300 border border-slate-700/50">
-                  <p className="mb-2 font-semibold">This will:</p>
+                  <p className="mb-2 font-semibold">Status effect:</p>
                   <ul className="list-disc list-inside space-y-1 text-xs text-slate-400">
-                    <li>Permanently delete the user account</li>
-                    <li>Remove all transaction history</li>
-                    <li>Clear winner references from games</li>
-                    <li>Cannot be reversed</li>
+                    <li>{selectedUser.status === 'inactive' ? 'Mark user as active again.' : 'Mark user as inactive/suspended.'}</li>
+                    <li>No data is deleted, balances and history remain intact.</li>
                   </ul>
                 </div>
+
+                {selectedUser.status !== 'inactive' && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold text-slate-300">Reason for suspension</label>
+                      <span className="text-[10px] text-slate-400">Visible to admins & user</span>
+                    </div>
+                    <textarea
+                      value={suspendReason}
+                      onChange={(e) => setSuspendReason(e.target.value)}
+                      placeholder="e.g. Repeated fake deposit proofs"
+                      className="w-full bg-slate-900/60 border border-slate-600/60 rounded-md px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-red-400 focus:ring-1 focus:ring-red-500/40 resize-none min-h-[64px]"
+                    />
+                    <div className="flex flex-wrap gap-2 text-[11px]">
+                      {[
+                        'Repeated fake / mismatched deposit proofs',
+                        'Suspicious deposit & withdrawal pattern',
+                        'Abuse of referral system / multiple accounts',
+                        'Chargeback or payment dispute risk',
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setSuspendReason(preset)}
+                          className="px-2.5 py-1 rounded-full bg-slate-700/70 hover:bg-slate-600/80 text-slate-200 border border-slate-500/60"
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3">
@@ -1033,17 +1125,17 @@ export default function AdminUsersPage() {
                   Cancel
                 </button>
                 <button
-                  onClick={handleDeleteUser}
+                  onClick={handleToggleSuspend}
                   disabled={deletingUser}
                   className="flex-1 bg-red-600/20 hover:bg-red-600/40 disabled:bg-red-800/20 disabled:cursor-not-allowed text-red-400 px-4 py-2 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 border border-red-500/30"
                 >
                   {deletingUser ? (
                     <>
                       <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin"></div>
-                      Deleting...
+                      Updating...
                     </>
                   ) : (
-                    'Delete User'
+                    selectedUser.status === 'inactive' ? 'Reactivate User' : 'Suspend User'
                   )}
                 </button>
               </div>

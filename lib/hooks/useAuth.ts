@@ -23,6 +23,9 @@ export interface AuthUser {
   created_at: string
   updated_at: string
   phone?: string // Add phone number field
+  status?: string
+  suspension_reason?: string | null
+  suspended_at?: string | null
 }
 
 export function useAuth() {

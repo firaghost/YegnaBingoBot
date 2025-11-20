@@ -290,6 +290,8 @@ export default function DepositPage() {
     }
   }
 
+  const isSuspended = (user as any)?.status === 'inactive'
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       {/* Header */}
@@ -306,6 +308,24 @@ export default function DepositPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
+
+        {/* Suspension Banner */}
+        {isSuspended && (
+          <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+            <div className="flex-shrink-0">
+              <div className="w-9 h-9 bg-red-100 rounded-full flex items-center justify-center">
+                <LuX className="w-5 h-5 text-red-600" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-red-800 mb-1">Account Suspended</h2>
+              <p className="text-xs text-red-700 mb-1">You cannot create new deposits while your account is suspended.</p>
+              {(user as any)?.suspension_reason && (
+                <p className="text-xs text-red-600"><span className="font-semibold">Reason:</span> {(user as any).suspension_reason}</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {success ? (
           <div className="bg-white rounded-xl p-8 border border-slate-200 text-center">
@@ -375,10 +395,10 @@ export default function DepositPage() {
                       <p className="text-sm text-slate-700">Pay instantly using Chapa. A secure checkout will open below.</p>
                       <button
                         onClick={handleChapaDeposit}
-                        disabled={!amount || Number(amount) < minDeposit || Number(amount) > maxDeposit || loading}
+                        disabled={isSuspended || !amount || Number(amount) < minDeposit || Number(amount) > maxDeposit || loading}
                         className="w-full bg-emerald-600 text-white py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {loading ? 'Starting payment…' : 'Pay with Chapa'}
+                        {isSuspended ? 'Account suspended' : (loading ? 'Starting payment…' : 'Pay with Chapa')}
                       </button>
                     </div>
                   ) : (
@@ -468,10 +488,12 @@ export default function DepositPage() {
             {selectedMethod === 'Manual' && (
               <button
                 onClick={handleDeposit}
-                disabled={!amount || parseFloat(amount) <= 0 || !selectedBank || loading}
+                disabled={isSuspended || !amount || parseFloat(amount) <= 0 || !selectedBank || loading}
                 className="w-full bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {loading ? (
+                {isSuspended ? (
+                  <span>Account suspended</span>
+                ) : loading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     <span>Processing...</span>
