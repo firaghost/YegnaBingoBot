@@ -111,19 +111,18 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (action === 'approve') {
-      // Update transaction status to completed
-      const { error: updateError } = await supabase
-        .from('transactions')
-        .update({ status: 'completed' })
-        .eq('id', transactionId)
-
-      if (updateError) throw updateError
-
       // Get deposit bonus percentage from admin config
       const depositBonusPercentRaw = await getConfig('deposit_bonus')
       const depositBonusPercent = Number(depositBonusPercentRaw) || 0
       const bonusAmount = (transaction.amount * depositBonusPercent) / 100
       const totalCredit = transaction.amount + bonusAmount
+
+      // Capture real balance before credit
+      const { data: userBefore } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', transaction.user_id)
+        .single()
 
       // Apply entire credit to real balance (bonus no longer stored in bonus wallet)
       const { error: applyErr } = await supabase.rpc('apply_deposit', {
@@ -133,6 +132,30 @@ export async function POST(request: NextRequest) {
       })
 
       if (applyErr) throw applyErr
+
+      // Capture real balance after credit
+      const { data: userAfter } = await supabase
+        .from('users')
+        .select('balance')
+        .eq('id', transaction.user_id)
+        .single()
+
+      // Mark transaction completed and attach balance snapshots
+      const { error: updateError } = await supabase
+        .from('transactions')
+        .update({ 
+          status: 'completed',
+          metadata: {
+            ...(transaction.metadata || {}),
+            approved_by_admin: true,
+            approved_at: new Date().toISOString(),
+            real_balance_before: Number(userBefore?.balance ?? 0),
+            real_balance_after: Number(userAfter?.balance ?? 0)
+          }
+        } as any)
+        .eq('id', transactionId)
+
+      if (updateError) throw updateError
 
       // If there's a bonus, create a separate bonus transaction
       if (bonusAmount > 0) {

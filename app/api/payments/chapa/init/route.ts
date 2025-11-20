@@ -82,12 +82,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Initialize Chapa transaction
-    const email = `user${user.telegram_id || user.id}@example.com`
+    const tgDigits = String(user.telegram_id || '').replace(/[^0-9]/g, '')
+    const uidAlnum = String(user.id || '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)
+    const safeLocal = tgDigits ? `tg${tgDigits}` : (uidAlnum ? `u${uidAlnum}` : 'user')
+    const email = `${safeLocal}@gmail.com`
     const first_name = (user.username || 'Bingo').slice(0, 30)
     const last_name = 'User'
 
-    const callback_url = `${APP_URL?.replace(/\/$/, '')}/api/webhooks/chapa`
-    const return_url = `${APP_URL?.replace(/\/$/, '')}/api/payments/chapa/verify?tx_ref=${encodeURIComponent(txRef)}`
+    // Build base URL from env or request host
+    const computedBase = (APP_URL && APP_URL.replace(/\/$/, '')) || `${req.nextUrl.protocol}//${req.nextUrl.host}`
+    const callback_url = `${computedBase}/api/webhooks/chapa`
+    const return_url = `${computedBase}/api/payments/chapa/verify?tx_ref=${encodeURIComponent(txRef)}`
 
     const initRes = await fetch('https://api.chapa.co/v1/transaction/initialize', {
       method: 'POST',
@@ -117,7 +122,8 @@ export async function POST(req: NextRequest) {
     if (!initRes.ok || !(initJson?.data?.checkout_url || initJson?.checkout_url)) {
       // Clean up pending if gateway init failed
       await supabase.from('transactions').update({ status: 'failed', metadata: { ...(tx?.metadata || {}), init_error: initJson } }).eq('id', tx.id)
-      return NextResponse.json({ error: 'Failed to initialize payment' }, { status: 502 })
+      const gatewayMsg = initJson?.message || initJson?.error || initJson?.errors || initJson
+      return NextResponse.json({ error: 'Failed to initialize payment', details: gatewayMsg }, { status: 400 })
     }
 
     const checkout_url: string = initJson?.data?.checkout_url || initJson?.checkout_url

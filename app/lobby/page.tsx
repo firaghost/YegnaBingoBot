@@ -36,6 +36,7 @@ export default function LobbyPage() {
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
   const [commissionLoaded, setCommissionLoaded] = useState<boolean>(false)
   const [requireChannelJoin, setRequireChannelJoin] = useState<boolean>(true)
+  const [requireChannelJoinLoaded, setRequireChannelJoinLoaded] = useState<boolean>(false)
   const [showChannelPrompt, setShowChannelPrompt] = useState(false)
   const [checkingChannelStatus, setCheckingChannelStatus] = useState(false)
   const [channelCheckError, setChannelCheckError] = useState<string | null>(null)
@@ -110,11 +111,12 @@ export default function LobbyPage() {
     }
   }, [])
 
-  // Load channel join requirement from admin config
+  // Load channel join requirement from admin config (clear cache to avoid stale values)
   useEffect(() => {
     let mounted = true
     ;(async () => {
       try {
+        clearConfigCache()
         const cfg = await getConfig('require_channel_join')
         let val: boolean
         if (typeof cfg === 'boolean') val = cfg
@@ -123,9 +125,15 @@ export default function LobbyPage() {
           const s = String(cfg).trim().toLowerCase()
           val = !(s === 'false' || s === '0' || s === 'no')
         }
-        if (mounted) setRequireChannelJoin(val)
+        if (mounted) {
+          setRequireChannelJoin(val)
+          setRequireChannelJoinLoaded(true)
+        }
       } catch {
-        if (mounted) setRequireChannelJoin(true)
+        if (mounted) {
+          setRequireChannelJoin(true)
+          setRequireChannelJoinLoaded(true)
+        }
       }
     })()
     return () => { mounted = false }
@@ -213,14 +221,14 @@ export default function LobbyPage() {
   }, [checkingChannelStatus, user?.telegram_id, requireChannelJoin])
 
   useEffect(() => {
-    if (authLoading) return
+    if (authLoading || !requireChannelJoinLoaded) return
     const isDev = process.env.NODE_ENV !== 'production'
     if (!user?.telegram_id || isDev || !requireChannelJoin) {
       setShowChannelPrompt(false)
       return
     }
     checkChannelMembership()
-  }, [authLoading, user?.telegram_id, checkChannelMembership, requireChannelJoin])
+  }, [authLoading, user?.telegram_id, checkChannelMembership, requireChannelJoin, requireChannelJoinLoaded])
 
   useEffect(() => {
     if (!showChannelPrompt || !user?.telegram_id) return

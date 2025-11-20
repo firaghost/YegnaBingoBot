@@ -362,11 +362,16 @@ export function setupBotHandlers(bot: Telegraf) {
               `Keep sharing your link to earn more rewards!`
 
             try {
-              await ctx.telegram.sendMessage(referrerForNotify.telegramId, notifyMessage, {
-                reply_markup: {
-                  inline_keyboard: [[{ text: '🎮 Play Now', url: MINI_APP_URL }]]
+              await ctx.telegram.sendMessage(
+                referrerForNotify.telegramId, 
+                notifyMessage,
+                {
+                  parse_mode: 'Markdown',
+                  reply_markup: Markup.inlineKeyboard([
+                    [Markup.button.webApp('🎮 Play Now', MINI_APP_URL)]
+                  ]).reply_markup
                 }
-              })
+              )
             } catch (notifyError) {
               console.error('Failed to notify referrer about referral bonus:', notifyError)
             }

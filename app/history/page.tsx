@@ -33,6 +33,10 @@ interface Transaction {
   total_deducted?: number | null
   source?: string | null
   credited_to?: string | null
+  balance_before?: number | null
+  balance_after?: number | null
+  bonus_win_balance_before?: number | null
+  bonus_win_balance_after?: number | null
 }
 
 interface GameHistory {
@@ -315,9 +319,10 @@ export default function HistoryPage() {
                                   {(status === 'failed' || status === 'rejected') && tx.reason && (
                                     <p className="mt-1 text-xs text-rose-600 truncate">Reason: {tx.reason}</p>
                                   )}
-                                  {(isStake || isWin) && (
+                                  {/* Details grid: stake/win breakdown and wallet snapshots */}
+                                  {(isStake || isWin || typeof tx.balance_before === 'number' || typeof tx.bonus_win_balance_before === 'number') && (
                                     <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500">
-                                      {typeof tx.bonus_deducted === 'number' && typeof tx.main_deducted === 'number' && (
+                                      {(isStake && typeof tx.bonus_deducted === 'number' && typeof tx.main_deducted === 'number') && (
                                         <div className="flex items-center gap-1">
                                           <LuWallet className="w-3.5 h-3.5" />
                                           <span>
@@ -325,7 +330,7 @@ export default function HistoryPage() {
                                           </span>
                                         </div>
                                       )}
-                                      {typeof tx.net_prize === 'number' && isWin && (
+                                      {(isWin && typeof tx.net_prize === 'number') && (
                                         <div className="flex items-center gap-1">
                                           <LuInfo className="w-3.5 h-3.5" />
                                           <span>
@@ -337,6 +342,18 @@ export default function HistoryPage() {
                                         <div className="flex items-center gap-1">
                                           <LuWallet className="w-3.5 h-3.5" />
                                           <span>Credited to: {tx.credited_to.replace('_', ' ')}</span>
+                                        </div>
+                                      )}
+                                      {typeof tx.balance_before === 'number' && typeof tx.balance_after === 'number' && (
+                                        <div className="flex items-center gap-1">
+                                          <LuWallet className="w-3.5 h-3.5" />
+                                          <span>Real wallet: {formatCurrency(tx.balance_before || 0)} → {formatCurrency(tx.balance_after || 0)}</span>
+                                        </div>
+                                      )}
+                                      {typeof tx.bonus_win_balance_before === 'number' && typeof tx.bonus_win_balance_after === 'number' && (
+                                        <div className="flex items-center gap-1">
+                                          <LuWallet className="w-3.5 h-3.5" />
+                                          <span>Bonus-win wallet: {formatCurrency(tx.bonus_win_balance_before || 0)} → {formatCurrency(tx.bonus_win_balance_after || 0)}</span>
                                         </div>
                                       )}
                                     </div>

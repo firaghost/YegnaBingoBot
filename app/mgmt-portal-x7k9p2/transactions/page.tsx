@@ -16,6 +16,7 @@ export default function AdminTransactionsPage() {
   const [dateFilter, setDateFilter] = useLocalStorage('transactions_dateFilter', 'all')
   const [currentPage, setCurrentPage] = useLocalStorage('transactions_page', 1)
   const [pageSize, setPageSize] = useLocalStorage('transactions_pageSize', 10)
+  const [referralStats, setReferralStats] = useState({ totalAmount: 0, totalInvites: 0, uniqueReferrers: 0 })
 
   useEffect(() => {
     fetchTransactions()
@@ -47,8 +48,80 @@ export default function AdminTransactionsPage() {
     }
   }
 
+  const aggregateReferralTransactions = (original: any[]) => {
+    const referralMap = new Map<string, {
+      userId: string
+      totalAmount: number
+      count: number
+      latestDate: string
+      status: string | null
+      users: any
+    }>()
+    const normalized: any[] = []
+
+    for (const tx of original) {
+      if (tx.type === 'referral_bonus') {
+        const key = tx.user_id || tx.users?.id || tx.id
+        if (!key) {
+          normalized.push(tx)
+          continue
+        }
+        if (!referralMap.has(key)) {
+          referralMap.set(key, {
+            userId: key,
+            totalAmount: 0,
+            count: 0,
+            latestDate: tx.created_at,
+            status: tx.status || 'completed',
+            users: tx.users || null
+          })
+        }
+        const entry = referralMap.get(key)!
+        entry.totalAmount += Number(tx.amount) || 0
+        entry.count += 1
+        entry.status = tx.status || entry.status
+        if (!entry.users && tx.users) entry.users = tx.users
+        if (!entry.latestDate || new Date(tx.created_at) > new Date(entry.latestDate)) {
+          entry.latestDate = tx.created_at
+        }
+      } else {
+        normalized.push(tx)
+      }
+    }
+
+    const referralEntries = Array.from(referralMap.values()).map((entry) => ({
+      id: `referral-${entry.userId}`,
+      user_id: entry.userId,
+      type: 'referral_bonus',
+      amount: entry.totalAmount,
+      status: entry.status || 'completed',
+      created_at: entry.latestDate,
+      metadata: {
+        referral_count: entry.count
+      },
+      users: entry.users
+    }))
+
+    const normalizedTransactions = [...normalized, ...referralEntries].sort((a, b) => {
+      const aTime = new Date(a.created_at).getTime()
+      const bTime = new Date(b.created_at).getTime()
+      return bTime - aTime
+    })
+
+    const summary = {
+      totalAmount: referralEntries.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0),
+      totalInvites: referralEntries.reduce((sum, tx) => sum + (tx.metadata?.referral_count || 0), 0),
+      uniqueReferrers: referralEntries.length
+    }
+
+    return { normalizedTransactions, referralSummary: summary }
+  }
+
   const filterTransactions = () => {
-    let filtered = allTransactions
+    const { normalizedTransactions, referralSummary } = aggregateReferralTransactions(allTransactions)
+    setReferralStats(referralSummary)
+
+    let filtered = normalizedTransactions
 
     // Filter by type
     if (typeFilter !== 'all') {
@@ -105,6 +178,7 @@ export default function AdminTransactionsPage() {
     withdrawals: allTransactions.filter(tx => tx.type === 'withdrawal').length,
     pending: allTransactions.filter(tx => tx.status === 'pending').length,
     completed: allTransactions.filter(tx => (tx.status || 'completed') === 'completed').length,
+    referrals: referralStats
   }
 
   return (
@@ -125,7 +199,7 @@ export default function AdminTransactionsPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-6 sm:mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-4 mb-6 sm:mb-8">
           <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg border border-slate-700/50 p-3 sm:p-4 hover:border-slate-600/50 transition-all">
             <div className="text-xs text-slate-400 mb-1">Total</div>
             <div className="text-xl sm:text-2xl font-bold text-white">{stats.total}</div>
@@ -146,6 +220,11 @@ export default function AdminTransactionsPage() {
             <div className="text-xl sm:text-2xl font-bold text-cyan-400">{stats.deposits}</div>
             <div className="text-xs text-cyan-600 mt-1">{stats.withdrawals} withdrawals</div>
           </div>
+          <div className="bg-gradient-to-br from-indigo-900/30 to-slate-900 rounded-lg border border-indigo-700/30 p-3 sm:p-4 hover:border-indigo-600/50 transition-all">
+            <div className="text-xs text-indigo-300 mb-1">Referrals</div>
+            <div className="text-xl sm:text-2xl font-bold text-indigo-200">{formatCurrency(stats.referrals.totalAmount)}</div>
+            <div className="text-xs text-indigo-400 mt-1">{stats.referrals.totalInvites} invites · {stats.referrals.uniqueReferrers} referrers</div>
+          </div>
         </div>
 
         {/* Filters */}
@@ -161,7 +240,7 @@ export default function AdminTransactionsPage() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <div className="flex gap-2 flex-wrap">
                 <span className="text-xs text-slate-400 self-center">Type:</span>
-                {['all', 'stake', 'win', 'deposit', 'withdrawal'].map((type) => (
+                {['all', 'stake', 'win', 'deposit', 'withdrawal', 'referral_bonus'].map((type) => (
                   <button
                     key={type}
                     onClick={() => setTypeFilter(type)}
@@ -171,7 +250,7 @@ export default function AdminTransactionsPage() {
                         : 'bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:border-slate-500/50'
                     }`}
                   >
-                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                    {type === 'referral_bonus' ? 'Referral' : (type.charAt(0).toUpperCase() + type.slice(1))}
                   </button>
                 ))}
               </div>
@@ -232,12 +311,20 @@ export default function AdminTransactionsPage() {
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">User</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Type</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Amount</th>
+                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Wallet</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
                       <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Date</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/30">
-                    {paginatedTransactions.map((tx: any) => (
+                    {paginatedTransactions.map((tx: any) => {
+                      const rBefore = tx?.metadata?.real_balance_before
+                      const rAfter = tx?.metadata?.real_balance_after
+                      const bwBefore = tx?.metadata?.bonus_win_balance_before
+                      const bwAfter = tx?.metadata?.bonus_win_balance_after
+                      const hasReal = typeof rBefore === 'number' && typeof rAfter === 'number'
+                      const hasBonusWin = typeof bwBefore === 'number' && typeof bwAfter === 'number'
+                      return (
                       <tr key={tx.id} className="hover:bg-slate-700/20 transition-colors">
                         <td className="px-4 sm:px-6 py-4">
                           <div>
@@ -250,9 +337,10 @@ export default function AdminTransactionsPage() {
                             tx.type === 'win' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                             tx.type === 'stake' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
                             tx.type === 'deposit' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                            tx.type === 'referral_bonus' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
                             'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                           }`}>
-                            {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
+                            {tx.type === 'referral_bonus' ? 'Referral' : (tx.type.charAt(0).toUpperCase() + tx.type.slice(1))}
                           </span>
                         </td>
                         <td className="px-4 sm:px-6 py-4">
@@ -261,6 +349,23 @@ export default function AdminTransactionsPage() {
                           }`}>
                             {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
                           </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-xs text-slate-300">
+                          {hasReal ? (
+                            <span>
+                              <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
+                            </span>
+                          ) : hasBonusWin ? (
+                            <span>
+                              <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
+                            </span>
+                          ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
+                            <span>
+                              <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
                         </td>
                         <td className="px-4 sm:px-6 py-4">
                           <span className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -274,14 +379,21 @@ export default function AdminTransactionsPage() {
                           {new Date(tx.created_at).toLocaleDateString()}
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
 
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3 p-4">
-                {paginatedTransactions.map((tx: any) => (
+                {paginatedTransactions.map((tx: any) => {
+                  const rBefore = tx?.metadata?.real_balance_before
+                  const rAfter = tx?.metadata?.real_balance_after
+                  const bwBefore = tx?.metadata?.bonus_win_balance_before
+                  const bwAfter = tx?.metadata?.bonus_win_balance_after
+                  const hasReal = typeof rBefore === 'number' && typeof rAfter === 'number'
+                  const hasBonusWin = typeof bwBefore === 'number' && typeof bwAfter === 'number'
+                  return (
                   <div key={tx.id} className="bg-slate-700/30 rounded-lg border border-slate-700/50 p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div>
@@ -292,9 +404,10 @@ export default function AdminTransactionsPage() {
                         tx.type === 'win' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                         tx.type === 'stake' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
                         tx.type === 'deposit' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
+                        tx.type === 'referral_bonus' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
                         'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                       }`}>
-                        {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
+                        {tx.type === 'referral_bonus' ? 'Referral' : (tx.type.charAt(0).toUpperCase() + tx.type.slice(1))}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm">
@@ -311,6 +424,26 @@ export default function AdminTransactionsPage() {
                         <div className="text-slate-300">{new Date(tx.created_at).toLocaleDateString()}</div>
                       </div>
                       <div className="col-span-2">
+                        <div className="text-xs text-slate-400">Wallet</div>
+                        <div className="text-slate-300 text-xs">
+                          {hasReal ? (
+                            <span>
+                              <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
+                            </span>
+                          ) : hasBonusWin ? (
+                            <span>
+                              <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
+                            </span>
+                          ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
+                            <span>
+                              <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="col-span-2">
                         <div className="text-xs text-slate-400 mb-1">Status</div>
                         <span className={`px-2 py-1 rounded text-xs font-semibold inline-block ${
                           (tx.status || 'completed') === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
@@ -321,7 +454,7 @@ export default function AdminTransactionsPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
 
               {/* Pagination */}

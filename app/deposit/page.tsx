@@ -91,6 +91,34 @@ export default function DepositPage() {
     }
   }, [])
 
+  // Centralized cleanup for Chapa modal/session
+  const closeChapaModal = async () => {
+    try { if (txChannelRef.current) await txChannelRef.current.unsubscribe() } catch {}
+    txChannelRef.current = null
+    setChapaModalOpen(false)
+    setPendingTxId('')
+    setChapaCheckoutUrl('')
+    setLoading(false)
+  }
+
+  // Cleanup if page is hidden/unloaded (Telegram or browser)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden && chapaModalOpen) closeChapaModal()
+    }
+    const handlePageHide = () => {
+      if (chapaModalOpen) closeChapaModal()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handlePageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handlePageHide)
+    }
+  }, [chapaModalOpen])
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
@@ -122,7 +150,14 @@ export default function DepositPage() {
         body: JSON.stringify({ userId: user.id, amount: amt })
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to start payment')
+      if (!res.ok) {
+        const details = typeof data?.details === 'string'
+          ? data.details
+          : (data?.details?.message || (data?.details ? JSON.stringify(data.details) : ''))
+        setLoading(false)
+        setError([data?.error, details].filter(Boolean).join(': '))
+        return
+      }
 
       const { checkout_url, transaction_id } = data
       if (!checkout_url || !transaction_id) throw new Error('Invalid payment session')
@@ -139,22 +174,22 @@ export default function DepositPage() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `id=eq.${transaction_id}` }, (payload: any) => {
           const newRow = payload?.new || {}
           const status = String(newRow?.status || '').toLowerCase()
-          if (status === 'completed') {
+          if (status === 'completed' || status === 'completed_test') {
             setSuccess(true)
             setLoading(false)
-            setChapaModalOpen(false)
+            closeChapaModal()
             setTimeout(() => { window.location.href = '/account' }, 1200)
           } else if (status === 'failed' || status === 'rejected') {
             setError('Payment failed. Please try again or use manual deposit.')
             setLoading(false)
-            setChapaModalOpen(false)
+            closeChapaModal()
           }
         })
         .subscribe()
       txChannelRef.current = channel
     } catch (e: any) {
       setLoading(false)
-      setChapaModalOpen(false)
+      closeChapaModal()
       setError(e?.message || 'Failed to initialize Chapa')
     }
   }
@@ -451,21 +486,29 @@ export default function DepositPage() {
       </div>
       {/* Chapa Inline Modal */}
       {chapaModalOpen && chapaCheckoutUrl && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-          <div className="bg-white rounded-2xl w-full max-w-2xl h-[80vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between p-3 border-b">
-              <h3 className="text-slate-900 font-semibold text-sm">Chapa Checkout</h3>
-              <button onClick={() => setChapaModalOpen(false)} className="text-slate-500 hover:text-slate-800">
-                <LuX className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 bg-slate-50">
-              {/* Iframe embed. If provider blocks embedding, Telegram WebView navigation will still stay in-app. */}
-              <iframe src={chapaCheckoutUrl} title="Chapa Checkout" className="w-full h-full border-0" />
-            </div>
-            <div className="p-3 border-t text-xs text-slate-500">
-              Once your payment is completed, this window will close automatically.
-            </div>
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-0 md:p-4" role="dialog" aria-modal="true" onClick={closeChapaModal}>
+          <div className="relative bg-white w-full h-[100dvh] md:h-[92vh] md:max-w-2xl md:rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Floating close button */}
+            <button
+              onClick={closeChapaModal}
+              className="absolute top-3 left-3 z-10 inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-700 shadow border border-slate-200"
+              aria-label="Close"
+            >
+              <LuX className="w-5 h-5" />
+            </button>
+
+            {/* Full-bleed iframe */}
+            <iframe src={chapaCheckoutUrl} title="Chapa Checkout" className="w-full h-full border-0" />
+
+            {/* Floating external link (no layout height cost) */}
+            <a
+              href={chapaCheckoutUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute bottom-3 right-3 text-xs px-3 py-1.5 rounded-full bg-white/90 text-emerald-700 hover:underline shadow border border-slate-200"
+            >
+              Open in new window
+            </a>
           </div>
         </div>
       )}
