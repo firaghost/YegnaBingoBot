@@ -621,7 +621,7 @@ export default function AdminUsersPage() {
         </div>
 
         {/* Desktop Users Table - Hidden on Mobile */}
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 shadow-xl overflow-hidden">
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 shadow-xl overflow-x-auto">
           <table className="w-full">
               <thead className="bg-slate-900/80 border-b border-slate-700/50 sticky top-0">
                 <tr>

@@ -519,8 +519,7 @@ export function setupBotHandlers(bot: Telegraf) {
         `🎁 Bonus Balance: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
         `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
         `🎮 Games Played: ${user.games_played}\n` +
-        `🏆 Games Won: ${user.games_won}\n` +
-        `💸 Total Winnings: ${user.total_winnings.toFixed(2)} ETB`,
+        `🏆 Games Won: ${user.games_won}`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
@@ -560,8 +559,7 @@ export function setupBotHandlers(bot: Telegraf) {
         `🎁 Bonus Balance: ${(user.bonus_balance || 0).toFixed(2)} ETB\n` +
         `📊 Total: ${totalBalance.toFixed(2)} ETB\n\n` +
         `🎮 Games Played: ${user.games_played}\n` +
-        `🏆 Games Won: ${user.games_won}\n` +
-        `💸 Total Winnings: ${user.total_winnings.toFixed(2)} ETB`,
+        `🏆 Games Won: ${user.games_won}`,
         {
           parse_mode: 'Markdown',
           ...Markup.inlineKeyboard([
@@ -764,7 +762,6 @@ export function setupBotHandlers(bot: Telegraf) {
         `🎮 Games Played: ${user.games_played}\n` +
         `🏆 Games Won: ${user.games_won}\n` +
         `📈 Win Rate: ${winRate}%\n` +
-        `💵 Total Winnings: ${user.total_winnings} ETB\n\n` +
         `📢 *Join our channel:* ${CHANNEL_URL}`,
         {
           parse_mode: 'Markdown',
@@ -989,7 +986,6 @@ export function setupBotHandlers(bot: Telegraf) {
         `🎮 Games Played: ${user.games_played}\n` +
         `🏆 Games Won: ${user.games_won}\n` +
         `📈 Win Rate: ${winRate}%\n` +
-        `💵 Total Winnings: ${user.total_winnings} ETB\n\n` +
         `Keep playing to improve your stats!`,
         {
           parse_mode: 'Markdown',
