@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
+import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
 
 const supabase = supabaseAdmin
 
@@ -74,6 +75,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'withdrawals_manage')
+
+    // Basic rate limiting for withdrawal approval/rejection actions
+    const ip = getClientIp(request)
+    const rl = await rateLimit(`admin-withdrawals:${ip}`, 60, 10 * 60 * 1000) // 60 actions / 10 minutes per IP
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Too many withdrawal actions. Please slow down and try again shortly.' },
+        { status: 429 }
+      )
+    }
     const { action, withdrawalId, adminNote } = await request.json()
 
     if (!action || !withdrawalId) {

@@ -35,20 +35,20 @@ export function SecurityTab({
   const [editingAdmin, setEditingAdmin] = useState<any>(null)
   const [showEditModal, setShowEditModal] = useState(false)
 
-  // Persist active tab to localStorage
+  // Persist active tab to sessionStorage (current session only)
   const handleTabChange = (tab: 'profile' | 'bypass' | 'whitelist' | 'admins' | 'audit') => {
     setActiveTab(tab)
     try {
-      localStorage.setItem('security_tab_active', tab)
+      sessionStorage.setItem('security_tab_active', tab)
     } catch (e) {
       console.warn('Failed to save security tab preference:', e)
     }
   }
 
-  // Restore tab from localStorage on mount
+  // Restore tab from sessionStorage on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('security_tab_active')
+      const saved = sessionStorage.getItem('security_tab_active')
       if (saved === 'profile' || saved === 'bypass' || saved === 'whitelist' || saved === 'admins' || saved === 'audit') {
         setActiveTab(saved)
       }

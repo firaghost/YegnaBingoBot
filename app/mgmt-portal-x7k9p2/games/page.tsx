@@ -19,9 +19,8 @@ export default function AdminGamesPage() {
   const isFetchingRef = useRef(false)
 
   useEffect(() => {
+    // Load once on mount; further updates are triggered manually via the Refresh button
     fetchGames()
-    const interval = setInterval(fetchGames, 5000)
-    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {
@@ -65,7 +64,7 @@ export default function AdminGamesPage() {
         if (users) userMap = new Map((users as BasicUser[]).map((u) => [u.id, u]))
       }
 
-      // First pass: compute lightweight list and update UI immediately
+      // Build base list used for enrichment below
       const baseList = gamesRaw.map((game: any) => {
         // Use the new game_status column from database
         let displayStatus = game.game_status
@@ -118,9 +117,6 @@ export default function AdminGamesPage() {
           net_prize: game.net_prize || 0,
         }
       }).filter(Boolean) as any[]
-
-      // Update UI fast with base list
-      setAllGames(baseList)
 
       // Second pass: enrich with usernames (non-blocking)
       const gamesWithDetails = baseList.map((game: any) => {
@@ -330,7 +326,7 @@ export default function AdminGamesPage() {
                 : (isCanceled ? 'Canceled' : isNoWinner ? 'No Winner' : isFinishedWinner ? 'Finished' : isFinishedRaw ? (game.winner_id ? 'Finished' : 'No Winner') : 'Other')
 
               return (
-              <div key={game.id} className={`bg-slate-800/50 backdrop-blur-md rounded-lg border p-4 transition-all ${
+              <div key={game.id} className={`bg-slate-800/50 backdrop-blur-md rounded-lg border p-4 transition-colors ${
                 isCanceled ? 'border-orange-500/50 shadow-lg shadow-orange-500/20' :
                 isNoWinner ? 'border-red-500/50 shadow-lg shadow-red-500/20' :
                 (liveStatus === 'active') ? 'border-emerald-500/50 shadow-lg shadow-emerald-500/20' :
@@ -350,7 +346,7 @@ export default function AdminGamesPage() {
                         badgeKey === 'finished_no_winner' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
                         badgeKey === 'waiting' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
                         badgeKey === 'countdown' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                        badgeKey === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse' :
+                        badgeKey === 'active' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
                         'bg-slate-500/20 text-slate-400 border border-slate-500/30'
                       }`}>
                         {badgeText}

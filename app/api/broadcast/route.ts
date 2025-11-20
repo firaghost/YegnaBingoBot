@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { requirePermission } from '@/lib/server/admin-permissions'
+import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
 
 const RAW_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || ''
 const TELEGRAM_API = RAW_BOT_TOKEN ? `https://api.telegram.org/bot${RAW_BOT_TOKEN}` : ''
@@ -12,6 +13,16 @@ function escapeMarkdown(input: string) {
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'broadcast_manage')
+
+    // Protect against abuse: limit broadcasts per IP
+    const ip = getClientIp(request)
+    const rl = await rateLimit(`admin-broadcast:${ip}`, 5, 60 * 60 * 1000) // 5 broadcasts per hour
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Too many broadcast requests. Please try again later.' },
+        { status: 429 }
+      )
+    }
     const { title, message, filters, imageUrl, targetUserIds } = await request.json()
 
     if (!title || !message) {

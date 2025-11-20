@@ -64,26 +64,9 @@ export default function AdminGameViewer() {
           setPlayers(playerData)
         }
 
-        // Fetch player markings (who marked which numbers)
-        let markings: any[] | null = null
-        try {
-          const { data: mData } = await supabase
-            .from('player_markings')
-            .select('player_id, number')
-            .eq('game_id', gameId)
-          markings = mData || null
-        } catch {}
-
-        if (markings && markings.length > 0 && playerData) {
-          const markingMap = new Map<number, number>()
-          markings.forEach((m: any) => {
-            const playerIndex = playerData.findIndex((p: any) => p.id === m.player_id)
-            if (playerIndex !== -1) {
-              markingMap.set(m.number, playerIndex)
-            }
-          })
-          setPlayerMarkings(markingMap)
-        }
+        // (Optional) player_markings visualization was removed because the table does not
+        // exist in the current schema. The board will still show called numbers correctly
+        // without this extra per-player coloring.
       }
 
       // Fetch winner info if game has a winner

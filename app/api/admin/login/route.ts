@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import crypto from 'crypto'
+import { checkLoginRateLimit } from '@/lib/server/rate-limit'
+import { createAdminSession } from '@/lib/server/admin-session'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +22,19 @@ export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json()
     if (!username || !password) throw new Error('username and password required')
+
+    // Basic rate limiting to reduce brute-force attempts
+    const rl = await checkLoginRateLimit(request, username)
+    if (!rl.ok) {
+      const headers: Record<string, string> = {}
+      if (rl.retryAfterMs != null) {
+        headers['Retry-After'] = Math.ceil(rl.retryAfterMs / 1000).toString()
+      }
+      return NextResponse.json(
+        { error: 'Too many login attempts. Please try again later.' },
+        { status: 429, headers }
+      )
+    }
 
     const lower = String(username).toLowerCase()
     const { data: admin, error } = await supabase
@@ -41,7 +56,8 @@ export async function POST(request: NextRequest) {
 
     const { password_hash, password_salt, password_iterations, ...safe } = admin
 
-    return NextResponse.json({ data: safe })
+    const res = await createAdminSession(NextResponse.json({ data: safe }), safe.id, request)
+    return res
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Login failed' }, { status: 400 })
   }

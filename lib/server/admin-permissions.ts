@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAdminFromSession } from '@/lib/server/admin-session'
 
 const supabase = supabaseAdmin
 
@@ -11,6 +12,14 @@ export type AdminRecord = {
 }
 
 export async function getAdminFromRequest(req: NextRequest): Promise<AdminRecord> {
+  // Prefer secure cookie-based session if available
+  try {
+    const fromSession = await getAdminFromSession(req)
+    if (fromSession) return fromSession as AdminRecord
+  } catch {
+    // fall back to legacy header-based auth below
+  }
+
   const adminId = req.headers.get('x-admin-id') || ''
   if (!adminId) throw new Error('Missing x-admin-id')
   const { data, error } = await supabase

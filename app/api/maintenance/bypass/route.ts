@@ -1,23 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-
-const supabase = supabaseAdmin
-
-async function requireAdmin(request: NextRequest) {
-  const adminId = request.headers.get('x-admin-id') || ''
-  if (!adminId) throw new Error('Missing x-admin-id')
-  const { data: admin, error } = await supabase
-    .from('admin_users')
-    .select('*')
-    .eq('id', adminId)
-    .single()
-  if (error || !admin) throw new Error('Unauthorized')
-  return admin
-}
+import { getAdminFromRequest } from '@/lib/server/admin-permissions'
 
 export async function POST(request: NextRequest) {
   try {
-    const admin = await requireAdmin(request)
+    const admin = await getAdminFromRequest(request)
     const { action } = await request.json()
     if (!['enable','disable'].includes(action)) throw new Error('Invalid action')
 

@@ -8,14 +8,7 @@ export const dynamic = 'force-dynamic'
 const supabase = supabaseAdmin
 
 async function requireSuperAdmin(request: NextRequest) {
-  const adminId = request.headers.get('x-admin-id') || ''
-  if (!adminId) throw new Error('Missing x-admin-id')
-  const { data: admin, error } = await supabase
-    .from('admin_users')
-    .select('*')
-    .eq('id', adminId)
-    .single()
-  if (error || !admin) throw new Error('Unauthorized')
+  const admin = await getAdminFromRequest(request)
   if (admin.role !== 'super_admin') throw new Error('Forbidden')
   return admin
 }

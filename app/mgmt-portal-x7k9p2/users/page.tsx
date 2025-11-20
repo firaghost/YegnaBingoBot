@@ -19,14 +19,14 @@ export default function AdminUsersPage() {
   const [deletingUser, setDeletingUser] = useState(false)
   const [pageSize, setPageSize] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userMgmt_pageSize')
+      const saved = sessionStorage.getItem('userMgmt_pageSize')
       return saved ? parseInt(saved) : 50
     }
     return 50
   })
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userMgmt_currentPage')
+      const saved = sessionStorage.getItem('userMgmt_currentPage')
       return saved ? parseInt(saved) : 1
     }
     return 1
@@ -40,27 +40,27 @@ export default function AdminUsersPage() {
   const [suspendReason, setSuspendReason] = useState('')
   const [searchTerm, setSearchTerm] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('userMgmt_searchTerm') || ''
+      return sessionStorage.getItem('userMgmt_searchTerm') || ''
     }
     return ''
   })
   const [sortField, setSortField] = useState<SortField>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userMgmt_sortField')
+      const saved = sessionStorage.getItem('userMgmt_sortField')
       return (saved as SortField) || 'created_at'
     }
     return 'created_at'
   })
   const [sortOrder, setSortOrder] = useState<SortOrder>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userMgmt_sortOrder')
+      const saved = sessionStorage.getItem('userMgmt_sortOrder')
       return (saved as SortOrder) || 'desc'
     }
     return 'desc'
   })
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('userMgmt_statusFilter')
+      const saved = sessionStorage.getItem('userMgmt_statusFilter')
       return (saved as StatusFilter) || 'all'
     }
     return 'all'
@@ -68,15 +68,15 @@ export default function AdminUsersPage() {
   const { admin } = useAdminAuth()
   const [walletActionLoading, setWalletActionLoading] = useState(false)
 
-  // Save preferences to localStorage
+  // Save preferences to sessionStorage (only for current session)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('userMgmt_pageSize', pageSize.toString())
-      localStorage.setItem('userMgmt_currentPage', currentPage.toString())
-      localStorage.setItem('userMgmt_searchTerm', searchTerm)
-      localStorage.setItem('userMgmt_sortField', sortField)
-      localStorage.setItem('userMgmt_sortOrder', sortOrder)
-      localStorage.setItem('userMgmt_statusFilter', statusFilter)
+      sessionStorage.setItem('userMgmt_pageSize', pageSize.toString())
+      sessionStorage.setItem('userMgmt_currentPage', currentPage.toString())
+      sessionStorage.setItem('userMgmt_searchTerm', searchTerm)
+      sessionStorage.setItem('userMgmt_sortField', sortField)
+      sessionStorage.setItem('userMgmt_sortOrder', sortOrder)
+      sessionStorage.setItem('userMgmt_statusFilter', statusFilter)
     }
   }, [pageSize, currentPage, searchTerm, sortField, sortOrder, statusFilter])
 
@@ -87,7 +87,7 @@ export default function AdminUsersPage() {
   // Auto-fetch games when user modal opens
   useEffect(() => {
     if (showUserModal && selectedUser && userGames.length === 0) {
-      fetchUserGames(selectedUser.id)
+      fetchUserGames(selectedUser)
     }
   }, [showUserModal, selectedUser?.id])
 
@@ -275,36 +275,72 @@ export default function AdminUsersPage() {
     }
   }
 
-  const fetchUserGames = async (userId: string) => {
+  const fetchUserGames = async (user: any) => {
     setLoadingGames(true)
     try {
-      // Fetch ALL finished games first (no filter)
-      const { data: allGames, error } = await supabase
+      if (!user) throw new Error('Missing user for game history')
+
+      const userId = String(user.id)
+      const tgIdStr = user.telegram_id ? String(user.telegram_id) : null
+      const tgIdNum = user.telegram_id ? Number(user.telegram_id) : null
+      const uname = user.username ? String(user.username) : null
+
+      // 1) Find game IDs from this user's stake/win transactions
+      const { data: txRows, error: txError } = await supabase
+        .from('transactions')
+        .select('game_id, type')
+        .eq('user_id', userId)
+        .in('type', ['stake', 'win'])
+        .not('game_id', 'is', null)
+        .limit(200)
+
+      if (txError) throw txError
+
+      const gameIds = Array.from(
+        new Set(
+          (txRows || [])
+            .map((r: any) => r.game_id)
+            .filter((id: any) => !!id)
+        )
+      ) as string[]
+
+      // 2) Fetch finished games for those IDs (or fallback by players contains)
+      let gamesQuery = supabase
         .from('games')
-        .select('*')
+        .select(`
+          *,
+          rooms (
+            name,
+            color,
+            stake,
+            game_level
+          )
+        `)
         .eq('status', 'finished')
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(200)
 
-      if (error) throw error
-      
-      // Client-side filter: ONLY games where user is in the players array
-      // This is the source of truth - if they're in players array, they played
-      const playerGames = (allGames || []).filter((g: any) => {
-        const isPlayer = g.players && Array.isArray(g.players) && g.players.includes(userId)
-        return isPlayer
+      if (gameIds.length > 0) {
+        gamesQuery = gamesQuery.in('id', gameIds)
+      }
+
+      const { data: gamesData, error: gamesError } = await gamesQuery
+      if (gamesError) throw gamesError
+
+      const games = (gamesData || []) as any[]
+
+      // 3) Final filter: match against players array (id, telegram, username)
+      const playerGames = games.filter((g: any) => {
+        const players: any[] = Array.isArray(g.players) ? g.players : []
+        if (players.length === 0) return false
+        return (
+          players.includes(userId) ||
+          (tgIdStr && players.includes(tgIdStr)) ||
+          (tgIdNum !== null && players.includes(tgIdNum)) ||
+          (uname && players.includes(uname))
+        )
       })
-      
-      console.log(`Total finished games in DB: ${allGames?.length || 0}`)
-      console.log(`Games where user ${userId} is a player: ${playerGames.length}`)
-      console.log(`User games:`, playerGames.map((g: any) => ({
-        id: g.id.slice(0, 8),
-        players: g.players?.length || 0,
-        winner: g.winner_id === userId ? 'YES' : 'NO',
-        stake: g.stake,
-        net_prize: g.net_prize
-      })))
-      
+
       setUserGames(playerGames)
     } catch (error) {
       console.error('Error fetching user games:', error)
@@ -341,7 +377,7 @@ export default function AdminUsersPage() {
     setShowGameHistory(true)
     setUserGames([])
     setUserTransactions([])
-    fetchUserGames(user.id)
+    fetchUserGames(user)
     fetchUserTransactions(user.id)
   }
 
@@ -565,41 +601,38 @@ export default function AdminUsersPage() {
         </div>
 
         {/* Desktop Users Table - Hidden on Mobile */}
-        <div className="hidden lg:block bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-900/80 border-b border-slate-700/50">
+        <div className="bg-slate-800/50 backdrop-blur-md rounded-xl border border-slate-700/50 shadow-xl overflow-hidden">
+          <table className="w-full">
+              <thead className="bg-slate-900/80 border-b border-slate-700/50 sticky top-0">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">User</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Telegram ID</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Phone</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('balance')}>
-                    <div className="flex items-center gap-2">Wallet <SortIcon field="balance" /></div>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">User</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">Telegram</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">Phone</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:text-cyan-400 whitespace-nowrap" onClick={() => handleSort('balance')}>
+                    <div className="flex items-center gap-0.5">Wallet <SortIcon field="balance" /></div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('games_played')}>
-                    <div className="flex items-center gap-2">Games <SortIcon field="games_played" /></div>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:text-cyan-400 whitespace-nowrap" onClick={() => handleSort('games_played')}>
+                    <div className="flex items-center gap-0.5">Games <SortIcon field="games_played" /></div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('games_won')}>
-                    <div className="flex items-center gap-2">Wins <SortIcon field="games_won" /></div>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:text-cyan-400 whitespace-nowrap" onClick={() => handleSort('games_won')}>
+                    <div className="flex items-center gap-0.5">Wins <SortIcon field="games_won" /></div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">
-                    <div className="flex items-center gap-2">Lost</div>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">Lost</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:text-cyan-400 whitespace-nowrap" onClick={() => handleSort('total_referrals')}>
+                    <div className="flex items-center gap-0.5">Refs <SortIcon field="total_referrals" /></div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('total_referrals')}>
-                    <div className="flex items-center gap-2">Referrals <SortIcon field="total_referrals" /></div>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">City</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">Country</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 cursor-pointer hover:text-cyan-400 whitespace-nowrap" onClick={() => handleSort('created_at')}>
+                    <div className="flex items-center gap-0.5">Joined <SortIcon field="created_at" /></div>
                   </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">City</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Country</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300 cursor-pointer hover:text-cyan-400" onClick={() => handleSort('created_at')}>
-                    <div className="flex items-center gap-2">Joined <SortIcon field="created_at" /></div>
-                  </th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-300">Actions</th>
+                  <th className="px-2 py-3 text-left text-xs font-semibold text-slate-300 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/30">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400">
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
                         Loading users...
@@ -608,14 +641,14 @@ export default function AdminUsersPage() {
                   </tr>
                 ) : paginatedUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-slate-400">
                       No users found
                     </td>
                   </tr>
                 ) : (
                   paginatedUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="px-6 py-4">
+                      <td className="px-3 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
                             {user.username?.charAt(0) || 'U'}
@@ -633,8 +666,8 @@ export default function AdminUsersPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-300 font-mono text-sm">{user.telegram_id}</td>
-                      <td className="px-6 py-4 text-slate-300">
+                      <td className="px-2 py-3 text-slate-300 font-mono text-xs">{user.telegram_id}</td>
+                      <td className="px-2 py-3 text-slate-300">
                         {user.phone ? (
                           <a href={`tel:${user.phone}`} className="text-cyan-400 hover:text-cyan-300 underline font-mono text-sm">
                             {user.phone}
@@ -643,27 +676,27 @@ export default function AdminUsersPage() {
                           <span className="text-slate-600">—</span>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-2 py-3">
                         <div className="text-xs text-slate-400 mb-0.5">Real / Bonus</div>
-                        <div className="font-semibold text-emerald-400">
+                        <div className="font-semibold text-emerald-400 text-xs">
                           {formatCurrency(user.balance || 0)}
                           <span className="text-slate-400"> / </span>
                           <span className="text-emerald-300">{formatCurrency(user.bonus_balance || 0)}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-slate-300 font-medium">{user.games_played || 0}</td>
-                      <td className="px-6 py-4 text-slate-300 font-medium">{user.games_won || 0}</td>
-                      <td className="px-6 py-4 text-red-400 font-medium">{(user.games_played || 0) - (user.games_won || 0)}</td>
-                      <td className="px-6 py-4 text-slate-300 text-sm">
-                        <div className="font-medium text-indigo-300">{user.total_referrals || 0}</div>
+                      <td className="px-2 py-3 text-slate-300 font-medium text-xs">{user.games_played || 0}</td>
+                      <td className="px-2 py-3 text-slate-300 font-medium text-xs">{user.games_won || 0}</td>
+                      <td className="px-2 py-3 text-red-400 font-medium text-xs">{(user.games_played || 0) - (user.games_won || 0)}</td>
+                      <td className="px-2 py-3 text-slate-300 text-xs">
+                        <div className="font-medium text-indigo-300 text-xs">{user.total_referrals || 0}</div>
                         <div className="text-xs text-indigo-400">{formatCurrency(Number(user.referral_earnings || 0))}</div>
                       </td>
-                      <td className="px-6 py-4 text-slate-300">{user.last_seen_city || user.registration_city || '—'}</td>
-                      <td className="px-6 py-4 text-slate-300">{user.last_seen_country || user.registration_country || '—'}</td>
-                      <td className="px-6 py-4 text-sm text-slate-400">
+                      <td className="px-2 py-3 text-slate-300 text-xs">{user.last_seen_city || user.registration_city || '—'}</td>
+                      <td className="px-2 py-3 text-slate-300 text-xs">{user.last_seen_country || user.registration_country || '—'}</td>
+                      <td className="px-2 py-3 text-xs text-slate-400">
                         {new Date(user.created_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-2 py-3 text-right">
                         <div className="relative inline-block text-left">
                           <button
                             onClick={() => setActionMenuUserId(actionMenuUserId === user.id ? null : user.id)}
@@ -675,15 +708,18 @@ export default function AdminUsersPage() {
                             </svg>
                           </button>
                           {actionMenuUserId === user.id && (
-                            <div className="origin-top-right absolute right-0 mt-2 w-40 rounded-md shadow-lg bg-slate-900 border border-slate-700/70 z-20">
-                              <div className="py-1 text-xs text-slate-200">
+                            <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-lg shadow-2xl bg-slate-900/95 border border-slate-700/80 z-20">
+                              <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                                User actions
+                              </div>
+                              <div className="py-1 text-xs text-slate-200 border-t border-slate-700/80">
                                 <button
                                   onClick={() => {
                                     setSelectedUser(user)
                                     setShowUserModal(true)
                                     setActionMenuUserId(null)
                                   }}
-                                  className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                  className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/90 transition-colors"
                                 >
                                   View profile
                                 </button>
@@ -702,7 +738,7 @@ export default function AdminUsersPage() {
                                       window.location.href = `tel:${user.phone}`
                                       setActionMenuUserId(null)
                                     }}
-                                    className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/80"
+                                    className="block w-full text-left px-3 py-1.5 hover:bg-slate-800/90 transition-colors"
                                   >
                                     Call
                                   </button>
@@ -728,7 +764,7 @@ export default function AdminUsersPage() {
                                     setShowDeleteModal(true)
                                     setActionMenuUserId(null)
                                   }}
-                                  className="block w-full text-left px-3 py-1.5 text-red-300 hover:bg-red-500/10"
+                                  className="block w-full text-left px-3 py-1.5 text-red-300 hover:bg-red-500/15 border-t border-slate-800/80 mt-1"
                                 >
                                   {user.status === 'inactive' ? 'Reactivate user' : 'Suspend user'}
                                 </button>
@@ -742,7 +778,6 @@ export default function AdminUsersPage() {
                 )}
               </tbody>
             </table>
-          </div>
           
           {/* Pagination Controls */}
           {totalPages > 1 && (
@@ -904,36 +939,37 @@ export default function AdminUsersPage() {
         {/* User Details Modal */}
         {showUserModal && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-xl border border-slate-700/50 p-4 max-w-md w-full shadow-2xl">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-slate-700/50 max-w-2xl w-full shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700/50 px-6 py-5 flex justify-between items-start">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg">
                     {selectedUser.username?.charAt(0) || 'U'}
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-white">{selectedUser.username || 'Unknown'}</h3>
-                    <p className="text-slate-400 text-xs">ID: {selectedUser.id.slice(0, 8)}</p>
+                    <h3 className="text-xl font-bold text-white">{selectedUser.username || 'Unknown'}</h3>
+                    <p className="text-slate-400 text-sm">ID: {selectedUser.id.slice(0, 12)}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowUserModal(false)}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-700/50 rounded-lg"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
 
-              <div className="space-y-2">
-                {/* Key Stats - Compact Grid */}
+              {/* Content */}
+              <div className="p-6 max-h-[calc(90vh-120px)] overflow-y-auto space-y-6">
+
+                {/* Key Stats */}
                 {(() => {
-                  // Calculate stats from user games if available, otherwise use user data
                   let gamesPlayed = selectedUser.games_played || 0
                   let gamesWon = selectedUser.games_won || 0
                   let totalWinnings = selectedUser.total_winnings || 0
                   
-                  // If we have loaded games, recalculate from actual game data
                   if (userGames.length > 0) {
                     const playerGames = userGames.filter(g => g.players?.includes(selectedUser.id))
                     gamesPlayed = playerGames.length
@@ -947,142 +983,140 @@ export default function AdminUsersPage() {
                   const winRate = gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0
                   
                   return (
-                    <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                          <div className="text-slate-400 text-xs">Balance</div>
-                          <div className="text-emerald-400 font-bold text-sm">{formatCurrency(selectedUser.balance || 0)}</div>
-                        </div>
-                        <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                          <div className="text-slate-400 text-xs">Games</div>
-                          <div className="text-white font-bold text-sm">{gamesPlayed}</div>
-                        </div>
-                        <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                          <div className="text-slate-400 text-xs">Won</div>
-                          <div className="text-emerald-400 font-bold text-sm">{gamesWon}</div>
-                        </div>
-                        <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                          <div className="text-slate-400 text-xs">Win Rate</div>
-                          <div className="text-cyan-400 font-bold text-sm">{winRate}%</div>
-                        </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+                        <div className="text-slate-400 text-xs font-medium mb-1">Balance</div>
+                        <div className="text-emerald-400 font-bold text-lg">{formatCurrency(selectedUser.balance || 0)}</div>
                       </div>
-
-                      {/* Lost & Winnings */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-red-500/10 rounded p-2 border border-red-500/30">
-                          <div className="text-red-400 text-xs">Lost</div>
-                          <div className="text-red-300 font-bold text-sm">{gamesLost}</div>
-                        </div>
-                        <div className="bg-emerald-500/10 rounded p-2 border border-emerald-500/30">
-                          <div className="text-emerald-400 text-xs">Total Won</div>
-                          <div className="text-emerald-300 font-bold text-sm">{formatCurrency(totalWinnings)}</div>
-                        </div>
+                      <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+                        <div className="text-slate-400 text-xs font-medium mb-1">Games</div>
+                        <div className="text-white font-bold text-lg">{gamesPlayed}</div>
                       </div>
-                    </>
+                      <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30 hover:border-emerald-500/50 transition-colors">
+                        <div className="text-emerald-400 text-xs font-medium mb-1">Won</div>
+                        <div className="text-emerald-400 font-bold text-lg">{gamesWon}</div>
+                      </div>
+                      <div className="bg-red-500/10 rounded-lg p-3 border border-red-500/30 hover:border-red-500/50 transition-colors">
+                        <div className="text-red-400 text-xs font-medium mb-1">Lost</div>
+                        <div className="text-red-400 font-bold text-lg">{gamesLost}</div>
+                      </div>
+                      <div className="bg-cyan-500/10 rounded-lg p-3 border border-cyan-500/30 hover:border-cyan-500/50 transition-colors">
+                        <div className="text-cyan-400 text-xs font-medium mb-1">Win Rate</div>
+                        <div className="text-cyan-400 font-bold text-lg">{winRate}%</div>
+                      </div>
+                      <div className="bg-slate-700/30 rounded-lg p-3 border border-slate-700/50 hover:border-slate-600/50 transition-colors">
+                        <div className="text-slate-400 text-xs font-medium mb-1">Total Won</div>
+                        <div className="text-emerald-300 font-bold text-lg">{formatCurrency(totalWinnings)}</div>
+                      </div>
+                    </div>
                   )
                 })()}
 
-                {/* Contact Info - Compact */}
-                <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                  <div className="text-slate-400 text-xs mb-1">Telegram</div>
-                  <div className="text-white font-mono text-xs">{selectedUser.telegram_id}</div>
-                </div>
-
-                {selectedUser.phone && (
-                  <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                    <div className="text-slate-400 text-xs mb-1">Phone</div>
-                    <div className="flex items-center justify-between">
-                      <div className="text-cyan-400 font-mono text-xs">{selectedUser.phone}</div>
-                      <div className="flex gap-1">
-                        <a href={`tel:${selectedUser.phone}`} className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-1.5 py-0.5 rounded transition-colors border border-emerald-500/30">Call</a>
-                        <button
-                          onClick={() => navigator.clipboard.writeText(String(selectedUser.phone))}
-                          className="text-xs bg-slate-600/50 hover:bg-slate-500/50 text-slate-300 px-1.5 py-0.5 rounded transition-colors border border-slate-600/50"
-                        >Copy</button>
-                      </div>
+                {/* Contact Information */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-300">Contact Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="bg-slate-700/20 rounded-lg p-3 border border-slate-700/50">
+                      <div className="text-slate-400 text-xs font-medium mb-1">Telegram ID</div>
+                      <div className="text-white font-mono text-sm">{selectedUser.telegram_id}</div>
                     </div>
-                  </div>
-                )}
-
-                {/* Wagering & Withdrawal Info */}
-                <div className="space-y-2 pt-2 border-t border-slate-700/50">
-                  <div className="text-xs font-semibold text-slate-300">Wagering & Withdrawal</div>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-xs">Locked Balance</div>
-                      <div className="text-orange-400 font-bold text-sm">{formatCurrency(selectedUser.locked_balance || 0)}</div>
-                    </div>
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-xs">Pending Hold</div>
-                      <div className="text-yellow-400 font-bold text-sm">{formatCurrency(selectedUser.pending_withdrawal_hold || 0)}</div>
-                    </div>
-                  </div>
-
-                  {(selectedUser.wager_required || 0) > 0 && (
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-xs mb-1">Wagering Progress</div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-slate-900/50 rounded-full h-2 overflow-hidden">
-                          <div 
-                            className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
-                            style={{width: `${Math.min(100, ((selectedUser.wager_progress || 0) / (selectedUser.wager_required || 1)) * 100)}%`}}
-                          ></div>
-                        </div>
-                        <div className="text-xs text-slate-300 whitespace-nowrap">
-                          {formatCurrency(selectedUser.wager_progress || 0)} / {formatCurrency(selectedUser.wager_required || 0)}
+                    {selectedUser.phone && (
+                      <div className="bg-slate-700/20 rounded-lg p-3 border border-slate-700/50">
+                        <div className="text-slate-400 text-xs font-medium mb-2">Phone</div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-cyan-400 font-mono text-sm">{selectedUser.phone}</div>
+                          <div className="flex gap-1.5">
+                            <a href={`tel:${selectedUser.phone}`} className="text-xs bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-2 py-1 rounded transition-colors border border-emerald-500/30 font-medium">Call</a>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(String(selectedUser.phone))}
+                              className="text-xs bg-slate-600/50 hover:bg-slate-500/50 text-slate-300 px-2 py-1 rounded transition-colors border border-slate-600/50 font-medium"
+                            >Copy</button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {selectedUser.last_withdrawal_at && (
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-xs mb-1">Last Withdrawal</div>
-                      <div className="text-white text-xs">
-                        {new Date(selectedUser.last_withdrawal_at).toLocaleDateString()} {new Date(selectedUser.last_withdrawal_at).toLocaleTimeString()}
-                      </div>
-                      <div className="text-slate-500 text-xs mt-1">
-                        Daily withdrawn: {formatCurrency(selectedUser.daily_withdrawn_amount || 0)} / 500 ETB
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
 
                 {/* Wallet Management */}
-                <div className="space-y-2 pt-3 border-t border-slate-700/50 mt-2">
-                  <div className="text-xs font-semibold text-slate-300">Wallet</div>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-[11px] mb-0.5">Cash</div>
-                      <div className="text-emerald-400 font-bold text-sm">{formatCurrency(selectedUser.balance || 0)}</div>
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-300">Wallet</h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
+                      <div className="text-emerald-400 text-xs font-medium mb-1">Cash</div>
+                      <div className="text-emerald-400 font-bold text-lg">{formatCurrency(selectedUser.balance || 0)}</div>
                     </div>
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-[11px] mb-0.5">Bonus</div>
-                      <div className="text-emerald-300 font-bold text-sm">{formatCurrency(selectedUser.bonus_balance || 0)}</div>
+                    <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
+                      <div className="text-emerald-400 text-xs font-medium mb-1">Bonus</div>
+                      <div className="text-emerald-300 font-bold text-lg">{formatCurrency(selectedUser.bonus_balance || 0)}</div>
                     </div>
-                    <div className="bg-slate-700/30 rounded p-2 border border-slate-700/50">
-                      <div className="text-slate-400 text-[11px] mb-0.5">Bonus Wins</div>
-                      <div className="text-emerald-200 font-bold text-sm">{formatCurrency(selectedUser.bonus_win_balance || 0)}</div>
+                    <div className="bg-emerald-500/10 rounded-lg p-3 border border-emerald-500/30">
+                      <div className="text-emerald-400 text-xs font-medium mb-1">Bonus Wins</div>
+                      <div className="text-emerald-200 font-bold text-lg">{formatCurrency(selectedUser.bonus_win_balance || 0)}</div>
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    Bonus Wins are non-withdrawable. As super admin, you can manually convert them into Cash Wallet for special cases.
-                  </p>
-                  <button
-                    onClick={handleConvertBonusWins}
-                    disabled={walletActionLoading || !admin || !(Number(selectedUser.bonus_win_balance || 0) > 0)}
-                    className="w-full bg-emerald-600/20 hover:bg-emerald-600/40 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-emerald-500/30 text-xs flex items-center justify-center gap-2"
-                  >
-                    {walletActionLoading ? 'Converting…' : 'Convert All Bonus Wins to Cash'}
-                  </button>
+                  {Number(selectedUser.bonus_win_balance || 0) > 0 && (
+                    <button
+                      onClick={handleConvertBonusWins}
+                      disabled={walletActionLoading || !admin}
+                      className="w-full bg-emerald-600/20 hover:bg-emerald-600/40 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-emerald-500/30 text-sm flex items-center justify-center gap-2"
+                    >
+                      {walletActionLoading ? 'Converting…' : 'Convert All Bonus Wins to Cash'}
+                    </button>
+                  )}
                 </div>
 
+                {/* Wagering & Withdrawal */}
+                {((selectedUser.locked_balance || 0) > 0 || (selectedUser.pending_withdrawal_hold || 0) > 0 || (selectedUser.wager_required || 0) > 0) && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold text-slate-300">Wagering & Withdrawal</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-orange-500/10 rounded-lg p-3 border border-orange-500/30">
+                        <div className="text-orange-400 text-xs font-medium mb-1">Locked Balance</div>
+                        <div className="text-orange-400 font-bold text-lg">{formatCurrency(selectedUser.locked_balance || 0)}</div>
+                      </div>
+                      <div className="bg-yellow-500/10 rounded-lg p-3 border border-yellow-500/30">
+                        <div className="text-yellow-400 text-xs font-medium mb-1">Pending Hold</div>
+                        <div className="text-yellow-400 font-bold text-lg">{formatCurrency(selectedUser.pending_withdrawal_hold || 0)}</div>
+                      </div>
+                    </div>
+                    {(selectedUser.wager_required || 0) > 0 && (
+                      <div className="bg-slate-700/20 rounded-lg p-3 border border-slate-700/50">
+                        <div className="text-slate-400 text-xs font-medium mb-2">Wagering Progress</div>
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 bg-slate-900/50 rounded-full h-2 overflow-hidden">
+                            <div 
+                              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all"
+                              style={{width: `${Math.min(100, ((selectedUser.wager_progress || 0) / (selectedUser.wager_required || 1)) * 100)}%`}}
+                            ></div>
+                          </div>
+                          <div className="text-xs text-slate-300 whitespace-nowrap font-medium">
+                            {Math.round(((selectedUser.wager_progress || 0) / (selectedUser.wager_required || 1)) * 100)}%
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-2">
+                          {formatCurrency(selectedUser.wager_progress || 0)} / {formatCurrency(selectedUser.wager_required || 0)}
+                        </div>
+                      </div>
+                    )}
+                    {selectedUser.last_withdrawal_at && (
+                      <div className="bg-slate-700/20 rounded-lg p-3 border border-slate-700/50">
+                        <div className="text-slate-400 text-xs font-medium mb-1">Last Withdrawal</div>
+                        <div className="text-white text-sm font-medium">{new Date(selectedUser.last_withdrawal_at).toLocaleDateString()}</div>
+                        <div className="text-slate-400 text-xs mt-1">Daily: {formatCurrency(selectedUser.daily_withdrawn_amount || 0)} / 500 ETB</div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                <div className="text-xs text-slate-500">Joined: {new Date(selectedUser.created_at).toLocaleDateString()}</div>
+                {/* Member Since */}
+                <div className="text-xs text-slate-400 pt-2 border-t border-slate-700/50">
+                  Member since {new Date(selectedUser.created_at).toLocaleDateString()}
+                </div>
               </div>
 
-              <div className="flex flex-col gap-3 mt-6">
+              {/* Footer Actions */}
+              <div className="bg-slate-900/50 border-t border-slate-700/50 px-6 py-4 flex flex-col gap-3">
                 <button
                   onClick={() => {
                     if (userGames.length === 0) {
@@ -1092,7 +1126,7 @@ export default function AdminUsersPage() {
                     }
                   }}
                   disabled={loadingGames}
-                  className="w-full bg-purple-600/20 hover:bg-purple-600/40 disabled:opacity-50 text-purple-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-purple-500/30 flex items-center justify-center gap-2"
+                  className="w-full bg-purple-600/20 hover:bg-purple-600/40 disabled:opacity-50 text-purple-400 px-4 py-2.5 rounded-lg font-semibold transition-colors border border-purple-500/30 flex items-center justify-center gap-2 text-sm"
                 >
                   {loadingGames ? (
                     <>
@@ -1101,17 +1135,17 @@ export default function AdminUsersPage() {
                     </>
                   ) : (
                     <>
-                      Game History ({userGames.length > 0 ? userGames.length : selectedUser.games_played || 0})
+                      📊 Game History ({userGames.length > 0 ? userGames.length : selectedUser.games_played || 0})
                     </>
                   )}
                 </button>
-                <div className="flex gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   {selectedUser.phone && (
                     <a
                       href={`tel:${selectedUser.phone}`}
-                      className="flex-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors text-center border border-emerald-500/30"
+                      className="bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-400 px-4 py-2 rounded-lg font-semibold transition-colors text-center border border-emerald-500/30 text-sm"
                     >
-                      Call
+                      📞 Call
                     </a>
                   )}
                   <button
@@ -1123,15 +1157,15 @@ export default function AdminUsersPage() {
                         if (!w || w.closed) window.open(httpLink, '_blank')
                       }, 300)
                     }}
-                    className="flex-1 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-blue-500/30"
+                    className="bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 px-4 py-2 rounded-lg font-semibold transition-colors border border-blue-500/30 text-sm"
                   >
-                    Telegram
+                    💬 Telegram
                   </button>
                   <button
                     onClick={() => setShowUserModal(false)}
-                    className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-600/50"
+                    className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-600/50 text-sm"
                   >
-                    Close
+                    ✕ Close
                   </button>
                 </div>
               </div>
@@ -1242,21 +1276,25 @@ export default function AdminUsersPage() {
         {/* Game History Modal */}
         {showGameHistory && selectedUser && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-xl border border-slate-700/50 p-6 max-w-5xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-start mb-6 sticky top-0 bg-slate-800 pb-4">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl border border-slate-700/50 max-w-5xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700/50 px-6 py-5 flex justify-between items-start">
                 <div>
-                  <h3 className="text-2xl font-bold text-white">Game History - {selectedUser.username}</h3>
-                  <p className="text-slate-400 text-sm">ID: {selectedUser.id.slice(0, 8)}</p>
+                  <h3 className="text-2xl font-bold text-white">Game History</h3>
+                  <p className="text-slate-400 text-sm">{selectedUser.username} • ID: {selectedUser.id.slice(0, 12)}</p>
                 </div>
                 <button
                   onClick={() => { setShowGameHistory(false); setUserGames([]); setUserTransactions([]); }}
-                  className="text-slate-400 hover:text-white transition-colors"
+                  className="text-slate-400 hover:text-white transition-colors p-2 hover:bg-slate-700/50 rounded-lg"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
+
+              {/* Content */}
+              <div className="overflow-y-auto flex-1 p-6 space-y-6">
 
               {loadingGames ? (
                 <div className="flex items-center justify-center py-12">
@@ -1268,77 +1306,62 @@ export default function AdminUsersPage() {
                 </div>
               ) : (
                 <>
-                  {/* Summary Stats */}
-                  {(() => {
-                    // Only games where this player was a participant (not spectator)
-                    const playerGames = userGames.filter(g => g.players?.includes(selectedUser.id))
-                    
-                    // Total winnings from games where player won
-                    const totalWinnings = playerGames
-                      .filter(g => g.winner_id === selectedUser.id)
-                      .reduce((sum, g) => sum + (g.net_prize || 0), 0)
-                    
-                    const totalStakesLost = playerGames
-                      .filter(g => g.winner_id !== selectedUser.id)
-                      .reduce((sum, g) => sum + (g.stake || 0), 0)
-                    
-                    // Net profit is the current balance (accounts for withdrawals, deposits, etc)
-                    const netProfit = selectedUser.balance || 0
-                    
-                    return (
-                      <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6 p-4 bg-slate-700/30 rounded-lg border border-slate-700/50">
-                        <div>
-                          <div className="text-slate-400 text-xs">Total Games</div>
-                          <div className="text-white font-bold text-lg">{playerGames.length}</div>
+                {/* Summary Stats */}
+                {(() => {
+                  const playerGames = userGames.filter(g => g.players?.includes(selectedUser.id))
+                  const wonGames = playerGames.filter(g => g.winner_id === selectedUser.id).length
+                  const lostGames = playerGames.filter(g => g.winner_id !== selectedUser.id).length
+                  const totalWinnings = playerGames
+                    .filter(g => g.winner_id === selectedUser.id)
+                    .reduce((sum, g) => sum + (g.net_prize || 0), 0)
+                  const totalStakesLost = playerGames
+                    .filter(g => g.winner_id !== selectedUser.id)
+                    .reduce((sum, g) => sum + (g.stake || 0), 0)
+                  const netProfit = selectedUser.balance || 0
+                  const winRate = playerGames.length > 0 ? Math.round((wonGames / playerGames.length) * 100) : 0
+                  
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 p-4 bg-gradient-to-r from-slate-700/40 to-slate-700/20 rounded-lg border border-slate-700/50">
+                      <div className="bg-slate-700/30 rounded-lg p-3 text-center border border-slate-700/50">
+                        <div className="text-slate-400 text-xs font-medium mb-1">Total</div>
+                        <div className="text-white font-bold text-lg">{playerGames.length}</div>
+                      </div>
+                      <div className="bg-emerald-500/10 rounded-lg p-3 text-center border border-emerald-500/30">
+                        <div className="text-emerald-400 text-xs font-medium mb-1">Won</div>
+                        <div className="text-emerald-400 font-bold text-lg">{wonGames}</div>
+                      </div>
+                      <div className="bg-red-500/10 rounded-lg p-3 text-center border border-red-500/30">
+                        <div className="text-red-400 text-xs font-medium mb-1">Lost</div>
+                        <div className="text-red-400 font-bold text-lg">{lostGames}</div>
+                      </div>
+                      <div className="bg-cyan-500/10 rounded-lg p-3 text-center border border-cyan-500/30">
+                        <div className="text-cyan-400 text-xs font-medium mb-1">Won $</div>
+                        <div className="text-cyan-400 font-bold text-sm">{formatCurrency(totalWinnings)}</div>
+                      </div>
+                      <div className="bg-red-500/10 rounded-lg p-3 text-center border border-red-500/30">
+                        <div className="text-red-400 text-xs font-medium mb-1">Lost $</div>
+                        <div className="text-red-400 font-bold text-sm">{formatCurrency(totalStakesLost)}</div>
+                      </div>
+                      <div className={`rounded-lg p-3 text-center border ${netProfit >= 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-red-500/10 border-red-500/30'}`}>
+                        <div className={`text-xs font-medium mb-1 ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          Net P/L
                         </div>
-                        <div>
-                          <div className="text-emerald-400 text-xs">Won</div>
-                          <div className="text-emerald-400 font-bold text-lg">
-                            {userGames.filter(g => g.winner_id === selectedUser.id).length}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-red-400 text-xs">Lost</div>
-                          <div className="text-red-400 font-bold text-lg">
-                            {userGames.filter(g => g.players?.includes(selectedUser.id) && g.winner_id !== selectedUser.id).length}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-cyan-400 text-xs">Total Winnings</div>
-                          <div className="text-cyan-400 font-bold text-lg">
-                            {formatCurrency(totalWinnings)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-red-400 text-xs">Money Lost</div>
-                          <div className="text-red-400 font-bold text-lg">
-                            {formatCurrency(totalStakesLost)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className={`text-xs ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            Net Profit/Loss
-                          </div>
-                          <div className={`font-bold text-lg ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {netProfit >= 0 ? '+' : ''}{formatCurrency(netProfit)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-orange-400 text-xs">Win Rate</div>
-                          <div className="text-orange-400 font-bold text-lg">
-                            {playerGames.length > 0 
-                              ? `${Math.round((playerGames.filter(g => g.winner_id === selectedUser.id).length / playerGames.length) * 100)}%`
-                              : '0%'
-                            }
-                          </div>
+                        <div className={`font-bold text-sm ${netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {netProfit >= 0 ? '+' : ''}{formatCurrency(netProfit)}
                         </div>
                       </div>
-                    )
-                  })()}
+                      <div className="bg-orange-500/10 rounded-lg p-3 text-center border border-orange-500/30">
+                        <div className="text-orange-400 text-xs font-medium mb-1">Win %</div>
+                        <div className="text-orange-400 font-bold text-lg">{winRate}%</div>
+                      </div>
+                    </div>
+                  )
+                })()}
 
-                  {/* Games List */}
+                {/* Games List */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-300">Recent Games</h4>
                   <div className="space-y-2">
-                    <div className="text-sm font-semibold text-slate-300 mb-3">Recent Games</div>
                     {userGames.map((game) => {
                       const isWinner = game.winner_id === selectedUser.id
                       const isPlayer = game.players?.includes(selectedUser.id)
@@ -1346,98 +1369,112 @@ export default function AdminUsersPage() {
                       
                       return (
                         <div key={game.id} className={`rounded-lg p-3 border transition-colors ${
-                          isWinner ? 'bg-emerald-500/10 border-emerald-500/30' :
-                          isPlayer ? 'bg-red-500/10 border-red-500/30' :
-                          'bg-slate-700/30 border-slate-700/50'
+                          isWinner ? 'bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-500/50' :
+                          isPlayer ? 'bg-red-500/10 border-red-500/30 hover:border-red-500/50' :
+                          'bg-slate-700/30 border-slate-700/50 hover:border-slate-600/50'
                         }`}>
-                          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 items-center">
+                          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                             {/* Result */}
-                            <div className="flex items-center gap-2">
-                              <div>
-                                <div className="text-xs text-slate-400">Result</div>
-                                <div className={`font-semibold text-sm ${
-                                  isWinner ? 'text-emerald-400' : isPlayer ? 'text-red-400' : 'text-slate-400'
-                                }`}>
-                                  {isWinner ? 'WIN' : isPlayer ? 'LOSS' : 'SPECTATE'}
-                                </div>
+                            <div>
+                              <div className="text-slate-400 font-medium mb-0.5">Result</div>
+                              <div className={`font-bold ${
+                                isWinner ? 'text-emerald-400' : isPlayer ? 'text-red-400' : 'text-slate-300'
+                              }`}>
+                                {isWinner ? '✓ WIN' : isPlayer ? '✗ LOSS' : '○ SPEC'}
                               </div>
                             </div>
 
                             {/* Stake */}
                             <div>
-                              <div className="text-xs text-slate-400">Stake</div>
+                              <div className="text-slate-400 font-medium mb-0.5">Stake</div>
                               <div className="text-white font-semibold">{formatCurrency(game.stake || 0)}</div>
                             </div>
 
                             {/* Prize Pool */}
                             <div>
-                              <div className="text-xs text-slate-400">Prize Pool</div>
+                              <div className="text-slate-400 font-medium mb-0.5">Pool</div>
                               <div className="text-cyan-400 font-semibold">{formatCurrency(game.prize_pool || 0)}</div>
                             </div>
 
                             {/* Winnings (if winner) */}
                             {isWinner && game.net_prize && (
                               <div>
-                                <div className="text-xs text-emerald-400">Won</div>
+                                <div className="text-emerald-400 font-medium mb-0.5">Won</div>
                                 <div className="text-emerald-400 font-bold">{formatCurrency(game.net_prize)}</div>
                               </div>
                             )}
 
                             {/* Players */}
                             <div>
-                              <div className="text-xs text-slate-400">Players</div>
+                              <div className="text-slate-400 font-medium mb-0.5">Players</div>
                               <div className="text-white font-semibold">{playerCount}</div>
                             </div>
 
                             {/* Date */}
                             <div>
-                              <div className="text-xs text-slate-400">Date</div>
-                              <div className="text-white text-sm">{new Date(game.created_at).toLocaleDateString()}</div>
-                              <div className="text-xs text-slate-500">{new Date(game.created_at).toLocaleTimeString()}</div>
+                              <div className="text-slate-400 font-medium mb-0.5">Date</div>
+                              <div className="text-white font-medium">{new Date(game.created_at).toLocaleDateString()}</div>
                             </div>
                           </div>
                         </div>
                       )
                     })}
                   </div>
+                </div>
 
-                  {/* Transactions List */}
-                  <div className="space-y-2 mt-8">
-                    <div className="text-sm font-semibold text-slate-300 mb-3">Recent Transactions</div>
-                    {loadingTransactions ? (
-                      <div className="flex items-center justify-center py-6 text-slate-400">
-                        <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mr-2"></div>
-                        Loading transactions...
-                      </div>
-                    ) : userTransactions.length === 0 ? (
-                      <div className="text-slate-400 text-sm">No transactions found</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {userTransactions.slice(0, 50).map((tx: any) => {
-                          const color = tx.type === 'win' ? 'text-emerald-400' : tx.type === 'stake' ? 'text-red-400' : tx.type === 'deposit' ? 'text-cyan-400' : 'text-yellow-400'
-                          return (
-                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-700/50 bg-slate-700/30">
-                              <div className="flex items-center gap-3">
-                                <span className={`text-sm font-semibold ${color}`}>{tx.type.toUpperCase()}</span>
-                                {tx.status && <span className={`text-xs px-2 py-0.5 rounded border ${tx.status === 'pending' ? 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{tx.status}</span>}
-                              </div>
-                              <div className="text-white font-semibold">{formatCurrency(Math.abs(Number(tx.amount) || 0))}</div>
-                              <div className="text-xs text-slate-400 whitespace-nowrap">{new Date(tx.created_at).toLocaleString()}</div>
+                {/* Transactions List */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-slate-300">Recent Transactions</h4>
+                  {loadingTransactions ? (
+                    <div className="flex items-center justify-center py-6 text-slate-400">
+                      <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Loading...
+                    </div>
+                  ) : userTransactions.length === 0 ? (
+                    <div className="text-slate-400 text-sm py-4 text-center">No transactions found</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {userTransactions.slice(0, 30).map((tx: any) => {
+                        const typeConfig = {
+                          'win': { color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', icon: '✓' },
+                          'stake': { color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', icon: '✗' },
+                          'deposit': { color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', icon: '↓' },
+                          'withdrawal': { color: 'text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', icon: '↑' },
+                        }
+                        const config = typeConfig[tx.type as keyof typeof typeConfig] || typeConfig['stake']
+                        return (
+                          <div key={tx.id} className={`flex items-center justify-between p-2.5 rounded-lg border text-xs ${config.border} ${config.bg} hover:border-opacity-50 transition-colors`}>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className={`font-bold whitespace-nowrap ${config.color}`}>{config.icon} {tx.type.toUpperCase()}</span>
+                              {tx.status && (
+                                <span className={`px-1.5 py-0.5 rounded border font-medium whitespace-nowrap ${
+                                  tx.status === 'pending' 
+                                    ? 'border-yellow-500/40 text-yellow-400 bg-yellow-500/10' 
+                                    : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'
+                                }`}>
+                                  {tx.status}
+                                </span>
+                              )}
                             </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
+                            <div className="text-white font-semibold text-right ml-2">{formatCurrency(Math.abs(Number(tx.amount) || 0))}</div>
+                            <div className="text-slate-400 whitespace-nowrap ml-2">{new Date(tx.created_at).toLocaleDateString()}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+              </div>
 
-              <div className="mt-6 flex gap-3">
+              {/* Footer */}
+              <div className="bg-slate-900/50 border-t border-slate-700/50 px-6 py-4">
                 <button
                   onClick={() => { setShowGameHistory(false); setUserGames([]); setUserTransactions([]); }}
-                  className="flex-1 bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 px-4 py-2 rounded-lg font-semibold transition-colors border border-slate-600/50"
+                  className="w-full bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 px-4 py-2.5 rounded-lg font-semibold transition-colors border border-slate-600/50 text-sm"
                 >
-                  Close
+                  ✕ Close
                 </button>
               </div>
             </div>

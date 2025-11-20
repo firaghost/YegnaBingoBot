@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function AdminLoginPage() {
   const router = useRouter()
-  const { loginWithTelegram, isAuthenticated } = useAdminAuth()
+  const { loginWithTelegram, isAuthenticated, setAdminFromApi } = useAdminAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loginMethod, setLoginMethod] = useState<'telegram' | 'password'>('password')
@@ -71,7 +71,8 @@ export default function AdminLoginPage() {
         return
       }
       const admin = json.data
-      localStorage.setItem('admin_id', admin.id)
+      // Let useAdminAuth manage session storage and state
+      setAdminFromApi(admin)
       router.push('/mgmt-portal-x7k9p2')
     } catch (err: any) {
       console.error('Login error:', err)

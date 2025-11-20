@@ -11,7 +11,7 @@ export function usePageState<T>(pageKey: string, initialState: T): [T, (state: T
   // Restore state from localStorage on mount
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(`page_state_${pageKey}`)
+      const stored = sessionStorage.getItem(`page_state_${pageKey}`)
       if (stored) {
         setState(JSON.parse(stored))
       }
@@ -25,7 +25,7 @@ export function usePageState<T>(pageKey: string, initialState: T): [T, (state: T
   useEffect(() => {
     if (isHydrated) {
       try {
-        localStorage.setItem(`page_state_${pageKey}`, JSON.stringify(state))
+        sessionStorage.setItem(`page_state_${pageKey}`, JSON.stringify(state))
       } catch (error) {
         console.warn(`Failed to save page state for ${pageKey}:`, error)
       }
@@ -45,7 +45,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T)
   // Restore from localStorage on mount
   useEffect(() => {
     try {
-      const item = localStorage.getItem(key)
+      const item = sessionStorage.getItem(key)
       if (item) {
         setStoredValue(JSON.parse(item))
       }
@@ -60,7 +60,7 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T)
     try {
       setStoredValue(value)
       if (isHydrated) {
-        localStorage.setItem(key, JSON.stringify(value))
+        sessionStorage.setItem(key, JSON.stringify(value))
       }
     } catch (error) {
       console.warn(`Failed to save localStorage value for ${key}:`, error)

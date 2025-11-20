@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
 import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
+import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
 
 const supabase = supabaseAdmin
 
@@ -76,6 +77,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'deposits_manage')
+
+    // Basic rate limiting for deposit approval/rejection actions
+    const ip = getClientIp(request)
+    const rl = await rateLimit(`admin-deposits:${ip}`, 60, 10 * 60 * 1000) // 60 actions / 10 minutes per IP
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: 'Too many deposit actions. Please slow down and try again shortly.' },
+        { status: 429 }
+      )
+    }
     const { action, transactionId, reason } = await request.json()
 
     if (!action || !transactionId) {
