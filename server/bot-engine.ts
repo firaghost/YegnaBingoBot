@@ -1,6 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js'
 import { generateBingoCard } from '../lib/utils'
 
+const BOTS_ENABLED = process.env.ENABLE_BOTS === 'true'
+
 // Runtime config to reach the Next API for claim
 const API_BASE = process.env.NEXT_PUBLIC_APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000'
 
@@ -21,6 +23,7 @@ class BotEngine {
 
   // Ensure session exists for game bots
   async ensureGame(gameId: string): Promise<void> {
+    if (!BOTS_ENABLED) return
     const { data: game } = await this.supabase
       .from('games')
       .select('id, bots, called_numbers, status')
@@ -45,6 +48,7 @@ class BotEngine {
 
   // Called on every number tick
   async tick(gameId: string): Promise<void> {
+    if (!BOTS_ENABLED) return
     const { data: game } = await this.supabase
       .from('games')
       .select('id, status, bots, called_numbers, prize_pool, stake')
@@ -101,6 +105,7 @@ class BotEngine {
   }
 
   private async getClaimDelay(botId: string): Promise<number> {
+    if (!BOTS_ENABLED) return 500
     // Fetch profile once (or could cache)
     const { data: bot } = await this.supabase
       .from('bots')

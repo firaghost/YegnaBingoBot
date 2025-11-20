@@ -279,18 +279,17 @@ export default function ProfessionalDashboard() {
         .ilike('description', 'Deposit bonus%')
       if (depositBonusTxsRes.error) throw depositBonusTxsRes.error
 
-      const stakeTxsRes = await supabaseAdmin
-        .from('transactions')
-        .select('created_at, metadata, amount')
-        .eq('type', 'stake')
-        .eq('status', 'completed')
-      if (stakeTxsRes.error) throw stakeTxsRes.error
+      const commissionGamesRes = await supabaseAdmin
+        .from('games')
+        .select('commission_amount, ended_at, created_at')
+        .eq('status', 'finished')
+      if (commissionGamesRes.error) throw commissionGamesRes.error
 
-      const referralUsersRes = await supabaseAdmin
-        .from('users')
-        .select('total_referrals, referral_earnings')
-        .limit(10000)
-      if (referralUsersRes.error) throw referralUsersRes.error
+      const referralStatsRes = await supabaseAdmin
+        .from('referrals')
+        .select('bonus_amount', { count: 'exact', head: false })
+        .eq('status', 'completed')
+      if (referralStatsRes.error) throw referralStatsRes.error
 
       let totalRevenueReal = 0
       let totalRevenueBonus = 0
@@ -313,26 +312,23 @@ export default function ProfessionalDashboard() {
         }
       })
 
-      let realStakeTotal = 0
-      let realStakeToday = 0
-      stakeTxsRes.data?.forEach((tx: any) => {
-        const md = (tx?.metadata || {}) as any
-        let main = Number(md?.main_deducted ?? 0)
-        if (!main || Number.isNaN(main)) {
-          main = Math.abs(Number(tx?.amount ?? 0))
-        }
-        realStakeTotal += main
-        if (new Date(tx.created_at).toDateString() === today) {
-          realStakeToday += main
+      let totalCommission = 0
+      let todayCommission = 0
+      commissionGamesRes.data?.forEach((game: any) => {
+        const amt = Number(game?.commission_amount || 0)
+        if (!amt || Number.isNaN(amt)) return
+        totalCommission += amt
+        const date = game?.ended_at ? new Date(game.ended_at) : game?.created_at ? new Date(game.created_at) : null
+        if (date && date.toDateString() === today) {
+          todayCommission += amt
         }
       })
 
-      let totalReferrals = 0
-      let totalReferralEarnings = 0
-      referralUsersRes.data?.forEach((row: any) => {
-        totalReferrals += Number(row?.total_referrals || 0)
-        totalReferralEarnings += Number(row?.referral_earnings || 0)
-      })
+      const totalReferrals = (referralStatsRes.data || []).length || referralStatsRes.count || 0
+      const totalReferralEarnings = (referralStatsRes.data || []).reduce(
+        (sum: number, row: any) => sum + Number(row?.bonus_amount || 0),
+        0
+      )
 
       const { count: pendingDepositsCount } = await supabaseAdmin
         .from('transactions')
@@ -350,8 +346,6 @@ export default function ProfessionalDashboard() {
         .from('transactions')
         .select('*', { count: 'exact', head: true })
 
-      const totalCommission = realStakeTotal * commissionRate
-      const todayCommission = realStakeToday * commissionRate
 
       setStats({
         totalUsers: totalUsers || 0,
@@ -390,7 +384,6 @@ export default function ProfessionalDashboard() {
       if (bucketDates.length > 0) {
         const [
           depositChartRes,
-          stakeChartRes,
           newUsersRes,
           referralChartRes,
           gamesChartRes,
@@ -399,14 +392,6 @@ export default function ProfessionalDashboard() {
             .from('transactions')
             .select('created_at, amount')
             .eq('type', 'deposit')
-            .eq('status', 'completed')
-            .gte('created_at', rangeStartIso)
-            .lte('created_at', rangeEndIso)
-            .order('created_at', { ascending: true }),
-          supabaseAdmin
-            .from('transactions')
-            .select('created_at, metadata, amount')
-            .eq('type', 'stake')
             .eq('status', 'completed')
             .gte('created_at', rangeStartIso)
             .lte('created_at', rangeEndIso)
@@ -426,7 +411,8 @@ export default function ProfessionalDashboard() {
             .order('created_at', { ascending: true }),
           supabaseAdmin
             .from('games')
-            .select('created_at, status')
+            .select('created_at, ended_at, status, commission_amount')
+            .eq('status', 'finished')
             .gte('created_at', rangeStartIso)
             .lte('created_at', rangeEndIso)
             .order('created_at', { ascending: true }),
@@ -434,9 +420,6 @@ export default function ProfessionalDashboard() {
 
         if (depositChartRes.error) {
           console.error('Deposit chart fetch failed:', depositChartRes.error)
-        }
-        if (stakeChartRes.error) {
-          console.error('Stake chart fetch failed:', stakeChartRes.error)
         }
         if (newUsersRes.error) {
           console.error('New users chart fetch failed:', newUsersRes.error)
@@ -455,18 +438,6 @@ export default function ProfessionalDashboard() {
           chartPoints[idx].revenue += Number(tx?.amount || 0)
         })
 
-        stakeChartRes.data?.forEach((tx: any) => {
-          const key = alignDateToGrouping(new Date(tx.created_at), grouping).toISOString()
-          const idx = bucketKeyToIndex.get(key)
-          if (idx === undefined) return
-          const md = (tx?.metadata || {}) as any
-          let main = Number(md?.main_deducted ?? 0)
-          if (!main || Number.isNaN(main)) {
-            main = Math.abs(Number(tx?.amount ?? 0))
-          }
-          chartPoints[idx].commission += main * commissionRate
-        })
-
         newUsersRes.data?.forEach((user: any) => {
           const key = alignDateToGrouping(new Date(user.created_at), grouping).toISOString()
           const idx = bucketKeyToIndex.get(key)
@@ -482,10 +453,17 @@ export default function ProfessionalDashboard() {
         })
 
         gamesChartRes.data?.forEach((game: any) => {
-          const key = alignDateToGrouping(new Date(game.created_at), grouping).toISOString()
+          const effectiveDate = game?.ended_at ? new Date(game.ended_at) : new Date(game.created_at)
+          const key = alignDateToGrouping(effectiveDate, grouping).toISOString()
           const idx = bucketKeyToIndex.get(key)
           if (idx === undefined) return
+
           chartPoints[idx].games += 1
+
+          const commission = Number(game?.commission_amount || 0)
+          if (commission && !Number.isNaN(commission)) {
+            chartPoints[idx].commission += commission
+          }
         })
       }
 

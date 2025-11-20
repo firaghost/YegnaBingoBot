@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
+const BOTS_ENABLED = process.env.ENABLE_BOTS === 'true'
+
 export type BotJSON = {
   id: string
   name: string
@@ -26,6 +28,9 @@ async function getDefaultBotsPerRoom(supabase: SupabaseClient): Promise<number> 
 }
 
 export async function selectActiveBotJSON(supabase: SupabaseClient, difficulty?: 'easy'|'medium'|'hard', waitingMode: 'always_waiting'|'only_when_assigned' = 'always_waiting'): Promise<BotJSON> {
+  if (!BOTS_ENABLED) {
+    return null
+  }
   try {
     const { data, error } = await (supabase as any).rpc('select_active_bot_json', {
       p_difficulty: difficulty ?? null,
@@ -63,6 +68,9 @@ export async function autofillBotsForGame(
   stake: number,
   targetCount?: number
 ): Promise<{ updatedGame: any, assigned: string[] }> {
+  if (!BOTS_ENABLED) {
+    return { updatedGame: game, assigned: [] }
+  }
   let updated = game
   const assigned: string[] = []
   const desired = typeof targetCount === 'number' ? targetCount : await getDefaultBotsPerRoom(supabase)
@@ -94,6 +102,9 @@ export async function autofillBotsForGame(
 }
 
 export async function assignBotIfNeeded(supabase: SupabaseClient, game: any, stake: number): Promise<{ updatedGame: any, bot: BotJSON | null }> {
+  if (!BOTS_ENABLED) {
+    return { updatedGame: game, bot: null }
+  }
   try {
     const playersCount = (game.players?.length || 0)
     const botsCount = (game.bots?.length || 0)

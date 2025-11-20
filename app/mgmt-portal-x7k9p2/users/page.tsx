@@ -67,6 +67,7 @@ export default function AdminUsersPage() {
   })
   const { admin } = useAdminAuth()
   const [walletActionLoading, setWalletActionLoading] = useState(false)
+  const [referralStats, setReferralStats] = useState<{ total: number; earnings: number } | null>(null)
 
   // Save preferences to sessionStorage (only for current session)
   useEffect(() => {
@@ -122,6 +123,25 @@ export default function AdminUsersPage() {
 
       console.log(`Fetched ${allUsers.length} total users (across ${page} pages)`)
       setUsers(allUsers)
+
+      // Fetch global referral stats from referrals table to match dashboard
+      try {
+        const referralRes = await supabase
+          .from('referrals')
+          .select('bonus_amount', { count: 'exact', head: false })
+          .eq('status', 'completed')
+
+        if (!referralRes.error) {
+          const totalReferrals = (referralRes.data || []).length || (referralRes.count as number) || 0
+          const totalReferralEarnings = (referralRes.data || []).reduce(
+            (sum: number, row: any) => sum + Number(row?.bonus_amount || 0),
+            0
+          )
+          setReferralStats({ total: totalReferrals, earnings: totalReferralEarnings })
+        }
+      } catch (refErr) {
+        console.error('Error fetching global referral stats:', refErr)
+      }
     } catch (error) {
       console.error('Error fetching users:', error)
     } finally {
@@ -389,8 +409,8 @@ export default function AdminUsersPage() {
     totalGames: users.reduce((sum, u) => sum + (u.games_played || 0), 0),
     totalWins: users.reduce((sum, u) => sum + (u.games_won || 0), 0),
     withPhone: users.filter(u => u.phone).length,
-    totalReferrals: users.reduce((sum, u) => sum + (u.total_referrals || 0), 0),
-    totalReferralEarnings: users.reduce((sum, u) => sum + Number(u.referral_earnings || 0), 0),
+    totalReferrals: referralStats?.total ?? users.reduce((sum, u) => sum + (u.total_referrals || 0), 0),
+    totalReferralEarnings: referralStats?.earnings ?? users.reduce((sum, u) => sum + Number(u.referral_earnings || 0), 0),
   }
 
   // City aggregation (prefer last_seen_city then registration_city)
