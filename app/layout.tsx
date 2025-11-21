@@ -28,7 +28,7 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <script src="https://telegram.org/js/telegram-web-app.js" async />
-        <script dangerouslySetInnerHTML={{ __html: `try{if(window.Telegram&&Telegram.WebApp){Telegram.WebApp.ready();Telegram.WebApp.expand();}}catch(e){}` }} />
+        <script dangerouslySetInnerHTML={{ __html: `try{if(window.Telegram&&Telegram.WebApp){Telegram.WebApp.ready();Telegram.WebApp.expand();document.documentElement.classList.add('tg-webapp');}}catch(e){}` }} />
         {SUPABASE && (
           <>
             <link rel="preconnect" href={SUPABASE} crossOrigin="" />
@@ -44,6 +44,8 @@ export default function RootLayout({
       </head>
       <body className="antialiased bg-slate-950 text-slate-50">
         <div className="safe-area min-h-[100dvh] flex flex-col">
+          {/* Top spacer to avoid Telegram overlays cropping the header */}
+          <div className="tg-top-spacer" />
           <Suspense fallback={null}>
             <DeepLinkRouter />
           </Suspense>

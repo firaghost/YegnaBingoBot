@@ -48,6 +48,22 @@ export default function WalletModal({ open, onClose, onOpenDeposit, onOpenWithdr
     fetchRecent()
   }, [open, user?.id])
 
+  // Sync hidden/show state with header via localStorage + event
+  useEffect(() => {
+    if (!open) return
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('wallet_hidden') : null
+      if (stored === '1' || stored === '0') setHidden(stored === '1')
+    } catch {}
+    const onVis = (e: any) => {
+      try { setHidden(Boolean(e?.detail?.hidden)) } catch {}
+    }
+    if (typeof window !== 'undefined') window.addEventListener('wallet_visibility', onVis)
+    return () => {
+      if (typeof window !== 'undefined') window.removeEventListener('wallet_visibility', onVis)
+    }
+  }, [open])
+
   if (!open) return null
 
   const cashBalance = user?.balance || 0
@@ -60,7 +76,8 @@ export default function WalletModal({ open, onClose, onOpenDeposit, onOpenWithdr
 
   return (
     <div 
-      className="fixed inset-0 z-[130] bg-transparent flex items-end justify-center"
+      className="fixed inset-0 z-[140] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+      role="dialog" aria-modal="true"
       onClick={onClose}
     >
       <div 
@@ -95,7 +112,12 @@ export default function WalletModal({ open, onClose, onOpenDeposit, onOpenWithdr
               <p className="text-xs font-semibold tracking-[0.16em] text-slate-400 uppercase">Cash Balance (Withdrawable)</p>
               <button
                 type="button"
-                onClick={() => setHidden((v) => !v)}
+                onClick={() => {
+                  const next = !hidden
+                  setHidden(next)
+                  try { localStorage.setItem('wallet_hidden', next ? '1' : '0') } catch {}
+                  try { window.dispatchEvent(new CustomEvent('wallet_visibility', { detail: { hidden: next } })) } catch {}
+                }}
                 className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-slate-900 hover:bg-slate-800 text-slate-300"
                 aria-label={hidden ? 'Show balance' : 'Hide balance'}
               >

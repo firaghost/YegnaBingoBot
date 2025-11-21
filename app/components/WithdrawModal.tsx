@@ -188,7 +188,8 @@ export default function WithdrawModal({ open, onClose, onBack, isSheet = false }
 
   return (
     <div 
-      className={`fixed inset-0 ${isSheet ? 'z-[140]' : 'z-[135]'} ${isSheet ? 'bg-transparent' : 'bg-black/70'} flex items-end justify-center`}
+      className={`fixed inset-0 ${(isSheet && onBack) ? 'z-[160] bg-black/60 backdrop-blur-sm' : 'z-[120] bg-transparent'} flex items-end justify-center`}
+      role="dialog" aria-modal="true"
       onClick={isSheet ? undefined : onClose}
     >
       <div 

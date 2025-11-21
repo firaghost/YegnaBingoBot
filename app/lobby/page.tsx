@@ -11,7 +11,7 @@ import BottomNav from '@/app/components/BottomNav'
 import DepositModal from '@/app/components/DepositModal'
 import WalletModal from '@/app/components/WalletModal'
 import WithdrawModal from '@/app/components/WithdrawModal'
-import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo, LuPlus, LuWallet, LuEye, LuChevronDown } from 'react-icons/lu'
+import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo, LuPlus, LuWallet, LuEye, LuEyeOff, LuChevronDown } from 'react-icons/lu'
 import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
 interface Room {
@@ -211,6 +211,21 @@ export default function LobbyPage() {
       })
     } catch {}
   }, [rooms, router])
+
+  // Sync wallet visibility with WalletModal and persist across sessions
+  useEffect(() => {
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('wallet_hidden') : null
+      if (stored === '1' || stored === '0') setWalletHidden(stored === '1')
+    } catch {}
+    const onVis = (e: any) => {
+      try { setWalletHidden(Boolean(e?.detail?.hidden)) } catch {}
+    }
+    if (typeof window !== 'undefined') window.addEventListener('wallet_visibility', onVis)
+    return () => {
+      if (typeof window !== 'undefined') window.removeEventListener('wallet_visibility', onVis)
+    }
+  }, [])
 
   // Recompute displayed net prize when commission rate changes
   useEffect(() => {
@@ -665,9 +680,6 @@ export default function LobbyPage() {
           <div className="flex items-center gap-2 sm:gap-3">
             {user && (() => {
               const cashBalance = user.balance || 0
-              const bonusBalance = user.bonus_balance || 0
-              const lockedBonus = (user as any).bonus_win_balance || 0
-              const total = cashBalance + bonusBalance + lockedBonus
               return (
                 <div className="flex items-center gap-2">
                   {/* Wallet pill */}
@@ -678,18 +690,22 @@ export default function LobbyPage() {
                     <div className="flex flex-col mr-2">
                       <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Wallet</span>
                       <span className="text-xs font-semibold text-slate-50">
-                        {walletHidden ? '••••••' : formatCurrency(total)}
+                        {walletHidden ? '••••••' : formatCurrency(cashBalance)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 text-slate-400 text-[10px]">
-                      
                       <button
                         type="button"
-                        onClick={() => setWalletHidden((prev) => !prev)}
+                        onClick={() => {
+                          const next = !walletHidden
+                          setWalletHidden(next)
+                          try { localStorage.setItem('wallet_hidden', next ? '1' : '0') } catch {}
+                          try { window.dispatchEvent(new CustomEvent('wallet_visibility', { detail: { hidden: next } })) } catch {}
+                        }}
                         className="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-slate-800"
                         aria-label={walletHidden ? 'Show balance' : 'Hide balance'}
                       >
-                        <LuEye className="w-3 h-3" />
+                        {walletHidden ? <LuEye className="w-3 h-3" /> : <LuEyeOff className="w-3 h-3" />}
                       </button>
                       <button
                         type="button"
