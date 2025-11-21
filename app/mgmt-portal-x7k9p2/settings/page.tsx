@@ -33,6 +33,7 @@ export default function AdminSettings() {
     dailyWithdrawalLimit: 5000 as number | string,
     weeklyWithdrawalLimit: 2000 as number | string,
     commissionRate: 10 as number | string,
+    minDepositToUnlock: 0 as number | string,
     welcomeBonus: 5 as number | string,
     depositBonus: 10 as number | string,
     referralBonus: 50 as number | string,
@@ -199,6 +200,7 @@ export default function AdminSettings() {
           withdrawalFee: Math.round((Number(config.withdrawalFeeRate) || 0) * 100 * 100) / 100,
           commissionRate: Math.round((Number(config.gameCommissionRate) || 0.1) * 100 * 100) / 100,
           minRequiredDeposit: Number(config.minRequiredDeposit) || 50,
+          minDepositToUnlock: Number((config as any).minDepositToUnlock) || 0,
           depositMax: Number((config as any).depositMax) || 100000,
           depositFee: Math.round((Number((config as any).depositFee) || 0) * 100 * 100) / 100,
           dailyWithdrawalLimit: Number(config.dailyWithdrawalLimit) || 5000,
@@ -376,6 +378,7 @@ export default function AdminSettings() {
       if (Number(settings.withdrawalFee) !== Number(originalSettings.withdrawalFee)) changedSettings.withdrawal_fee_rate = (Number(settings.withdrawalFee) || 0) / 100
       if (Number(settings.commissionRate) !== Number(originalSettings.commissionRate)) changedSettings.game_commission_rate = (Number(settings.commissionRate) || 0) / 100
       if (Number(settings.minRequiredDeposit) !== Number(originalSettings.minRequiredDeposit)) changedSettings.min_required_deposit = Number(settings.minRequiredDeposit) || 0
+      if (Number(settings.minDepositToUnlock) !== Number(originalSettings.minDepositToUnlock)) changedSettings.min_deposit_to_unlock = Number(settings.minDepositToUnlock) || 0
       if (Number(settings.depositMax) !== Number(originalSettings.depositMax)) changedSettings.deposit_max = Number(settings.depositMax) || 0
       if (Number(settings.depositFee) !== Number(originalSettings.depositFee)) changedSettings.deposit_fee = (Number(settings.depositFee) || 0) / 100
       if (Number(settings.dailyWithdrawalLimit) !== Number(originalSettings.dailyWithdrawalLimit)) changedSettings.daily_withdrawal_limit = Number(settings.dailyWithdrawalLimit) || 0
@@ -738,6 +741,13 @@ export default function AdminSettings() {
                   onChange={(e: any) => setSettings({ ...settings, minRequiredDeposit: e.target.value })}
                   type="number"
                   description="Minimum deposit amount"
+                />
+                <SettingInput
+                  label="Min Deposit to Unlock Bonus Wins (ETB)"
+                  value={settings.minDepositToUnlock}
+                  onChange={(e: any) => setSettings({ ...settings, minDepositToUnlock: e.target.value })}
+                  type="number"
+                  description="Minimum first deposit required before locked bonus winnings convert to real balance. 0 = unlock on any first deposit."
                 />
                 <SettingInput
                   label="Max Deposit (ETB)"

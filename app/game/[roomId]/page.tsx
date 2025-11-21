@@ -50,6 +50,7 @@ export default function GamePage() {
   const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const [showWinDialog, setShowWinDialog] = useState(false)
   const [showLoseDialog, setShowLoseDialog] = useState(false)
+  const [didUserWin, setDidUserWin] = useState(false)
   const [winAmount, setWinAmount] = useState(0)
   const [winnerName, setWinnerName] = useState('')
   const [findingNewGame, setFindingNewGame] = useState(false)
@@ -79,6 +80,95 @@ export default function GamePage() {
   const ASSETS_BASE = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '')
   const buildUrl = (key: string, base: string) => base ? `${base}/BINGO_Sound/${key}.mp3` : `/BINGO_Sound/${key}.mp3`
   const BINGO_VOICE_URL = '/AdditionalSounds/Good-Bingo.mp3'
+
+  // Play called number audio using files under /BINGO_Sound (served from public/)
+  const playCallAudio = (letter: string, number: number | string) => {
+    if (!soundEnabled) {
+      console.log(' Sound disabled, skipping audio')
+      return
+    }
+    // Don't play audio if game is finished
+    if (gameState?.status === 'finished') {
+      console.log(' Game finished, not playing audio')
+      return
+    }
+    const L = String(letter || '').toUpperCase()
+    const N = typeof number === 'number' ? number : parseInt(String(number), 10)
+    if (!Number.isFinite(N)) {
+      console.warn(' Invalid number for audio:', number)
+      return
+    }
+    const key = `${L}${N}`
+    const primaryUrl = buildUrl(key, ASSETS_BASE)
+    const fallbackUrl = SOCKET_BASE ? buildUrl(key, SOCKET_BASE) : ''
+    console.log(' Attempting to play:', key, primaryUrl)
+    let audio = audioCacheRef.current.get(key)
+    if (!audio) {
+      audio = new Audio(primaryUrl)
+      audio.preload = 'auto'
+      const a = audio
+      a.onerror = () => {
+        // Try fallback host once if different
+        if (fallbackUrl && a.src !== fallbackUrl) {
+          console.warn(' Primary URL failed, trying fallback:', fallbackUrl)
+          try {
+            a.src = fallbackUrl
+            a.load()
+            a.play().catch((e) => {
+              pendingAudioRef.current = { letter: L, number: N }
+              setShowSoundPrompt(true)
+              console.warn('Audio play blocked or failed (fallback):', e?.message || e)
+            })
+          } catch (e) {
+            console.error(' Fallback audio failed to load:', fallbackUrl, e)
+          }
+        } else {
+          console.error(' Audio failed to load:', a.src)
+        }
+      }
+      audioCacheRef.current.set(key, a)
+      audio = a
+    }
+    try {
+      const a = audio
+      a.currentTime = 0
+      a.play().catch((e) => {
+        // Try runtime fallback swap even for cached audio
+        if (fallbackUrl && a.src !== fallbackUrl) {
+          console.warn(' Primary play failed, trying fallback at runtime:', fallbackUrl)
+          try {
+            a.src = fallbackUrl
+            a.load()
+            a.play().catch((e2) => {
+              pendingAudioRef.current = { letter: L, number: N }
+              setShowSoundPrompt(true)
+              console.warn('Audio play blocked or failed (fallback runtime):', e2?.message || e2)
+            })
+            return
+          } catch (eSwap) {
+            console.error(' Runtime fallback swap failed:', eSwap)
+          }
+        }
+        // Autoplay might be blocked; show prompt
+        pendingAudioRef.current = { letter: L, number: N }
+        setShowSoundPrompt(true)
+        console.warn('Audio play blocked or failed:', e?.message || e)
+      })
+    } catch {}
+  }
+
+  const enableSoundAndReplay = () => {
+    try {
+      setSoundEnabled(true)
+      const pending = pendingAudioRef.current
+      setShowSoundPrompt(false)
+      if (pending) {
+        playCallAudio(pending.letter, pending.number)
+      } else if (gameState?.latest_number) {
+        playCallAudio(gameState.latest_number.letter, gameState.latest_number.number)
+      }
+    } catch {}
+  }
 
   // Load persisted sound preference
   useEffect(() => {
@@ -549,7 +639,7 @@ export default function GamePage() {
     // Do not deduct for spectators
     if (isSpectator) return
     if (stakeDeducted) return // Already deducted
-    
+
     // Deduct stake when game starts (countdown or active)
     if (gameState.status === 'countdown' || gameState.status === 'active') {
       const deductStake = async () => {
@@ -567,20 +657,20 @@ export default function GamePage() {
             console.error('Insufficient wallet balance to deduct stake:', {
               realAvailable,
               bonusAvailable,
-              stake: roomData.stake
+              stake: roomData.stake,
             })
             return
           }
 
-          const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
-          const resp = await fetch(`${apiBaseUrl}/api/game/confirm-join`, {
+          // Always call the same-origin Next.js API route so wallet RPCs run correctly
+          const resp = await fetch('/api/game/confirm-join', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               gameId,
               userId: user.id,
-              stakeSource: source
-            })
+              stakeSource: source,
+            }),
           })
 
           if (!resp.ok) {
@@ -596,361 +686,10 @@ export default function GamePage() {
           console.error('Error deducting stake:', error)
         }
       }
-      
+
       deductStake()
     }
-  }, [gameState?.status, user, gameId, roomData, stakeDeducted, isSpectator])
-
-  // After stake is deducted, fetch stake source (cash vs bonus) from history view
-  useEffect(() => {
-    if (!stakeDeducted || !user || !gameId) return
-
-    const fetchStakeSource = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('user_transaction_history')
-          .select('source, main_deducted, bonus_deducted')
-          .eq('user_id', user.id)
-          .eq('game_id', gameId)
-          .eq('type', 'stake')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (!error && data) {
-          setStakeSource((data as any).source || null)
-          setStakeMainAmount(typeof (data as any).main_deducted === 'number' ? (data as any).main_deducted : null)
-          setStakeBonusAmount(typeof (data as any).bonus_deducted === 'number' ? (data as any).bonus_deducted : null)
-        }
-      } catch (e) {
-        console.warn('Failed to fetch stake source for live game:', e)
-      }
-    }
-
-    fetchStakeSource()
-  }, [stakeDeducted, user?.id, gameId])
-
-  // Track previous latest number for haptic feedback
-  const prevLatestNumberRef = useRef<number | null>(null)
-  const lastPlayedAudioRef = useRef<number | null>(null)
-  const gameStartedRef = useRef<boolean>(false)
-
-  // Play called number audio using files under /BINGO_Sound (served from public/)
-  const playCallAudio = (letter: string, number: number | string) => {
-    if (!soundEnabled) {
-      console.log('🔇 Sound disabled, skipping audio')
-      return
-    }
-    // Don't play audio if game is finished
-    if (gameState?.status === 'finished') {
-      console.log('🏁 Game finished, not playing audio')
-      return
-    }
-    const L = String(letter || '').toUpperCase()
-    const N = typeof number === 'number' ? number : parseInt(String(number), 10)
-    if (!Number.isFinite(N)) {
-      console.warn('⚠️ Invalid number for audio:', number)
-      return
-    }
-    const key = `${L}${N}`
-    const primaryUrl = buildUrl(key, ASSETS_BASE)
-    const fallbackUrl = SOCKET_BASE ? buildUrl(key, SOCKET_BASE) : ''
-    console.log('🔈 Attempting to play:', key, primaryUrl)
-    let audio = audioCacheRef.current.get(key)
-    if (!audio) {
-      audio = new Audio(primaryUrl)
-      audio.preload = 'auto'
-      const a = audio
-      a.onerror = () => {
-        // Try fallback host once if different
-        if (fallbackUrl && a.src !== fallbackUrl) {
-          console.warn('🎧 Primary URL failed, trying fallback:', fallbackUrl)
-          try {
-            a.src = fallbackUrl
-            a.load()
-            a.play().catch((e) => {
-              pendingAudioRef.current = { letter: L, number: N }
-              setShowSoundPrompt(true)
-              console.warn('Audio play blocked or failed (fallback):', e?.message || e)
-            })
-          } catch (e) {
-            console.error('🎧 Fallback audio failed to load:', fallbackUrl, e)
-          }
-        } else {
-          console.error('🎧 Audio failed to load:', a.src)
-        }
-      }
-      audioCacheRef.current.set(key, a)
-      audio = a
-    }
-    try {
-      const a = audio
-      a.currentTime = 0
-      a.play().catch((e) => {
-        // Try runtime fallback swap even for cached audio
-        if (fallbackUrl && a.src !== fallbackUrl) {
-          console.warn('🎧 Primary play failed, trying fallback at runtime:', fallbackUrl)
-          try {
-            a.src = fallbackUrl
-            a.load()
-            a.play().catch((e2) => {
-              pendingAudioRef.current = { letter: L, number: N }
-              setShowSoundPrompt(true)
-              console.warn('Audio play blocked or failed (fallback runtime):', e2?.message || e2)
-            })
-            return
-          } catch (eSwap) {
-            console.error('🎧 Runtime fallback swap failed:', eSwap)
-          }
-        }
-        // Autoplay might be blocked; show prompt
-        pendingAudioRef.current = { letter: L, number: N }
-        setShowSoundPrompt(true)
-        console.warn('Audio play blocked or failed:', e?.message || e)
-      })
-    } catch {}
-  }
-
-  const enableSoundAndReplay = () => {
-    try {
-      const pending = pendingAudioRef.current
-      setShowSoundPrompt(false)
-      if (pending) {
-        playCallAudio(pending.letter, pending.number)
-      }
-    } catch {}
-  }
-
-  // Immediate audio on socket event (no need to wait for state propagation)
-  useEffect(() => {
-    const handler = (ev: any) => {
-      try {
-        const detail = (ev as CustomEvent)?.detail as any
-        const letter = String(detail?.letter || '').toUpperCase()
-        const rawNum = detail?.number
-        const number = typeof rawNum === 'number' ? rawNum : parseInt(String(rawNum), 10)
-        if (letter && Number.isFinite(number)) {
-          lastPlayedAudioRef.current = number as number
-          console.log('🎙️ Socket event received for audio:', letter + number)
-          playCallAudio(letter, number)
-          if (navigator.vibrate) navigator.vibrate(100)
-        }
-      } catch {}
-    }
-    window.addEventListener('bingo_number_called', handler as EventListener)
-    return () => window.removeEventListener('bingo_number_called', handler as EventListener)
-  }, [soundEnabled])
-
-  // Handle game transition and generate bingo card
-  useEffect(() => {
-    const handleGameTransition = (event: any) => {
-      console.log('🎯 Game transition event received, generating bingo card')
-      
-      // If we already have a card from the waiting room, keep it
-      if (bingoCard.length === 0) {
-        // Generate bingo card
-        const newCard = generateBingoCard()
-        setBingoCard(newCard)
-        
-        // Initialize marked cells (5x5 grid, center is free space)
-        const initialMarked = Array(5).fill(null).map((_, row) => 
-          Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
-        )
-        setMarkedCells(initialMarked)
-      }
-      
-      console.log('✅ Bingo card generated and ready for play')
-    }
-
-    window.addEventListener('gameTransition', handleGameTransition)
-    return () => window.removeEventListener('gameTransition', handleGameTransition)
-  }, [bingoCard.length])
-
-  // Generate bingo card when game becomes active (fallback)
-  useEffect(() => {
-    if ((gameState?.status === 'active' || (isDevEnv && devActive)) && bingoCard.length === 0) {
-      console.log('🎯 Game is active but no bingo card - generating now')
-      
-      // Generate bingo card
-      const newCard = generateBingoCard()
-      setBingoCard(newCard)
-      
-      // Initialize marked cells (5x5 grid, center is free space)
-      const initialMarked = Array(5).fill(null).map((_, row) => 
-        Array(5).fill(null).map((_, col) => row === 2 && col === 2) // Center is always marked
-      )
-      setMarkedCells(initialMarked)
-      
-      console.log('✅ Fallback bingo card generated')
-    }
-  }, [gameState?.status, bingoCard.length, isDevEnv, devActive])
-
-  // Poll for game finish state (fallback for losers/spectators if realtime is slow)
-  useEffect(() => {
-    if (!gameId || !user || gameState?.status === 'finished' || showLoseDialog || showWinDialog) return
-    
-    // Only poll if we're not the one claiming (to catch when others claim)
-    const pollInterval = setInterval(async () => {
-      try {
-        const { data: currentGame } = await supabase
-          .from('games')
-          .select('*')
-          .eq('id', gameId)
-          .single()
-        
-        if (currentGame?.status === 'finished' && currentGame?.winner_id && !gameState?.winner_id) {
-          console.log('📊 Poll detected game finished! Winner:', currentGame.winner_id)
-          // Trigger the dialog for spectators/losers
-          setShowLoseDialog(true)
-          setWinAmount(typeof currentGame.net_prize === 'number' ? currentGame.net_prize : 0)
-          
-          // Fetch winner name
-          if (currentGame.winner_id) {
-            supabase
-              .from('users')
-              .select('username')
-              .eq('id', currentGame.winner_id)
-              .maybeSingle()
-              .then(({ data }: any) => {
-                if (data?.username) setWinnerName(data.username)
-              })
-          }
-        }
-      } catch (error) {
-        console.warn('Poll error:', error)
-      }
-    }, 500)
-    
-    return () => clearInterval(pollInterval)
-  }, [gameId, user, gameState?.status, gameState?.winner_id, showLoseDialog, showWinDialog])
-
-  // Handle game state updates from Socket.IO
-  useEffect(() => {
-    if (!gameState) return
-
-    // Mark game as started when status transitions to active
-    if (gameState.status === 'active' && !gameStartedRef.current) {
-      gameStartedRef.current = true
-      console.log('🎮 Game started - will only play new numbers from now on')
-    }
-
-    // Haptic feedback and audio when new number is called (state-based fallback)
-    // Only play audio for NEW numbers, not historical ones
-    if (gameState.status === 'active' && gameState.latest_number && gameStartedRef.current) {
-      const currentNumber = gameState.latest_number.number
-      if (prevLatestNumberRef.current !== currentNumber) {
-        prevLatestNumberRef.current = currentNumber
-        
-        // Vibrate on mobile when number is called
-        if (navigator.vibrate) {
-          navigator.vibrate(100) // Vibrate for 100ms
-        }
-
-        // Only play audio if this is a NEW number (not in the called_numbers array yet)
-        // This prevents playing audio for historical numbers when late joining
-        const isNewNumber = !gameState.called_numbers?.includes(currentNumber)
-        
-        // Play the pre-recorded audio for the called number if not already played via event
-        if (isNewNumber && lastPlayedAudioRef.current !== currentNumber) {
-          const currentLetter = gameState.latest_number.letter
-          playCallAudio(currentLetter, currentNumber)
-          lastPlayedAudioRef.current = currentNumber
-        }
-      }
-    }
-
-    // Check if game finished
-    if (gameState.status === 'finished' && gameState.winner_id) {
-      console.log('🏁 Game finished! Winner:', gameState.winner_id)
-      
-      // Compute NET prize (fallback to client-side using admin commission)
-      const gross = gameState.prize_pool
-      const net = typeof gameState.net_prize === 'number' 
-        ? gameState.net_prize 
-        : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
-
-      const winnerKey = gameState.winner_id
-      const uid = user?.id ? String(user.id) : ''
-      const uname = user?.username ? String(user.username) : ''
-      const tgidStr = user?.telegram_id ? String(user.telegram_id) : ''
-      const winnerStr = String(winnerKey)
-      const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
-
-      if (isSelfWinner) {
-        // User won
-        setWinAmount(net)
-        if (!bingoAudioPlayedRef.current) {
-          playBingoAudio()
-          bingoAudioPlayedRef.current = true
-        }
-        
-        // Note: Auto-win when opponent left
-        
-        console.log('🎉 You won!', net)
-        setShowWinDialog(true)
-      } else {
-        // User lost or spectating
-        setWinAmount(net)
-
-        console.log(isSpectator ? '👁️ Spectating - game ended' : '😢 You lost. Winner:', gameState.winner_id)
-
-        // Show the appropriate dialog
-        setShowLoseDialog(true)
-
-        // Fetch winner name (best-effort): try by id then by username
-        if (gameState.winner_id && !winnerName) {
-          supabase
-            .from('users')
-            .select('username')
-            .eq('id', gameState.winner_id)
-            .maybeSingle()
-            .then(async ({ data }: any) => {
-              if (data?.username) {
-                setWinnerName(data.username)
-                return
-              }
-              // Try by username as fallback
-              const { data: byUsername } = await supabase
-                .from('users')
-                .select('username')
-                .eq('username', gameState.winner_id)
-                .maybeSingle()
-              if (byUsername?.username) setWinnerName(byUsername.username)
-            })
-        }
-
-        // Fetch winner pattern/card in background and update UI if available (for both losers and spectators)
-        ;(async () => {
-          try {
-            for (let attempt = 0; attempt < 4; attempt++) {
-              const resp = await fetch('/api/game/winner', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId })
-              })
-              if (resp.ok) {
-                const data = await resp.json()
-                if (data?.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                if (data?.winner_pattern) { setFallbackWinnerPattern(data.winner_pattern as string); break }
-              }
-              await new Promise(res => setTimeout(res, 250))
-            }
-            if (!fallbackWinnerPattern && gameId) {
-              const { data } = await supabase
-                .from('games')
-                .select('winner_card,winner_pattern')
-                .eq('id', gameId)
-                .single()
-              if (data?.winner_pattern) {
-                if (data.winner_card) setFallbackWinnerCard(data.winner_card as number[][])
-                setFallbackWinnerPattern(data.winner_pattern as string)
-              }
-            }
-          } catch {}
-        })()
-      }
-    }
-  }, [gameState?.status, gameState?.winner_id, user, roomId, router, commissionRate])
+  }, [gameState?.status, gameState, user, gameId, roomData, stakeDeducted, isSpectator])
 
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
