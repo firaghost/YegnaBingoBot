@@ -870,7 +870,11 @@ export default function GamePage() {
         : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
 
       const winnerKey = gameState.winner_id
-      const isSelfWinner = (winnerKey === user?.id) || (winnerKey && winnerKey === user?.username)
+      const uid = user?.id ? String(user.id) : ''
+      const uname = user?.username ? String(user.username) : ''
+      const tgidStr = user?.telegram_id ? String(user.telegram_id) : ''
+      const winnerStr = String(winnerKey)
+      const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
 
       if (isSelfWinner) {
         // User won
@@ -1003,7 +1007,13 @@ export default function GamePage() {
             : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
           setWinAmount(net)
           
-          if (freshGame.winner_id === user.id) {
+          const winnerStr = String(freshGame.winner_id)
+          const uid = String(user.id)
+          const uname = user.username ? String(user.username) : ''
+          const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
+          const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
+
+          if (isSelfWinner) {
             console.log('🎉 You won!')
             setShowWinDialog(true)
           } else {
@@ -1077,7 +1087,13 @@ export default function GamePage() {
           : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
         setWinAmount(net)
         
-        if (freshGame.winner_id === user.id) {
+        const winnerStr = String(freshGame.winner_id)
+        const uid = String(user.id)
+        const uname = user.username ? String(user.username) : ''
+        const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
+        const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
+
+        if (isSelfWinner) {
           // Somehow we won even though claim failed (race condition)
           console.log('✅ You are the winner!')
           if (!bingoAudioPlayedRef.current) {
@@ -1126,11 +1142,17 @@ export default function GamePage() {
           
           const gross = updatedGame.prize_pool
           const net = typeof updatedGame.net_prize === 'number' 
-            ? updatedGame.net_prize 
-            : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
-          setWinAmount(net)
-          
-          if (updatedGame.winner_id === user.id) {
+          ? updatedGame.net_prize 
+          : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+        setWinAmount(net)
+        
+        const winnerStr = String(updatedGame.winner_id)
+        const uid = String(user.id)
+        const uname = user.username ? String(user.username) : ''
+        const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
+        const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
+
+        if (isSelfWinner) {
             // Current user won
             console.log('🎉 You won!')
             if (!bingoAudioPlayedRef.current) {
