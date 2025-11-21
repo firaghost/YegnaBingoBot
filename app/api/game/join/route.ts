@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       console.warn('Cleanup warning:', cleanupError)
     }
 
-    // Check if there's an active game (player should be queued)
+    // Check if there's an active game in this room
     const { data: runningGame } = await supabase
       .from('games')
       .select('*')
@@ -63,6 +63,19 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (runningGame) {
+      const isPlayerInRunningGame = Array.isArray(runningGame.players) && runningGame.players.includes(userId)
+      if (isPlayerInRunningGame) {
+        // User is already a player in this active game – treat as rejoin, not spectator
+        console.log(`🔁 User ${userId} rejoining active game ${runningGame.id} as player`)
+        return NextResponse.json({
+          success: true,
+          action: 'already_joined_active',
+          message: 'Rejoined active game as player.',
+          gameId: runningGame.id,
+          game: runningGame
+        })
+      }
+
       console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
       return NextResponse.json({
         success: true,

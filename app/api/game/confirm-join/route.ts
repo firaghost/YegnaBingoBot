@@ -59,6 +59,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Idempotency: if a stake transaction already exists for this user/game,
+    // treat this as already staked (e.g., page refresh) and do not deduct again
+    const { data: existingStake, error: stakeCheckError } = await supabase
+      .from('transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('game_id', gameId)
+      .eq('type', 'stake')
+      .limit(1)
+      .maybeSingle()
+
+    if (!stakeCheckError && existingStake) {
+      return NextResponse.json({ success: true, alreadyStaked: true })
+    }
+
     const result = await handleGameStart(userId, gameId, stakeSource as StakeSource, stakeAmount)
 
     if (!result.success) {

@@ -264,6 +264,27 @@ export default function GamePage() {
     return () => window.removeEventListener('pointerdown', onInteract)
   }, [showSoundPrompt, gameState?.latest_number?.number])
 
+  // Listen for number-called events from the socket layer and play audio
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        const detail = (ev as CustomEvent).detail as any
+        if (!detail) return
+        const letter = detail.letter
+        const number = typeof detail.number === 'number' ? detail.number : parseInt(String(detail.number), 10)
+        if (!letter || !Number.isFinite(number)) return
+        console.log('🎙️ Socket event received for audio:', letter + number)
+        playCallAudio(letter, number)
+      } catch (e) {
+        console.warn('Failed to handle bingo_number_called event:', e)
+      }
+    }
+    window.addEventListener('bingo_number_called', handler as EventListener)
+    return () => {
+      window.removeEventListener('bingo_number_called', handler as EventListener)
+    }
+  }, [playCallAudio])
+
   // Lucky number selection (purely cosmetic)
   const [luckyNumber, setLuckyNumber] = useState<number | null>(null)
   // Winner pattern fallback (if socket update hasn't brought it yet)
@@ -585,11 +606,10 @@ export default function GamePage() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (gameId && user?.id) {
-        // Use sendBeacon for reliable cleanup on page unload
-        const formData = new FormData()
-        formData.append('gameId', gameId)
-        formData.append('userId', user.id)
-        navigator.sendBeacon('/api/game/leave', formData)
+        // Intentionally do NOT auto-leave on refresh/unload.
+        // Rely on explicit leave actions (X/back buttons) so a simple
+        // page refresh keeps the player in the active game.
+        console.log('beforeunload: skipping automatic /api/game/leave')
       }
     }
 
