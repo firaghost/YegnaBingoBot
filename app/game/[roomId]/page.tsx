@@ -691,6 +691,28 @@ export default function GamePage() {
     }
   }, [gameState?.status, gameState, user, gameId, roomData, stakeDeducted, isSpectator])
 
+  // Generate bingo card when game becomes active/countdown and none exists yet
+  useEffect(() => {
+    if (!gameState) return
+    if (isSpectator) return
+    if (bingoCard.length > 0) return
+
+    if (gameState.status === 'countdown' || gameState.status === 'active') {
+      console.log('🎯 Generating bingo card on game start')
+      const newCard = generateBingoCard()
+      setBingoCard(newCard)
+
+      const initialMarked = Array(5)
+        .fill(null)
+        .map((_, row) =>
+          Array(5)
+            .fill(null)
+            .map((_, col) => row === 2 && col === 2)
+        )
+      setMarkedCells(initialMarked)
+    }
+  }, [gameState?.status, gameState, isSpectator, bingoCard.length])
+
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
     if (!user) return
