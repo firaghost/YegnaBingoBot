@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
+import { Player } from '@lottiefiles/react-lottie-player'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
@@ -48,6 +50,9 @@ function getLevelInfo(xp: number = 0, level_progress?: string) {
   }
 }
 import BottomNav from '@/app/components/BottomNav'
+import DepositModal from '@/app/components/DepositModal'
+import WithdrawModal from '@/app/components/WithdrawModal'
+import AvatarPickerModal from '@/app/components/AvatarPickerModal'
 import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck, LuVolume2, LuVolumeX, LuPhone } from 'react-icons/lu'
 
 interface Transaction {
@@ -74,6 +79,9 @@ export default function AccountPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [showDepositModal, setShowDepositModal] = useState(false)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
   const [language, setLanguage] = useState('English')
   const [showLanguageModal, setShowLanguageModal] = useState(false)
@@ -219,7 +227,7 @@ export default function AccountPage() {
 
   if (authLoading || !user) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     )
@@ -233,7 +241,7 @@ export default function AccountPage() {
   const isSuspended = (user as any).status === 'inactive'
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
+    <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Language Modal */}
       {showLanguageModal && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowLanguageModal(false)}>
@@ -413,11 +421,11 @@ export default function AccountPage() {
       )}
 
       {/* Simple Header */}
-      <div className="bg-white border-b border-slate-200">
+      <div className="bg-slate-950 border-b border-slate-800">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LuUser className="w-6 h-6 text-blue-500" />
-            <h1 className="text-xl font-bold text-slate-900">Account</h1>
+            <h1 className="text-xl font-bold text-slate-50">Account</h1>
           </div>
           <button 
             onClick={handleLogout}
@@ -432,49 +440,63 @@ export default function AccountPage() {
       <div className="max-w-2xl mx-auto px-4 py-6">
         
         {/* User Info */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <LuUser className="w-6 h-6 text-blue-500" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold text-slate-900">{user.username || 'User'}</h2>
-                  <button
-                    onClick={() => {
-                      setNewUsername(user.username || '')
-                      setShowUsernameModal(true)
-                    }}
-                    className="text-blue-500 hover:text-blue-600 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
-                </div>
-                {user.phone && (
-                  <div className="flex items-center gap-1 text-sm text-slate-500 mt-1">
-                    <LuPhone className="w-4 h-4" />
-                    <span>{user.phone}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-4 text-sm text-slate-500">
-                  <span>Telegram ID: {user.telegram_id}</span>
-                  {(() => {
-                    const levelInfo = getLevelInfo(user.xp || 0, user.level_progress)
-                    return (
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${levelInfo.color} text-white`}>
-                          Level {levelInfo.numericLevel} • {levelInfo.name}
-                        </span>
-                        <span className="text-xs text-slate-600">{levelInfo.xp} XP</span>
-                      </div>
-                    )
-                  })()}
-                </div>
-              </div>
+        <div className="bg-slate-900 rounded-xl p-6 mb-4 border border-slate-800 flex flex-col items-center text-center">
+          <button
+            type="button"
+            onClick={() => setShowAvatarModal(true)}
+            className="relative mb-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-full"
+          >
+            <div className="w-24 h-24 rounded-full bg-cyan-500 flex items-center justify-center overflow-hidden shadow-lg">
+              <Image
+                src={(user as any).avatar_url || (user as any).profile_image_url || '/images/6.svg'}
+                alt="Profile avatar"
+                width={96}
+                height={96}
+                className="w-20 h-20"
+              />
             </div>
+            <div className="pointer-events-none absolute -top-5 left-1/2 -translate-x-1/2 w-16 h-16">
+              <Player
+                src="/lottie/Crown.json"
+                autoplay
+                loop
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
+          </button>
+          <div className="flex items-center gap-2 mb-1">
+            <h2 className="text-lg font-semibold text-slate-50">{user.username || 'User'}</h2>
+            <button
+              onClick={() => {
+                setNewUsername(user.username || '')
+                setShowUsernameModal(true)
+              }}
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+            </button>
+          </div>
+          {user.phone && (
+            <div className="flex items-center justify-center gap-1 text-sm text-slate-300 mb-1">
+              <LuPhone className="w-4 h-4" />
+              <span>{user.phone}</span>
+            </div>
+          )}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 text-sm text-slate-300 mt-1">
+            <span>Telegram ID: {user.telegram_id}</span>
+            {(() => {
+              const levelInfo = getLevelInfo(user.xp || 0, user.level_progress)
+              return (
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium bg-gradient-to-r ${levelInfo.color} text-white`}>
+                    Level {levelInfo.numericLevel} • {levelInfo.name}
+                  </span>
+                  <span className="text-xs text-slate-500">{levelInfo.xp} XP</span>
+                </div>
+              )
+            })()}
           </div>
         </div>
 
@@ -494,85 +516,27 @@ export default function AccountPage() {
           </div>
         )}
 
-        {/* Balance Overview */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-base font-semibold text-slate-900">Wallet Overview</h3>
-            <button 
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="text-slate-600 hover:text-slate-900 transition-colors"
-            >
-              <LuRefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          
-          <div className="text-3xl font-bold text-slate-900 mb-4">
-            {formatCurrency(totalBalance)}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <div className="text-xs text-slate-500 mb-1">Cash Wallet (Withdrawable)</div>
-              <div className="text-lg font-semibold text-slate-900">{formatCurrency(cashBalance)}</div>
-            </div>
-            <div className="bg-emerald-50 rounded-lg p-3">
-              <div className="text-xs text-emerald-600 mb-1">Bonus Wallet</div>
-              <div className="text-lg font-semibold text-emerald-600">{formatCurrency(totalBonusBalance)}</div>
-              {(bonusWinBalance > 0 || bonusBalance > 0) && (
-                <div className="mt-1 text-[11px] text-emerald-700">
-                  <span>Bonus: {formatCurrency(bonusBalance)}</span>
-                  <span className="mx-1">•</span>
-                  <span>Bonus Wins: {formatCurrency(bonusWinBalance)}</span>
-                  <p className="mt-0.5 text-[10px] text-emerald-700">
-                    Bonus Wins are locked until your first real-money deposit
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <button 
-            onClick={() => { if (!isSuspended) router.push('/deposit') }}
-            disabled={isSuspended}
-            className="bg-emerald-500 text-white py-3 rounded-lg font-medium hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
-          >
-            <LuPlus className="w-5 h-5" />
-            <span>{isSuspended ? 'Suspended' : 'Deposit'}</span>
-          </button>
-          <button 
-            onClick={() => { if (!isSuspended) router.push('/withdraw') }}
-            disabled={isSuspended}
-            className="bg-slate-700 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
-          >
-            <LuMinus className="w-5 h-5" />
-            <span>{isSuspended ? 'Suspended' : 'Withdraw'}</span>
-          </button>
-        </div>
-
+        
+        
         {/* History moved to dedicated page */}
 
         {/* Settings & Support */}
-        <div className="bg-white rounded-xl p-5 mb-4 border border-slate-200">
-          <h3 className="text-base font-semibold text-slate-900 mb-4">Settings & Support</h3>
+        <div className="bg-slate-900 rounded-xl p-5 mb-4 border border-slate-800">
+          <h3 className="text-base font-semibold text-slate-50 mb-4">Settings & Support</h3>
           
           <div className="space-y-2">
             {/* Game Sound */}
             <button 
               onClick={() => setSoundOn(s => { const next = !s; try { window.dispatchEvent(new CustomEvent('bingo_sound_pref_changed', { detail: { enabled: next } })) } catch {}; return next })}
-              className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
+              className="w-full flex items-center justify-between py-3 border-b border-slate-800 hover:bg-slate-800 transition-colors rounded-lg px-2"
             >
               <div className="flex items-center gap-3">
-                {soundOn ? <LuVolume2 className="w-5 h-5 text-slate-600" /> : <LuVolumeX className="w-5 h-5 text-slate-600" />}
-                <span className="text-sm font-medium text-slate-900">Game Sound</span>
+                {soundOn ? <LuVolume2 className="w-5 h-5 text-slate-200" /> : <LuVolumeX className="w-5 h-5 text-slate-200" />}
+                <span className="text-sm font-medium text-slate-50">Game Sound</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">{soundOn ? 'On' : 'Off'}</span>
-                <LuChevronRight className="w-4 h-4 text-slate-400" />
+                <span className="text-sm text-slate-400">{soundOn ? 'On' : 'Off'}</span>
+                <LuChevronRight className="w-4 h-4 text-slate-500" />
               </div>
             </button>
 
@@ -582,12 +546,12 @@ export default function AccountPage() {
               className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
             >
               <div className="flex items-center gap-3">
-                <LuGlobe className="w-5 h-5 text-slate-600" />
-                <span className="text-sm font-medium text-slate-900">Language</span>
+                <LuGlobe className="w-5 h-5 text-slate-200" />
+                <span className="text-sm font-medium text-slate-50">Language</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">{language}</span>
-                <LuChevronRight className="w-4 h-4 text-slate-400" />
+                <span className="text-sm text-slate-400">{language}</span>
+                <LuChevronRight className="w-4 h-4 text-slate-500" />
               </div>
             </button>
 
@@ -597,8 +561,8 @@ export default function AccountPage() {
               className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
             >
               <div className="flex items-center gap-3">
-                <LuFileText className="w-5 h-5 text-slate-600" />
-                <span className="text-sm font-medium text-slate-900">Terms & Conditions</span>
+                <LuFileText className="w-5 h-5 text-slate-200" />
+                <span className="text-sm font-medium text-slate-50">Terms & Conditions</span>
               </div>
               <LuChevronRight className="w-4 h-4 text-slate-400" />
             </button>
@@ -609,8 +573,8 @@ export default function AccountPage() {
               className="w-full flex items-center justify-between py-3 border-b border-slate-100 hover:bg-slate-50 transition-colors rounded-lg px-2"
             >
               <div className="flex items-center gap-3">
-                <LuMail className="w-5 h-5 text-slate-600" />
-                <span className="text-sm font-medium text-slate-900">Contact Support</span>
+                <LuMail className="w-5 h-5 text-slate-200" />
+                <span className="text-sm font-medium text-slate-50">Contact Support</span>
               </div>
               <LuChevronRight className="w-4 h-4 text-slate-400" />
             </button>
@@ -618,11 +582,11 @@ export default function AccountPage() {
             {/* FAQ */}
             <button 
               onClick={() => setShowFaqModal(true)}
-              className="w-full flex items-center justify-between py-3 hover:bg-slate-50 transition-colors rounded-lg px-2"
+              className="w-full flex items-center justify-between py-3 hover:bg-slate-800 transition-colors rounded-lg px-2"
             >
               <div className="flex items-center gap-3">
-                <LuCircleHelp className="w-5 h-5 text-slate-600" />
-                <span className="text-sm font-medium text-slate-900">FAQ</span>
+                <LuCircleHelp className="w-5 h-5 text-slate-200" />
+                <span className="text-sm font-medium text-slate-50">FAQ</span>
               </div>
               <LuChevronRight className="w-4 h-4 text-slate-400" />
             </button>
@@ -631,6 +595,15 @@ export default function AccountPage() {
 
       </div>
 
+      <DepositModal 
+        open={showDepositModal} 
+        onClose={() => setShowDepositModal(false)}
+      />
+      <WithdrawModal 
+        open={showWithdrawModal} 
+        onClose={() => setShowWithdrawModal(false)}
+      />
+      <AvatarPickerModal open={showAvatarModal} onClose={() => setShowAvatarModal(false)} />
       <BottomNav />
     </div>
   )

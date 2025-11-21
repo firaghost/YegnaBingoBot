@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 import { getGameConfig, getConfig } from '@/lib/admin-config'
 import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown, Volume2, VolumeX } from 'lucide-react'
+import { LuWallet, LuEye, LuEyeOff } from 'react-icons/lu'
 
 // Game status as used by UI; backend may also send 'waiting_for_players', which we
 // normalize to 'waiting' below so the waiting room view still renders correctly.
@@ -74,6 +75,7 @@ export default function GamePage() {
   const [showSoundPrompt, setShowSoundPrompt] = useState(false)
   const pendingAudioRef = useRef<{ letter: string; number: number } | null>(null)
   const bingoAudioPlayedRef = useRef<boolean>(false)
+  const [walletHidden, setWalletHidden] = useState(true)
 
   // Bases for asset loading (prod may host frontend and socket on different domains)
   const SOCKET_BASE = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app').replace(/\/$/, '')
@@ -1114,10 +1116,10 @@ export default function GamePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-lg text-slate-600">Joining game...</p>
+          <p className="text-lg text-slate-200">Joining game...</p>
         </div>
       </div>
     )
@@ -1125,9 +1127,9 @@ export default function GamePage() {
 
   if (!roomData) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-xl text-slate-600">Loading game...</p>
+          <p className="text-xl text-slate-200">Loading game...</p>
         </div>
       </div>
     )
@@ -1144,10 +1146,10 @@ export default function GamePage() {
     !(isDevEnv && (devSpectator || devActive || devWaiting))
   ) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-xl text-slate-600">Connecting to game...</p>
+          <p className="text-xl text-slate-200">Connecting to game...</p>
         </div>
       </div>
     )
@@ -1201,10 +1203,15 @@ export default function GamePage() {
   const prizePool = currentParticipants * stake
   const netPrizePool = Math.round(prizePool * (1 - commissionRate) * 100) / 100
 
+  const cashBalance = user?.balance || 0
+  const bonusBalance = user?.bonus_balance || 0
+  const lockedBonus = (user as any)?.bonus_win_balance || 0
+  const walletTotal = cashBalance + bonusBalance + lockedBonus
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-950 text-slate-50">
       {/* Header */}
-      <div className="bg-white border-b border-slate-200">
+      <div className="bg-slate-950 border-b border-slate-800">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <button 
             onClick={async () => {
@@ -1249,51 +1256,67 @@ export default function GamePage() {
                 router.push('/lobby')
               }
             }} 
-            className="text-slate-900 text-2xl hover:text-slate-600 transition-colors"
+            className="text-slate-200 text-2xl hover:text-slate-400 transition-colors"
           >
             ×
           </button>
-          <div className="flex flex-col items-center justify-center">
-            <h1 className="text-base font-semibold text-slate-900 leading-tight">{getRoomName()}</h1>
+          <div className="flex-1" />
+          <div className="flex items-center gap-2 sm:gap-3">
             {user && (
-              <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
-                Balance {formatCurrency(totalBalance)}
+              <div className="flex items-center rounded-full bg-slate-900 border border-slate-700 px-3 py-1.5 shadow-sm">
+                <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-slate-900 mr-2">
+                  <LuWallet className="w-4 h-4" />
+                </div>
+                <div className="flex flex-col mr-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Wallet</span>
+                  <span className="text-xs font-semibold text-slate-50">
+                    {walletHidden ? '••••••' : formatCurrency(walletTotal)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWalletHidden((prev) => !prev)}
+                  className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-slate-800 text-slate-300 ml-1"
+                  aria-label={walletHidden ? 'Show balance' : 'Hide balance'}
+                >
+                  {walletHidden ? <LuEye className="w-3.5 h-3.5" /> : <LuEyeOff className="w-3.5 h-3.5" />}
+                </button>
               </div>
             )}
-          </div>
-          <button
-            onClick={() => {
-              setSoundEnabled((s) => {
-                const next = !s
-                if (!next) {
-                  // On muting, immediately stop all playing audio
-                  audioCacheRef.current.forEach((audio) => {
-                    try {
-                      audio.pause()
-                      audio.currentTime = 0
-                    } catch {}
-                  })
-                  console.log('🔇 All audio stopped immediately')
-                } else {
-                  // On enabling, try replaying pending or the latest number
-                  const pending = pendingAudioRef.current
-                  if (pending) {
-                    playCallAudio(pending.letter, pending.number)
-                    setShowSoundPrompt(false)
-                  } else if (latestNumber) {
-                    playCallAudio(latestNumber.letter, latestNumber.number)
-                    setShowSoundPrompt(false)
+            <button
+              onClick={() => {
+                setSoundEnabled((s) => {
+                  const next = !s
+                  if (!next) {
+                    // On muting, immediately stop all playing audio
+                    audioCacheRef.current.forEach((audio) => {
+                      try {
+                        audio.pause()
+                        audio.currentTime = 0
+                      } catch {}
+                    })
+                    console.log('🔇 All audio stopped immediately')
+                  } else {
+                    // On enabling, try replaying pending or the latest number
+                    const pending = pendingAudioRef.current
+                    if (pending) {
+                      playCallAudio(pending.letter, pending.number)
+                      setShowSoundPrompt(false)
+                    } else if (latestNumber) {
+                      playCallAudio(latestNumber.letter, latestNumber.number)
+                      setShowSoundPrompt(false)
+                    }
                   }
-                }
-                return next
-              })
-            }}
-            aria-label={soundEnabled ? 'Mute calls' : 'Unmute calls'}
-            title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
-            className="text-slate-900 hover:text-slate-600 transition-colors"
-          >
-            {soundEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
-          </button>
+                  return next
+                })
+              }}
+              aria-label={soundEnabled ? 'Mute calls' : 'Unmute calls'}
+              title={soundEnabled ? 'Sound: On' : 'Sound: Off'}
+              className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-200"
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1367,12 +1390,12 @@ export default function GamePage() {
             </div>
 
             {/* Main Content */}
-            <div className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm">
+            <div className="bg-slate-950 rounded-xl p-3 border border-slate-800 shadow-sm">
               <div className="space-y-3">
                 {/* Players List with Avatars */}
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-2">
-                    <Users className="w-4 h-4 text-indigo-600" />
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-100 mb-2">
+                    <Users className="w-4 h-4 text-indigo-400" />
                     <span>Players ({(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
                   </div>
 
@@ -1411,12 +1434,12 @@ export default function GamePage() {
                             key={index} 
                             className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
                               player.isCurrentUser 
-                                ? 'bg-green-100 text-green-800 border border-green-300' 
-                                : 'bg-blue-50 text-slate-700 border border-blue-200'
+                                ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/60' 
+                                : 'bg-slate-800 text-slate-100 border border-slate-600'
                             }`}
                           >
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${
-                              player.isCurrentUser ? 'bg-green-600' : 'bg-indigo-600'
+                              player.isCurrentUser ? 'bg-emerald-500' : 'bg-indigo-500'
                             }`}>
                               {getRandomEmoji(player.username)}
                             </div>
@@ -1429,14 +1452,14 @@ export default function GamePage() {
 
                   {/* Spectators List */}
                   {waitingRoomState?.spectators && waitingRoomState.spectators.length > 0 && (
-                    <div className="border-t pt-2">
-                      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1.5">
-                        <Star className="w-3 h-3" />
+                    <div className="border-t border-slate-800 pt-2">
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-300 mb-1.5">
+                        <Star className="w-3 h-3 text-amber-400" />
                         <span>Watching ({waitingRoomState.spectators.length})</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {waitingRoomState.spectators.map((spectator: any, index: number) => (
-                          <div key={index} className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-medium">
+                          <div key={index} className="bg-purple-900/60 text-purple-100 px-2 py-0.5 rounded text-xs font-medium border border-purple-500/60">
                             {spectator.username}
                           </div>
                         ))}
@@ -1446,21 +1469,21 @@ export default function GamePage() {
                   
                   {/* Waiting Status */}
                   {gameStatus === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10 ? (
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 text-center">
-                      <div className="text-3xl font-bold text-orange-600 animate-pulse">
+                    <div className="bg-slate-900 border border-orange-500/50 rounded-lg p-2 text-center">
+                      <div className="text-3xl font-bold text-orange-400 animate-pulse">
                         {gameState.countdown_time}s
                       </div>
-                      <span className="text-xs font-medium text-orange-700">Get Ready</span>
+                      <span className="text-xs font-medium text-orange-200">Get Ready</span>
                     </div>
                   ) : gameState?.countdown_time && gameState.countdown_time > 10 ? (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
-                      <div className="text-sm font-medium text-blue-700">
+                    <div className="bg-slate-900 border border-blue-500/50 rounded-lg p-2 text-center">
+                      <div className="text-sm font-medium text-blue-200">
                         Starting in {gameState.countdown_time}s
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center">
-                      <div className="text-xs font-medium text-yellow-700">
+                    <div className="bg-slate-900 border border-yellow-400/50 rounded-lg p-2 text-center">
+                      <div className="text-xs font-medium text-yellow-200">
                         Waiting for players...
                       </div>
                     </div>
@@ -1469,22 +1492,22 @@ export default function GamePage() {
                 
                 {/* Prize */}
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
-                    <Trophy className="w-4 h-4" />
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-200 mb-1">
+                    <Trophy className="w-4 h-4 text-emerald-400" />
                     <span>Derash</span>
                   </div>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
-                    <div className="text-xl font-bold text-emerald-600">
+                  <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-lg p-2">
+                    <div className="text-xl font-bold text-emerald-300">
                       {formatCurrency(netPrizePool)}
                     </div>
                   </div>
                 </div>
 
                 {/* Lucky Number Picker */}
-                <div className="bg-amber-50 rounded-lg p-2 border border-amber-200">
+                <div className="bg-slate-900 rounded-lg p-2 border border-slate-800">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs font-bold text-amber-900 flex items-center gap-1">
-                      <Star className="w-3 h-3 text-amber-500" />
+                    <div className="text-xs font-bold text-amber-200 flex items-center gap-1">
+                      <Star className="w-3 h-3 text-amber-400" />
                       <span>Lucky Number</span>
                     </div>
                     <button
@@ -1494,7 +1517,7 @@ export default function GamePage() {
                       Random
                     </button>
                   </div>
-                  <div className="bg-white rounded p-2 border border-amber-200">
+                  <div className="bg-slate-950 rounded p-2 border border-slate-800">
                     <div className="grid grid-cols-10 gap-0.5">
                       {Array.from({ length: 100 }, (_, i) => i + 1).map((n) => (
                         <button
@@ -1503,7 +1526,7 @@ export default function GamePage() {
                           className={`h-6 text-xs font-bold rounded border transition-all ${
                             luckyNumber === n
                               ? 'bg-emerald-500 text-white border-emerald-600'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                              : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
                           }`}
                         >
                           {n}
@@ -1551,45 +1574,45 @@ export default function GamePage() {
           </div>
         )}
 
-        {/* Spectator Mode - Compact redesign */}
+        {/* Spectator Mode - Compact dark redesign */}
         {viewIsSpectator && (
-          <div className="space-y-1.5 animate-in fade-in duration-500 pb-2 bg-gradient-to-b from-white to-slate-50 rounded-lg p-2">
+          <div className="space-y-2 animate-in fade-in duration-500 pb-2 bg-slate-950 rounded-2xl p-3 border border-slate-800">
             {/* Compact stats row */}
             <div className="grid grid-cols-5 gap-1.5 text-[10px]">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-blue-700 font-medium">Game ID</div>
-                <div className="font-bold text-xs text-blue-900 truncate">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-slate-300 font-medium">Game ID</div>
+                <div className="font-bold text-xs text-slate-50 truncate">
                   {gameId ? String(gameId).slice(0, 6).toUpperCase() : '—'}
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-blue-700 font-medium">Players</div>
-                <div className="font-bold text-xs text-blue-900">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-slate-300 font-medium">Players</div>
+                <div className="font-bold text-xs text-slate-50">
                   {(viewGameState?.players?.length || 0) + (viewGameState?.bots?.length || 0)}
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-blue-700 font-medium">Bet</div>
-                <div className="font-bold text-xs text-blue-900">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-slate-300 font-medium">Bet</div>
+                <div className="font-bold text-xs text-emerald-400">
                   {formatCurrency(stake)}
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-blue-700 font-medium">Derash</div>
-                <div className="font-bold text-xs text-blue-900">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-slate-300 font-medium">Derash</div>
+                <div className="font-bold text-xs text-emerald-300">
                   {formatCurrency(typeof viewGameState?.net_prize === 'number' ? viewGameState.net_prize : netPrizePool)}
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
-                <div className="text-blue-700 font-medium">Called</div>
-                <div className="font-bold text-xs text-blue-900">
+              <div className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-slate-300 font-medium">Called</div>
+                <div className="font-bold text-xs text-slate-50">
                   {viewGameState?.called_numbers?.length || 0}/75
                 </div>
               </div>
             </div>
 
             {/* Latest number card - at top */}
-            <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-indigo-700 rounded-lg p-2 text-white shadow-md">
+            <div className="bg-gradient-to-br from-indigo-700 via-indigo-800 to-indigo-900 rounded-lg p-2 text-white shadow-md border border-indigo-700/60">
               <div className="flex items-center justify-between mb-1">
                 <div className="text-sm font-semibold opacity-90">Latest</div>
                 <div className="flex gap-0.5">
@@ -1628,15 +1651,15 @@ export default function GamePage() {
 
               <div className="text-center">
                 <div className="text-sm font-semibold mb-0.5">Watching</div>
-                <p className="text-xs leading-tight opacity-90">
+                <p className="text-xs leading-tight opacity-90 text-indigo-100/90">
                   ይህ እይታ ብቻ ነው።
                 </p>
               </div>
             </div>
 
             {/* 75-number board - below latest number */}
-            <div className="bg-white border-2 border-slate-200 rounded-lg p-2 shadow-md flex-1">
-              <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-slate-300 pb-1">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 shadow-md flex-1">
+              <div className="grid grid-cols-5 gap-0 mb-1 border-b border-slate-700 pb-1">
                 {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
                   const colors = ['text-red-500', 'text-blue-500', 'text-emerald-500', 'text-amber-500', 'text-purple-500']
                   return (
@@ -1656,11 +1679,11 @@ export default function GamePage() {
                         key={`${ri}-${ci}`}
                         className={`
                           h-6 flex items-center justify-center text-xs font-bold
-                          border border-slate-300 rounded
+                          border rounded
                           ${
                             isCalled
-                              ? 'bg-blue-500 text-white'
-                              : 'bg-slate-100 text-slate-700'
+                              ? 'bg-blue-500 text-white border-blue-400/70'
+                              : 'bg-slate-800 text-slate-300 border-slate-700'
                           }
                         `}
                       >
@@ -1692,39 +1715,39 @@ export default function GamePage() {
 
         {/* Active Game - Only for players, not spectators */}
         {gameStatus === 'active' && !viewIsSpectator && (
-          <div className="min-h-screen bg-white flex flex-col p-4">
+          <div className="flex flex-col p-4 bg-slate-950">
             {/* Compact Header Stats */}
             <div className="grid grid-cols-4 gap-2 mb-4">
-              <div className="bg-slate-100 rounded-lg p-2 text-center">
-                <div className="text-slate-600 text-xs font-medium mb-1">Stake</div>
-                <div className="text-slate-900 font-bold text-sm">{formatCurrency(stake)}</div>
+              <div className="bg-slate-900 rounded-lg p-2 text-center border border-slate-800">
+                <div className="text-slate-400 text-xs font-medium mb-1">Stake</div>
+                <div className="text-slate-50 font-bold text-sm">{formatCurrency(stake)}</div>
               </div>
-              <div className="bg-slate-100 rounded-lg p-2 text-center">
-                <div className="text-slate-600 text-xs font-medium mb-1">Players</div>
-                <div className="text-slate-900 font-bold text-sm">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</div>
+              <div className="bg-slate-900 rounded-lg p-2 text-center border border-slate-800">
+                <div className="text-slate-400 text-xs font-medium mb-1">Players</div>
+                <div className="text-slate-50 font-bold text-sm">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</div>
               </div>
-              <div className="bg-slate-100 rounded-lg p-2 text-center">
-                <div className="text-slate-600 text-xs font-medium mb-1">Derash</div>
-                <div className="text-emerald-600 font-bold text-sm">{formatCurrency(netPrizePool)}</div>
+              <div className="bg-slate-900 rounded-lg p-2 text-center border border-slate-800">
+                <div className="text-slate-400 text-xs font-medium mb-1">Derash</div>
+                <div className="text-emerald-400 font-bold text-sm">{formatCurrency(netPrizePool)}</div>
               </div>
-              <div className="bg-slate-100 rounded-lg p-2 text-center">
-                <div className="text-slate-600 text-xs font-medium mb-1">Called</div>
-                <div className="text-slate-900 font-bold text-sm">{calledNumbers.length}/75</div>
+              <div className="bg-slate-900 rounded-lg p-2 text-center border border-slate-800">
+                <div className="text-slate-400 text-xs font-medium mb-1">Called</div>
+                <div className="text-slate-50 font-bold text-sm">{calledNumbers.length}/75</div>
               </div>
             </div>
 
             {/* Latest Number - Card Style */}
-            <div className="bg-white rounded-xl p-3 shadow-md mb-4 border border-slate-200">
+            <div className="bg-slate-900 rounded-xl p-3 shadow-md mb-4 border border-slate-800">
               <div className="flex items-center gap-3">
                 {latestNumber ? (
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-lg ring-4 ring-blue-200 animate-pulse flex-shrink-0">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-lg ring-4 ring-blue-500/40 animate-pulse flex-shrink-0">
                     {latestNumber.letter}{latestNumber.number}
                   </div>
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-medium flex-shrink-0">Waiting...</div>
+                  <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 text-xs font-medium flex-shrink-0">Waiting...</div>
                 )}
                 <div className="flex flex-col gap-1">
-                  <div className="text-slate-700 text-xs font-semibold">Recent:</div>
+                  <div className="text-slate-300 text-xs font-semibold">Recent:</div>
                   <div className="flex gap-1">
                     {[...calledNumbers].reverse().slice(0, 3).map((num) => {
                       const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
@@ -1735,7 +1758,7 @@ export default function GamePage() {
                         letter === 'G' ? 'bg-amber-500' :
                         'bg-purple-500'
                       return (
-                        <div key={num} className={`${colorClass} text-white px-2 py-1 rounded text-xs font-bold`}>
+                        <div key={num} className={`${colorClass} text-white px-2 py-1 rounded text-xs font-bold shadow-sm`}>
                           {letter}{num}
                         </div>
                       )
@@ -1746,7 +1769,7 @@ export default function GamePage() {
             </div>
 
             {/* Bingo Card - Premium Compact Design */}
-            <div className="bg-gradient-to-b from-slate-100 to-slate-200 rounded-2xl p-2 shadow-2xl flex flex-col max-w-sm mx-auto w-full">
+            <div className="bg-gradient-to-b from-slate-900 to-slate-950 rounded-2xl p-2 shadow-2xl flex flex-col max-w-sm mx-auto w-full border border-slate-800">
               {/* B-I-N-G-O Headers */}
               <div className="grid grid-cols-5 gap-1 mb-2">
                 {[
@@ -1756,7 +1779,7 @@ export default function GamePage() {
                   { letter: 'G', color: 'text-teal-400' },
                   { letter: 'O', color: 'text-cyan-400' }
                 ].map(({ letter, color }) => (
-                  <div key={letter} className={`${color} text-center font-black text-2xl py-2 drop-shadow-lg`} style={{textShadow: '2px 2px 0px rgba(0,0,0,0.08)'}}>
+                  <div key={letter} className={`${color} text-center font-black text-2xl py-2 drop-shadow-lg`} style={{textShadow: '2px 2px 0px rgba(0,0,0,0.35)'}}>
                     {letter}
                   </div>
                 ))}
@@ -1768,7 +1791,7 @@ export default function GamePage() {
                   // Loading state for bingo card
                   <div className="col-span-5 text-center py-8">
                     <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                    <p className="text-sm text-slate-600">Generating your bingo card...</p>
+                    <p className="text-sm text-slate-200">Generating your bingo card...</p>
                   </div>
                 ) : (
                   bingoCard.map((row, ri) =>
@@ -1787,12 +1810,12 @@ export default function GamePage() {
                           aspect-square flex items-center justify-center font-bold text-base
                           transition-all duration-150 rounded-lg
                           ${isMarkedVisual
-                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-lg cursor-default active:shadow-md active:translate-y-0.5'
+                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-lg cursor-default active:shadow-md active:translate-y-0.5 border border-indigo-400/80'
                             : isCalled
-                            ? 'bg-white text-slate-800 hover:bg-slate-50 cursor-pointer active:shadow-sm active:translate-y-0.5 shadow-md border-b-2 border-slate-300'
+                            ? 'bg-slate-900 text-slate-50 hover:bg-slate-800 cursor-pointer active:shadow-sm active:translate-y-0.5 shadow-md border border-slate-600'
                             : isFree
-                            ? 'bg-gradient-to-b from-indigo-400 to-indigo-500 text-white font-black text-xl shadow-md cursor-default border-b-2 border-indigo-600'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50'
+                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-700 text-white font-black text-xl shadow-md cursor-default border border-indigo-500'
+                            : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60 border border-slate-700'
                           }
                         `}
                       >
@@ -1841,26 +1864,26 @@ export default function GamePage() {
 
         {/* Win Dialog */}
         {showWinDialog && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+          <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-950 border border-slate-800 rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
               {/* Trophy Icon */}
               <div className="flex justify-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-100 to-amber-100 flex items-center justify-center">
-                  <Trophy className="w-14 h-14 text-amber-600" />
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-[0_12px_30px_rgba(0,0,0,0.7)] ring-4 ring-amber-300/60">
+                  <Trophy className="w-14 h-14 text-slate-900" />
                 </div>
               </div>
 
-              <h2 className="text-3xl font-bold mb-3 text-slate-900">Congratulations!</h2>
-              <p className="text-lg mb-6 text-slate-600">
+              <h2 className="text-3xl font-bold mb-3 text-slate-50">Congratulations!</h2>
+              <p className="text-lg mb-6 text-slate-300">
                 You've hit the BINGO!
               </p>
               
-              <div className="bg-green-50 border-2 border-green-300 rounded-xl p-6 mb-6">
-                <p className="text-sm text-slate-600 mb-2">You won:</p>
-                <p className="text-4xl font-bold text-green-600">{formatCurrency(winAmount)}</p>
+              <div className="bg-emerald-950/40 border-2 border-emerald-500/60 rounded-xl p-6 mb-6">
+                <p className="text-sm text-emerald-200 mb-2">You won:</p>
+                <p className="text-4xl font-bold text-emerald-300">{formatCurrency(winAmount)}</p>
               </div>
 
-              <p className="text-sm text-slate-500 mb-6">
+              <p className="text-sm text-slate-400 mb-6">
                 The winnings have been credited to your account.
               </p>
 
@@ -1876,40 +1899,40 @@ export default function GamePage() {
 
         {/* Game Ended Dialog - For Both Losers and Spectators */}
         {showLoseDialog && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl my-auto">
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 max-w-sm w-full shadow-2xl my-auto">
               {/* Header based on user type */}
               <div className="flex justify-center mb-3">
                 <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  isSpectator ? 'bg-emerald-100' : 'bg-red-100'
+                  isSpectator ? 'bg-emerald-900/60' : 'bg-red-900/70'
                 }`}>
                   {isSpectator ? (
-                    <Trophy className="w-10 h-10 text-emerald-600" />
+                    <Trophy className="w-10 h-10 text-emerald-300" />
                   ) : (
-                    <Frown className="w-10 h-10 text-red-500" />
+                    <Frown className="w-10 h-10 text-red-300" />
                   )}
                 </div>
               </div>
 
-              <h2 className="text-2xl font-bold text-center mb-2 text-slate-900">
+              <h2 className="text-2xl font-bold text-center mb-2 text-slate-50">
                 {isSpectator ? 'Game Ended' : 'You Lost This Round'}
               </h2>
               
               {!isSpectator && (
-                <p className="text-center text-slate-600 mb-2 text-sm">
-                  Stake lost: <span className="font-bold text-red-600">{formatCurrency(stake)}</span>
+                <p className="text-center text-slate-400 mb-2 text-sm">
+                  Stake lost: <span className="font-bold text-red-400">{formatCurrency(stake)}</span>
                 </p>
               )}
 
               {winnerName && (
                 <div className="text-center mb-3">
-                  <p className="text-slate-600 mb-1 text-xs">
+                  <p className="text-slate-400 mb-1 text-xs">
                     {isSpectator ? 'The winner is:' : 'Winner:'}
                   </p>
-                  <p className="text-lg font-bold text-amber-600">{winnerName}</p>
+                  <p className="text-lg font-bold text-amber-300">{winnerName}</p>
                   {winAmount > 0 && (
-                    <p className="text-slate-600 mt-1 text-xs">
-                      Derash: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
+                    <p className="text-slate-400 mt-1 text-xs">
+                      Derash: <span className="font-bold text-emerald-300">{formatCurrency(winAmount)}</span>
                     </p>
                   )}
                 </div>
@@ -1924,17 +1947,17 @@ export default function GamePage() {
                 // Case 1: We have the winner's actual card
                 if (displayCard && Array.isArray(displayCard) && displayCard.length === 5) {
                   return (
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
                       <div className="flex items-center gap-2 mb-1">
-                        <Trophy className="w-3.5 h-3.5 text-amber-600" />
-                        <span className="text-xs font-semibold text-slate-700">Winning Card</span>
+                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-xs font-semibold text-slate-100">Winning Card</span>
                         {displayPattern && (
-                          <span className="text-[10px] text-slate-500">({displayPattern})</span>
+                          <span className="text-[10px] text-slate-400">({displayPattern})</span>
                         )}
                       </div>
-                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-300 pb-0.5">
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-500/60 pb-0.5">
                         {['B','I','N','G','O'].map((h) => (
-                          <div key={h} className="text-center font-black text-[11px] text-slate-700">{h}</div>
+                          <div key={h} className="text-center font-black text-[11px] text-slate-100">{h}</div>
                         ))}
                       </div>
                       <div className="grid grid-cols-5 gap-0">
@@ -1945,14 +1968,14 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`win-${ri}-${ci}`}
-                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-200 ${
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${
                                   ci === 4 ? 'border-r-0' : ''
                                 } ${ri === 4 ? 'border-b-0' : ''} ${
                                   isWinCell
                                     ? 'bg-emerald-500 text-white'
                                     : isFree
-                                    ? 'bg-slate-100 text-slate-600'
-                                    : 'bg-white text-slate-700'
+                                    ? 'bg-slate-800 text-slate-200'
+                                    : 'bg-slate-900 text-slate-200'
                                 }`}
                               >
                                 {isFree ? '★' : num}
@@ -1968,15 +1991,15 @@ export default function GamePage() {
                 // Case 2: Only pattern available -> render mask-only grid (no numbers)
                 if (displayPattern) {
                   return (
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
+                    <div className="bg-slate-900 border border-slate-700 rounded-lg p-2 mb-5 max-w-[260px] mx-auto">
                       <div className="flex items-center gap-2 mb-1">
-                        <Trophy className="w-3.5 h-3.5 text-amber-600" />
-                        <span className="text-xs font-semibold text-slate-700">Winning Pattern</span>
-                        <span className="text-[10px] text-slate-500">({displayPattern})</span>
+                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="text-xs font-semibold text-slate-100">Winning Pattern</span>
+                        <span className="text-[10px] text-slate-400">({displayPattern})</span>
                       </div>
-                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-300 pb-0.5">
+                      <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-500/60 pb-0.5">
                         {['B','I','N','G','O'].map((h) => (
-                          <div key={h} className="text-center font-black text-[11px] text-slate-700">{h}</div>
+                          <div key={h} className="text-center font-black text-[11px] text-slate-100">{h}</div>
                         ))}
                       </div>
                       <div className="grid grid-cols-5 gap-0">
@@ -1987,14 +2010,14 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`mask-${ri}-${ci}`}
-                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-200 ${
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${
                                   ci === 4 ? 'border-r-0' : ''
                                 } ${ri === 4 ? 'border-b-0' : ''} ${
                                   isWinCell
                                     ? 'bg-emerald-500 text-white'
                                     : isCenter
-                                    ? 'bg-slate-100 text-slate-600'
-                                    : 'bg-white text-slate-400'
+                                    ? 'bg-slate-800 text-slate-200'
+                                    : 'bg-slate-900 text-slate-500'
                                 }`}
                               >
                                 {isCenter ? '★' : ''}
@@ -2009,7 +2032,7 @@ export default function GamePage() {
                 return null
               })()}
 
-              <p className="text-center text-xs text-slate-500 mb-3">
+              <p className="text-center text-xs text-slate-400 mb-3">
                 {isSpectator ? 'Redirecting in 3 seconds...' : 'Auto-redirecting in 8 seconds...'}
               </p>
 
@@ -2051,10 +2074,10 @@ export default function GamePage() {
 
         {/* Leave Dialog */}
         {showLeaveDialog && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-              <h2 className="text-2xl font-bold text-center mb-4 text-slate-900">Leave Game?</h2>
-              <p className="text-center text-slate-600 mb-8">
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+              <h2 className="text-2xl font-bold text-center mb-4 text-slate-50">Leave Game?</h2>
+              <p className="text-center text-slate-300 mb-8">
                 {isSpectator
                   ? 'Are you sure you want to leave?'
                   : gameState?.status === 'waiting' 
@@ -2083,14 +2106,14 @@ export default function GamePage() {
                     }
                     window.location.href = '/lobby'
                   }}
-                  className="w-full bg-amber-500 text-white py-3.5 rounded-xl font-bold hover:bg-amber-600 transition-colors"
+                  className="w-full bg-amber-500 text-white py-3.5 rounded-xl font-bold hover:bg-amber-600 transition-colors shadow-lg"
                 >
                   Leave Game
                 </button>
                 
                 <button 
                   onClick={() => setShowLeaveDialog(false)}
-                  className="w-full bg-slate-700 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-colors"
+                  className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
                 >
                   Stay
                 </button>
@@ -2101,17 +2124,17 @@ export default function GamePage() {
 
         {/* Connection Error Modal */}
         {showConnectionError && (
-          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
               <div className="flex justify-center mb-6">
-                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-                  <XCircle className="w-8 h-8 text-red-500" />
+                <div className="w-16 h-16 rounded-full bg-red-900/70 flex items-center justify-center">
+                  <XCircle className="w-8 h-8 text-red-300" />
                 </div>
               </div>
               
-              <h2 className="text-2xl font-bold text-center mb-4 text-slate-900">Connection Failed</h2>
+              <h2 className="text-2xl font-bold text-center mb-4 text-slate-50">Connection Failed</h2>
               
-              <p className="text-center text-slate-600 mb-6">
+              <p className="text-center text-slate-300 mb-6">
                 {connectionErrorMessage}
               </p>
               
@@ -2123,7 +2146,7 @@ export default function GamePage() {
                     // Retry connection
                     window.location.reload()
                   }}
-                  className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold hover:bg-blue-600 transition-colors"
+                  className="w-full bg-blue-500 text-white py-3.5 rounded-xl font-bold hover:bg-blue-600 transition-colors shadow-lg"
                 >
                   Try Again
                 </button>
@@ -2133,7 +2156,7 @@ export default function GamePage() {
                     setShowConnectionError(false)
                     router.push('/lobby')
                   }}
-                  className="w-full bg-slate-600 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
+                  className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
                 >
                   Back to Lobby
                 </button>

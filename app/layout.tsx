@@ -40,7 +40,7 @@ export default function RootLayout({
           </>
         )}
       </head>
-      <body className="antialiased">
+      <body className="antialiased bg-slate-950 text-slate-50">
         <Suspense fallback={null}>
           <DeepLinkRouter />
         </Suspense>

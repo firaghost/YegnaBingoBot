@@ -2,12 +2,16 @@
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Player } from '@lottiefiles/react-lottie-player'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
-import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo } from 'react-icons/lu'
+import DepositModal from '@/app/components/DepositModal'
+import WalletModal from '@/app/components/WalletModal'
+import WithdrawModal from '@/app/components/WithdrawModal'
+import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo, LuPlus, LuWallet, LuEye, LuChevronDown } from 'react-icons/lu'
 import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
 interface Room {
@@ -33,6 +37,10 @@ export default function LobbyPage() {
   const [showInsufficientBalance, setShowInsufficientBalance] = useState(false)
   const [insufficientBalanceMessage, setInsufficientBalanceMessage] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
+  const [showDepositModal, setShowDepositModal] = useState(false)
+  const [showWalletModal, setShowWalletModal] = useState(false)
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [walletHidden, setWalletHidden] = useState(true)
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
   const [commissionLoaded, setCommissionLoaded] = useState<boolean>(false)
   const [requireChannelJoin, setRequireChannelJoin] = useState<boolean>(true)
@@ -136,6 +144,19 @@ export default function LobbyPage() {
     return () => {
       roomsChannel.unsubscribe()
       clearInterval(intervalId)
+    }
+  }, [])
+
+  // Listen for global Deposit button click from BottomNav
+  useEffect(() => {
+    const handler = () => setShowDepositModal(true)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('open_deposit_modal', handler)
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('open_deposit_modal', handler)
+      }
     }
   }, [])
 
@@ -490,7 +511,7 @@ export default function LobbyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
+    <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Insufficient Balance Popup */}
       {showInsufficientBalance && (
         <div className="fixed top-4 left-4 right-4 z-50 animate-in slide-in-from-top">
@@ -622,42 +643,76 @@ export default function LobbyPage() {
       )}
 
       {/* Sticky Header */}
-      <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
+      <div className="sticky top-0 bg-slate-950 border-b border-slate-800 z-40 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <LuZap className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" />
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900">BingoX</h1>
+            <div className="w-9 h-9 flex items-center justify-center drop-shadow-[0_6px_14px_rgba(0,0,0,0.7)]">
+              <Player
+                src="/lottie/trophy.json"
+                autoplay
+                loop
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-50">BingoX</h1>
             {isUpdating && (
-              <div className="flex items-center gap-1 text-xs text-blue-600">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+              <div className="flex items-center gap-1 text-xs text-blue-400">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
                 <span className="hidden sm:inline">Live</span>
               </div>
             )}
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
-            {user && (
-              (() => {
-                const cashBalance = user.balance || 0
-                const bonusBalance = user.bonus_balance || 0
-                const lockedBonus = (user as any).bonus_win_balance || 0
-                return (
-                  <div className="text-[10px] sm:text-xs font-semibold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg leading-tight">
-                    <div>Wallet: {formatCurrency(cashBalance + bonusBalance + lockedBonus)}</div>
-                    <div className="text-[9px] sm:text-[10px] text-slate-600">
-                      Cash {formatCurrency(cashBalance)} • Bonus {formatCurrency(bonusBalance)} • Locked {formatCurrency(lockedBonus)}
+            {user && (() => {
+              const cashBalance = user.balance || 0
+              const bonusBalance = user.bonus_balance || 0
+              const lockedBonus = (user as any).bonus_win_balance || 0
+              const total = cashBalance + bonusBalance + lockedBonus
+              return (
+                <div className="flex items-center gap-2">
+                  {/* Wallet pill */}
+                  <div className="flex items-center rounded-full bg-slate-900 border border-slate-700 px-4 py-1.5 shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-slate-900 mr-2">
+                      <LuWallet className="w-4 h-4" />
+                    </div>
+                    <div className="flex flex-col mr-2">
+                      <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Wallet</span>
+                      <span className="text-xs font-semibold text-slate-50">
+                        {walletHidden ? '••••••' : formatCurrency(total)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-slate-400 text-[10px]">
+                      
+                      <button
+                        type="button"
+                        onClick={() => setWalletHidden((prev) => !prev)}
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-slate-800"
+                        aria-label={walletHidden ? 'Show balance' : 'Hide balance'}
+                      >
+                        <LuEye className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowWalletModal(true)}
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-slate-800"
+                        aria-label="Open wallet"
+                      >
+                        <LuChevronDown className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
-                )
-              })()
-            )}
-            <button
-              onClick={() => setShowRulesModal(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
-              title="View game rules"
-            >
-              <LuInfo className="w-4 h-4 text-slate-600" />
-              <span className="text-xs sm:text-sm font-medium text-slate-700 hidden sm:inline">Rules</span>
-            </button>
+                  {/* Deposit + button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowDepositModal(true)}
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-900 flex items-center justify-center shadow-lg"
+                    aria-label="Deposit"
+                  >
+                    <LuPlus className="w-5 h-5" />
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </div>
       </div>
@@ -683,26 +738,26 @@ export default function LobbyPage() {
           </div>
         )}
 
-        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4 sm:mb-6">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-50 mb-4 sm:mb-6">
           Game Rooms
         </h2>
 
         {/* Phone Number Required Banner */}
         {isAuthenticated && user && !user.phone && (
-          <div className="mb-4 sm:mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 sm:p-6">
+          <div className="mb-4 sm:mb-6 bg-slate-900 border border-amber-400/40 rounded-2xl p-4 sm:p-6">
             <div className="flex items-start gap-3 sm:gap-4">
               <div className="flex-shrink-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center">
-                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-400/20 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-base sm:text-lg font-semibold text-amber-900 mb-1">
+                <h3 className="text-base sm:text-lg font-semibold text-amber-100 mb-1">
                   📱 Phone Number Required
                 </h3>
-                <p className="text-sm text-amber-800 mb-4">
+                <p className="text-sm text-amber-100/80 mb-4">
                   To play games and withdraw your winnings, please share your phone number with us. This helps us secure your account and process transactions faster.
                 </p>
                 <button
@@ -713,7 +768,7 @@ export default function LobbyPage() {
                       alert('Please use Telegram to share your phone number')
                     }
                   }}
-                  className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold py-2 sm:py-2.5 px-4 rounded-lg transition-colors text-sm"
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-2 sm:py-2.5 px-4 rounded-lg transition-colors text-sm"
                 >
                   📱 Share Phone Number
                 </button>
@@ -723,14 +778,14 @@ export default function LobbyPage() {
         )}
 
         {!isAuthenticated && (
-          <div className="mb-4 sm:mb-6 bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 text-center">
-            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-              <LuLock className="w-6 h-6 sm:w-8 sm:h-8 text-blue-500" />
+          <div className="mb-4 sm:mb-6 bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-800 text-center">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+              <LuLock className="w-6 h-6 sm:w-8 h-8 text-blue-400" />
             </div>
-            <h3 className="text-base sm:text-lg font-semibold mb-2 text-slate-900">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 text-slate-50">
               Login Required
             </h3>
-            <p className="text-slate-600 mb-3 sm:mb-4 text-sm">
+            <p className="text-slate-300 mb-3 sm:mb-4 text-sm">
               Connect with Telegram to start playing
             </p>
             <Link href="/login">
@@ -750,7 +805,7 @@ export default function LobbyPage() {
             {rooms.map((room, index) => {
               const hasInsufficientBalance = user && (user.balance + (user.bonus_balance || 0)) < room.stake
               const roomColors = [
-                { bg: 'bg-emerald-500', icon: LuZap },
+                { bg: 'bg-emerald-500', icon: LuTrophy },
                 { bg: 'bg-blue-500', icon: LuUsers },
                 { bg: 'bg-purple-500', icon: LuTrophy },
                 { bg: 'bg-orange-500', icon: LuStar },
@@ -759,7 +814,7 @@ export default function LobbyPage() {
               const IconComponent = roomStyle.icon
               
               return (
-                <div key={room.id} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-300 ring-opacity-50' : ''}`}>
+                <div key={room.id} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-400 ring-opacity-60' : ''}`}>
                   {/* Background Gradient */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${
                     index % 4 === 0 ? 'from-emerald-500 to-emerald-600' :
@@ -769,17 +824,28 @@ export default function LobbyPage() {
                   } opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
 
                   {/* Card Content */}
-                  <div className="relative bg-white rounded-2xl p-5 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-slate-300">
+                  <div className="relative bg-slate-900 rounded-2xl p-5 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-slate-800 hover:border-slate-700">
                     {/* Top Section - Icon and Title */}
                     <div className="flex items-center gap-3 mb-5">
-                      <IconComponent className={`w-6 h-6 flex-shrink-0 ${
-                        index % 4 === 0 ? 'text-emerald-500' :
-                        index % 4 === 1 ? 'text-blue-500' :
-                        index % 4 === 2 ? 'text-indigo-500' :
-                        'text-orange-500'
-                      }`} />
+                      <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center drop-shadow-[0_4px_10px_rgba(0,0,0,0.6)]">
+                        {IconComponent === LuTrophy ? (
+                          <Player
+                            src="/lottie/trophy.json"
+                            autoplay
+                            loop
+                            style={{ width: '100%', height: '100%' }}
+                          />
+                        ) : (
+                          <IconComponent className={`w-6 h-6 flex-shrink-0 ${
+                            index % 4 === 0 ? 'text-emerald-500' :
+                            index % 4 === 1 ? 'text-blue-500' :
+                            index % 4 === 2 ? 'text-indigo-500' :
+                            'text-orange-500'
+                          }`} />
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-lg font-bold text-slate-900">{room.name}</h3>
+                        <h3 className="text-lg font-bold text-slate-50">{room.name}</h3>
                         <p className="text-xs text-slate-500 mt-0.5">{room.description}</p>
                       </div>
                     </div>
@@ -787,21 +853,21 @@ export default function LobbyPage() {
                   {/* Stats Grid - Simple Handcrafted */}
                   <div className="grid grid-cols-3 gap-3 mb-5">
                     <div className="text-center">
-                      <div className="text-xs text-slate-500 font-semibold mb-1">ENTRY</div>
-                      <div className="text-lg font-bold text-slate-900">{formatCurrency(room.stake)}</div>
+                      <div className="text-xs text-slate-400 font-semibold mb-1">ENTRY</div>
+                      <div className="text-lg font-bold text-slate-50">{formatCurrency(room.stake)}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs text-slate-500 font-semibold mb-1">DERASH</div>
-                      <div className="text-lg font-bold text-emerald-600">{formatCurrency(room.prize_pool)}</div>
+                      <div className="text-xs text-slate-400 font-semibold mb-1">DERASH</div>
+                      <div className="text-lg font-bold text-emerald-400">{formatCurrency(room.prize_pool)}</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs text-slate-500 font-semibold mb-1">WAITING</div>
-                      <div className="text-lg font-bold text-slate-900">{room.waiting_players}</div>
+                      <div className="text-xs text-slate-400 font-semibold mb-1">WAITING</div>
+                      <div className="text-lg font-bold text-slate-50">{room.waiting_players}</div>
                     </div>
                   </div>
 
                   {/* Players Status */}
-                  <div className="flex items-center gap-2 mb-5 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 mb-5 text-sm text-slate-300">
                     <LuUsers className="w-4 h-4" />
                     <span>
                       {room.waiting_players > 0 
@@ -867,16 +933,40 @@ export default function LobbyPage() {
         )}
 
         {rooms.length === 0 && !loading && (
-          <div className="text-center text-gray-500 py-12 sm:py-16">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <LuTrophy className="w-8 h-8 sm:w-10 sm:h-10 text-slate-400" />
+          <div className="text-center text-slate-400 py-12 sm:py-16">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
+              <LuTrophy className="w-8 h-8 sm:w-10 sm:h-10 text-slate-500" />
             </div>
-            <p className="text-lg sm:text-xl font-medium text-slate-600 mb-2">No rooms available</p>
-            <p className="text-sm text-slate-500">Please check back later for new games!</p>
+            <p className="text-lg sm:text-xl font-medium text-slate-100 mb-2">No rooms available</p>
+            <p className="text-sm text-slate-400">Please check back later for new games!</p>
           </div>
         )}
       </div>
-      
+
+      <WalletModal
+        open={showWalletModal && !showDepositModal && !showWithdrawModal}
+        onClose={() => setShowWalletModal(false)}
+        onOpenDeposit={() => setShowDepositModal(true)}
+        onOpenWithdraw={() => setShowWithdrawModal(true)}
+      />
+      <DepositModal 
+        open={showDepositModal} 
+        onClose={() => {
+          setShowDepositModal(false)
+          if (showWalletModal) setShowWalletModal(false)
+        }}
+        onBack={showWalletModal ? () => setShowDepositModal(false) : undefined}
+        isSheet={showWalletModal}
+      />
+      <WithdrawModal 
+        open={showWithdrawModal} 
+        onClose={() => {
+          setShowWithdrawModal(false)
+          if (showWalletModal) setShowWalletModal(false)
+        }}
+        onBack={showWalletModal ? () => setShowWithdrawModal(false) : undefined}
+        isSheet={showWalletModal}
+      />
       <BottomNav />
     </div>
   )

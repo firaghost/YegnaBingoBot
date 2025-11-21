@@ -132,11 +132,48 @@ export default function AdminUsersPage() {
           .eq('status', 'completed')
 
         if (!referralRes.error) {
-          const totalReferrals = (referralRes.data || []).length || (referralRes.count as number) || 0
-          const totalReferralEarnings = (referralRes.data || []).reduce(
+          const firstReferralPage = referralRes.data || []
+          const totalReferrals =
+            (referralRes.count as number | null) ?? (firstReferralPage.length || 0)
+
+          // Compute total referral earnings across all completed referrals, not just the first 1000 rows
+          let totalReferralEarnings = firstReferralPage.reduce(
             (sum: number, row: any) => sum + Number(row?.bonus_amount || 0),
             0
           )
+
+          if (referralRes.count && referralRes.count > firstReferralPage.length) {
+            const pageSize = 1000
+            let page = 1
+            let fetched = firstReferralPage.length
+            let hasMore = true
+
+            while (hasMore) {
+              const { data, error } = await supabase
+                .from('referrals')
+                .select('bonus_amount')
+                .eq('status', 'completed')
+                .range(page * pageSize, (page + 1) * pageSize - 1)
+
+              if (error) throw error
+              if (!data || data.length === 0) {
+                hasMore = false
+              } else {
+                totalReferralEarnings += data.reduce(
+                  (sum: number, row: any) => sum + Number(row?.bonus_amount || 0),
+                  0
+                )
+
+                fetched += data.length
+                page++
+
+                if (data.length < pageSize || (referralRes.count && fetched >= referralRes.count)) {
+                  hasMore = false
+                }
+              }
+            }
+          }
+
           setReferralStats({ total: totalReferrals, earnings: totalReferralEarnings })
         }
       } catch (refErr) {
