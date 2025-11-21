@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { formatCurrency } from '@/lib/utils'
@@ -36,6 +36,12 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
   const [error, setError] = useState('')
   const [minDeposit, setMinDeposit] = useState<number>(10)
   const [maxDeposit, setMaxDeposit] = useState<number>(100000)
+  const [paymentMethods, setPaymentMethods] = useState<{ id: string; name: 'Chapa' | 'Manual'; enabled: boolean; min_amount?: number | null; max_amount?: number | null }[]>([])
+  const [selectedMethod, setSelectedMethod] = useState<'Chapa' | 'Manual'>('Manual')
+  const [chapaModalOpen, setChapaModalOpen] = useState(false)
+  const [chapaCheckoutUrl, setChapaCheckoutUrl] = useState<string>('')
+  const [pendingTxId, setPendingTxId] = useState<string>('')
+  const txChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
 
   // Derive quick amounts from limits
   const quickAmounts = useMemo(() => {
@@ -75,6 +81,28 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
           setMinDeposit(10)
           setMaxDeposit(100000)
         }
+
+        // Load enabled payment methods and choose default
+        const { data: pmRows } = await supabase
+          .from('payment_methods')
+          .select('*')
+          .eq('enabled', true)
+          .order('name', { ascending: true })
+
+        if (pmRows && Array.isArray(pmRows)) {
+          const mapped = (pmRows as any[])
+            .filter((m) => m?.name === 'Chapa' || m?.name === 'Manual')
+            .map((m) => ({ id: m.id, name: m.name as 'Chapa' | 'Manual', enabled: !!m.enabled, min_amount: m.min_amount ?? null, max_amount: m.max_amount ?? null }))
+          setPaymentMethods(mapped)
+          const hasChapa = mapped.some((m) => m.name === 'Chapa' && m.enabled)
+          const hasManual = mapped.some((m) => m.name === 'Manual' && m.enabled)
+          setSelectedMethod(hasChapa ? 'Chapa' : (hasManual ? 'Manual' : 'Manual'))
+          // Respect method-specific limits when Chapa is enabled
+          const pmMin = mapped.find((m) => m.name === 'Chapa')?.min_amount
+          const pmMax = mapped.find((m) => m.name === 'Chapa')?.max_amount
+          setMinDeposit((prev) => typeof pmMin === 'number' ? Math.max(prev, pmMin) : prev)
+          setMaxDeposit((prev) => typeof pmMax === 'number' ? Math.min(prev, pmMax) : prev)
+        }
       } catch (e) {
         console.error('Error loading deposit data:', e)
         setError('Failed to load deposit options')
@@ -83,8 +111,6 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
 
     fetchData()
   }, [open])
-
-  if (!open) return null
 
   const isSuspended = (user as any)?.status === 'inactive'
 
@@ -98,6 +124,118 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
     setProofFile(file)
     setProofPreview(URL.createObjectURL(file))
     setError('')
+  }
+
+  // Centralized cleanup for Chapa modal/session
+  const closeChapaModal = () => {
+    try {
+      if (txChannelRef.current) {
+        // Fire-and-forget unsubscribe to avoid async handler type issues
+        txChannelRef.current.unsubscribe().catch(() => {})
+      }
+    } catch {}
+    txChannelRef.current = null
+    setChapaModalOpen(false)
+    setPendingTxId('')
+    setChapaCheckoutUrl('')
+    setLoading(false)
+  }
+
+  // Cleanup if page is hidden/unloaded (Telegram or browser)
+  useEffect(() => {
+    const localClose = () => {
+      try {
+        if (txChannelRef.current) {
+          txChannelRef.current.unsubscribe().catch(() => {})
+        }
+      } catch {}
+      txChannelRef.current = null
+      setChapaModalOpen(false)
+      setPendingTxId('')
+      setChapaCheckoutUrl('')
+      setLoading(false)
+    }
+
+    const handleVisibility = () => {
+      if (document.hidden && chapaModalOpen) localClose()
+    }
+    const handlePageHide = () => {
+      if (chapaModalOpen) localClose()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handlePageHide)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handlePageHide)
+    }
+  }, [chapaModalOpen])
+
+  // Initialize Chapa inline checkout
+  const handleChapaDeposit = async () => {
+    try {
+      setError('')
+      if (!user) { setError('Please login first'); return }
+      const amt = Number(amount)
+      if (!Number.isFinite(amt) || amt <= 0) { setError('Please enter a valid amount'); return }
+      if (amt < minDeposit) { setError(`Minimum deposit is ${minDeposit} ETB`); return }
+      if (amt > maxDeposit) { setError(`Maximum deposit is ${maxDeposit} ETB`); return }
+
+      setLoading(true)
+      // Create/init payment
+      const res = await fetch('/api/payments/chapa/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, amount: amt })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const details = typeof data?.details === 'string'
+          ? data.details
+          : (data?.details?.message || (data?.details ? JSON.stringify(data.details) : ''))
+        setLoading(false)
+        setError([data?.error, details].filter(Boolean).join(': '))
+        return
+      }
+
+      const { checkout_url, transaction_id } = data
+      if (!checkout_url || !transaction_id) throw new Error('Invalid payment session')
+      setChapaCheckoutUrl(checkout_url)
+      setPendingTxId(transaction_id)
+      setChapaModalOpen(true)
+
+      // Subscribe to transaction status updates
+      try {
+        if (txChannelRef.current) await txChannelRef.current.unsubscribe()
+      } catch {}
+      const channel = supabase
+        .channel(`tx:${transaction_id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `id=eq.${transaction_id}` }, (payload: any) => {
+          const newRow = payload?.new || {}
+          const status = String(newRow?.status || '').toLowerCase()
+          if (status === 'completed' || status === 'completed_test') {
+            setSuccess(true)
+            setLoading(false)
+            closeChapaModal()
+            // auto-close after short delay to match manual flow UX
+            setTimeout(() => {
+              setSuccess(false)
+              onClose()
+            }, 2500)
+          } else if (status === 'failed' || status === 'rejected') {
+            setError('Payment failed. Please try again or use manual deposit.')
+            setLoading(false)
+            closeChapaModal()
+          }
+        })
+        .subscribe()
+      txChannelRef.current = channel
+    } catch (e: any) {
+      setLoading(false)
+      closeChapaModal()
+      setError(e?.message || 'Failed to initialize Chapa')
+    }
   }
 
   const handleSubmit = async () => {
@@ -119,11 +257,11 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
         setError(`Maximum deposit is ${formatCurrency(maxDeposit)}`)
         return
       }
-      if (!selectedBank) {
+      if (selectedMethod === 'Manual' && !selectedBank) {
         setError('Please select a bank account')
         return
       }
-      if (!transactionRef.trim()) {
+      if (selectedMethod === 'Manual' && !transactionRef.trim()) {
         setError('Transaction reference/FTP number is required')
         return
       }
@@ -132,7 +270,7 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
       setError('')
 
       let proofUrl: string | null = null
-      if (proofFile) {
+      if (selectedMethod === 'Manual' && proofFile) {
         const fileExt = proofFile.name.split('.').pop()
         const fileName = `${user.id}-${Date.now()}.${fileExt}`
         const filePath = `deposit-proofs/${fileName}`
@@ -156,16 +294,16 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
         body: JSON.stringify({
           userId: user.id,
           amount: amt,
-          paymentMethod: selectedBank.bank_name,
-          bankId: selectedBank.id,
-          bankInfo: {
+          paymentMethod: selectedBank?.bank_name,
+          bankId: selectedBank?.id,
+          bankInfo: selectedBank ? {
             bank_name: selectedBank.bank_name,
             account_number: selectedBank.account_number,
             account_holder: selectedBank.account_holder,
             branch: selectedBank.branch,
             swift_code: selectedBank.swift_code
-          },
-          transactionRef: transactionRef.trim(),
+          } : null,
+          transactionRef: selectedMethod === 'Manual' ? transactionRef.trim() : null,
           proofUrl
         })
       })
@@ -188,6 +326,8 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
       setError(e?.message || 'Failed to submit deposit request')
     }
   }
+
+  if (!open) return null
 
   return (
     <div 
@@ -249,6 +389,31 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
                 </div>
               )}
 
+              {/* Payment method selector (shown if both are enabled) */}
+              {paymentMethods.filter((m) => m.enabled).length > 1 && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-2">Payment Method</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['Chapa', 'Manual'] as const).map((m) => (
+                      paymentMethods.some((pm) => pm.name === m && pm.enabled) && (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setSelectedMethod(m)}
+                          className={`py-2 px-2 rounded-lg text-xs font-semibold transition-colors ${
+                            selectedMethod === m
+                              ? 'bg-amber-500 text-slate-900'
+                              : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      )
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Amount */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-2">Amount</label>
@@ -283,86 +448,102 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
                 </div>
               </div>
 
-              {/* Bank selection */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">Bank Account</label>
-                {banks.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-4 text-slate-500 text-xs">
-                    <LuCoins className="w-5 h-5 mb-1" />
-                    <span>No banks configured</span>
-                  </div>
-                ) : (
-                  <select
-                    value={selectedBank?.id || ''}
-                    onChange={(e) => {
-                      const bank = banks.find(b => b.id === e.target.value) || null
-                      setSelectedBank(bank)
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-50 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+              {selectedMethod === 'Chapa' ? (
+                <div className="space-y-2">
+                  <p className="text-xs text-slate-400">Pay instantly using Chapa. A secure checkout will open.</p>
+                  <button
+                    type="button"
+                    onClick={handleChapaDeposit}
+                    disabled={isSuspended || !amount || Number(amount) < minDeposit || Number(amount) > maxDeposit || loading}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-2.5 rounded-full text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <option value="" className="bg-slate-900">Choose bank...</option>
-                    {banks.map((bank) => (
-                      <option key={bank.id} value={bank.id} className="bg-slate-900">
-                        {bank.bank_name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                    {isSuspended ? 'Account suspended' : (loading ? 'Starting payment…' : 'Pay with Chapa')}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Bank selection */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Bank Account</label>
+                    {banks.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-4 text-slate-500 text-xs">
+                        <LuCoins className="w-5 h-5 mb-1" />
+                        <span>No banks configured</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={selectedBank?.id || ''}
+                        onChange={(e) => {
+                          const bank = banks.find(b => b.id === e.target.value) || null
+                          setSelectedBank(bank)
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-50 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                      >
+                        <option value="" className="bg-slate-900">Choose bank...</option>
+                        {banks.map((bank) => (
+                          <option key={bank.id} value={bank.id} className="bg-slate-900">
+                            {bank.bank_name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
 
-                {selectedBank && (
-                  <div className="mt-2 p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 space-y-1">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-slate-400">Account</span>
-                      <span className="font-mono">{selectedBank.account_number}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-slate-400">Name</span>
-                      <span>{selectedBank.account_holder}</span>
-                    </div>
-                    {selectedBank.branch && (
-                      <div className="flex justify-between gap-2">
-                        <span className="text-slate-400">Branch</span>
-                        <span>{selectedBank.branch}</span>
+                    {selectedBank && (
+                      <div className="mt-2 p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-300 space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-slate-400">Account</span>
+                          <span className="font-mono">{selectedBank.account_number}</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-slate-400">Name</span>
+                          <span>{selectedBank.account_holder}</span>
+                        </div>
+                        {selectedBank.branch && (
+                          <div className="flex justify-between gap-2">
+                            <span className="text-slate-400">Branch</span>
+                            <span>{selectedBank.branch}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Transaction reference */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">
-                  Transaction Reference <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={transactionRef}
-                  onChange={(e) => setTransactionRef(e.target.value)}
-                  placeholder="FTP number or bank reference"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
-                />
-                <p className="mt-1 text-[11px] text-slate-500">
-                  This is shown on your bank transfer confirmation.
-                </p>
-              </div>
+                  {/* Transaction reference */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">
+                      Transaction Reference <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={transactionRef}
+                      onChange={(e) => setTransactionRef(e.target.value)}
+                      placeholder="FTP number or bank reference"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      This is shown on your bank transfer confirmation.
+                    </p>
+                  </div>
 
-              {/* Proof upload (optional) */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">Upload Screenshot (optional)</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-50 hover:file:bg-slate-700"
-                />
-                {proofPreview && (
-                  <img
-                    src={proofPreview}
-                    alt="Proof preview"
-                    className="mt-2 h-24 w-full object-cover rounded-lg border border-slate-800"
-                  />
-                )}
-              </div>
+                  {/* Proof upload (optional) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">Upload Screenshot (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="block w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-50 hover:file:bg-slate-700"
+                    />
+                    {proofPreview && (
+                      <img
+                        src={proofPreview}
+                        alt="Proof preview"
+                        className="mt-2 h-24 w-full object-cover rounded-lg border border-slate-800"
+                      />
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -370,24 +551,69 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
         {/* Footer */}
         {!success && (
           <div className="px-4 py-3 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={loading || isSuspended}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-2.5 rounded-full text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                  <span>Submitting...</span>
-                </>
-              ) : (
-                <span>{isSuspended ? 'Account suspended' : 'Submit Deposit Request'}</span>
-              )}
-            </button>
+            {selectedMethod === 'Chapa' ? (
+              <button
+                type="button"
+                onClick={handleChapaDeposit}
+                disabled={loading || isSuspended || !amount || Number(amount) < minDeposit || Number(amount) > maxDeposit}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-2.5 rounded-full text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                    <span>Starting payment…</span>
+                  </>
+                ) : (
+                  <span>{isSuspended ? 'Account suspended' : 'Pay with Chapa'}</span>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading || isSuspended}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-semibold py-2.5 rounded-full text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <span>{isSuspended ? 'Account suspended' : 'Submit Deposit Request'}</span>
+                )}
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Chapa Inline Modal */}
+      {chapaModalOpen && chapaCheckoutUrl && (
+        <div className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-0 md:p-4" role="dialog" aria-modal="true" onClick={closeChapaModal}>
+          <div className="relative bg-white w-full h-[100dvh] md:h-[92vh] md:max-w-2xl md:rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            {/* Floating close button */}
+            <button
+              onClick={closeChapaModal}
+              className="absolute top-3 left-3 z-10 inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/80 hover:bg-white text-slate-700 shadow border border-slate-200"
+              aria-label="Close"
+            >
+              <LuX className="w-5 h-5" />
+            </button>
+            {/* Full-bleed iframe */}
+            <iframe src={chapaCheckoutUrl} title="Chapa Checkout" className="w-full h-full border-0" />
+            {/* Floating external link */}
+            <a
+              href={chapaCheckoutUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute bottom-3 right-3 text-xs px-3 py-1.5 rounded-full bg-white/90 text-emerald-700 hover:underline shadow border border-slate-200"
+            >
+              Open in new window
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

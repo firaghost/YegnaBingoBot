@@ -102,8 +102,10 @@ export function useAuth() {
         .maybeSingle()
 
       if (!existingUser) {
-        // Get registration bonus from admin config
-        const registrationBonus = (await getConfig('welcome_bonus')) || 3.00
+        // Get registration bonus from admin config (0 if disabled or missing)
+        const rawBonus = await getConfig('welcome_bonus')
+        const parsedBonus = Number(rawBonus)
+        const registrationBonus = Number.isFinite(parsedBonus) ? parsedBonus : 0
 
         // Create new user
         const { data: newUser, error } = await supabase

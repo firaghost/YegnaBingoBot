@@ -11,6 +11,16 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
+  html, body {
+    height: 100%;
+  }
+  :root {
+    /* Safe area insets for full-screen (Telegram, notches, etc.) */
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+  }
 }
 
 /* Extracted Animations from Original Site */
@@ -101,3 +111,13 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
 }
+
+/* Safe-area helpers */
+.safe-area {
+  padding-top: var(--sat);
+  padding-bottom: var(--sab);
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+}
+.safe-top { padding-top: var(--sat); }
+.safe-bottom { padding-bottom: var(--sab); }

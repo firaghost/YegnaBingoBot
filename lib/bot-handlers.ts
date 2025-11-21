@@ -261,7 +261,7 @@ export function setupBotHandlers(bot: Telegraf) {
       // Get registration and referral bonuses from admin config
       const registrationBonusRaw = await getConfig('welcome_bonus')
       const registrationBonusValue = Number(registrationBonusRaw)
-      const registrationBonus = Number.isFinite(registrationBonusValue) ? registrationBonusValue : 3.00
+      const registrationBonus = Number.isFinite(registrationBonusValue) ? registrationBonusValue : 0
 
       let referralBonusAmount: number | null = null
       if (referralCode) {
