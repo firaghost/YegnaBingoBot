@@ -445,7 +445,7 @@ app.post('/api/game/join', async (req, res) => {
       console.warn('Cleanup warning:', cleanupError)
     }
 
-    // First: if there is a running game in this room, spectate it
+    // First: if there is a running game in this room, decide between rejoin vs spectate
     const { data: runningGame } = await supabase
       .from('games')
       .select('*')
@@ -456,6 +456,19 @@ app.post('/api/game/join', async (req, res) => {
       .maybeSingle()
 
     if (runningGame) {
+      const isPlayerInRunningGame = Array.isArray(runningGame.players) && runningGame.players.includes(userId)
+
+      if (isPlayerInRunningGame) {
+        console.log(`🔁 User ${userId} rejoining active game ${runningGame.id} as player`)
+        return res.json({
+          success: true,
+          action: 'already_joined_active',
+          message: 'Rejoined active game as player.',
+          gameId: runningGame.id,
+          game: runningGame
+        })
+      }
+
       console.log(`🏃 Game is running, user ${userId} sent to spectate live game: ${runningGame.id}`)
       return res.json({
         success: true,

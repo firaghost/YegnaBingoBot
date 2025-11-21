@@ -515,15 +515,23 @@ export default function GamePage() {
         if (response.ok && result.gameId) {
           console.log('✅ Game joined successfully:', result.gameId)
           setGameId(result.gameId)
-          
-          // Check if user should spectate
-          if (result.action === 'spectate') {
+
+          const players = (result.game && Array.isArray(result.game.players)) ? result.game.players as string[] : []
+          const isPlayerInGame = players.includes(user.id)
+
+          // If server says spectate but DB game record still lists this user as a player,
+          // treat this as a rejoin and attach as a player instead of spectator.
+          if (result.action === 'spectate' && isPlayerInGame) {
+            console.log('⚠️ API returned spectate but user is in players; rejoining as player')
+            await joinGame(result.gameId, user.id)
+            console.log('🔌 Rejoin as player completed')
+          } else if (result.action === 'spectate') {
             console.log('👁️ Game already active, joining as spectator...')
             await spectateGame(result.gameId, user.username || user.id)
             console.log('👁️ Spectator join completed')
           } else {
-            // Join the game via socket as player
-            console.log('🔌 Joining game via socket...')
+            // Normal join / already_joined_active -> join as player
+            console.log('🔌 Joining game via socket... (action=', result.action, ')')
             await joinGame(result.gameId, user.id)
             console.log('🔌 Socket join completed')
           }
@@ -969,6 +977,57 @@ export default function GamePage() {
       setClaimingBingo(false)
     }
   }, [gameState?.status])
+
+  // When the game finishes, show win/lose dialogs for all players
+  useEffect(() => {
+    if (!gameState) return
+    if (gameState.status !== 'finished') return
+
+    // If there is no winner_id (no-winner game), don't show win/lose dialogs here
+    if (!gameState.winner_id) return
+    if (!user) return
+
+    try {
+      const winnerStr = String(gameState.winner_id)
+      const uid = String(user.id)
+      const uname = user.username ? String(user.username) : ''
+      const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
+      const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
+
+      const gross = gameState.prize_pool
+      const net = typeof (gameState as any).net_prize === 'number'
+        ? (gameState as any).net_prize as number
+        : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+
+      if (isSelfWinner) {
+        setDidUserWin(true)
+        setWinAmount(net)
+        setShowLoseDialog(false)
+        setShowWinDialog(true)
+        if (!bingoAudioPlayedRef.current) {
+          playBingoAudio()
+          bingoAudioPlayedRef.current = true
+        }
+      } else {
+        setDidUserWin(false)
+        setShowWinDialog(false)
+        setShowLoseDialog(true)
+
+        // Best-effort: load winner username for display if not already set
+        if (!winnerName && typeof gameState.winner_id === 'string') {
+          supabase
+            .from('users')
+            .select('username')
+            .eq('id', gameState.winner_id)
+            .single()
+            .then(({ data }: any) => {
+              if (data?.username) setWinnerName(data.username)
+            })
+            .catch(() => {})
+        }
+      }
+    } catch (e) {}
+  }, [gameState, user, commissionRate, winnerName])
 
   // No auto-redirect - removed to let user choose
 
