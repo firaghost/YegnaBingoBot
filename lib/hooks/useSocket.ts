@@ -304,6 +304,13 @@ export function useSocket() {
         commission_amount: data.commission_amount ?? prev.commission_amount,
         commission_rate: data.commission_rate ?? prev.commission_rate
       } : null)
+
+      // When the game is finished, ensure we leave waiting / spectator modes
+      // so the UI can show the proper win/lose dialogs instead of staying
+      // stuck in spectator view.
+      setIsInWaitingRoom(false)
+      setIsSpectator(false)
+      setWaitingRoomState(null)
     })
 
     socket.on('no_winner', (data) => {
