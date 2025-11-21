@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-import { getAllConfig, setConfig } from '@/lib/admin-config'
+import { getAllConfig, getConfig, setConfig } from '@/lib/admin-config'
 import { useLocalStorage } from '@/lib/hooks/usePageState'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import { Settings, DollarSign, Gift, Bell, Users, Lock, AlertCircle, CheckCircle, XCircle } from 'lucide-react'
@@ -51,6 +51,10 @@ export default function AdminSettings() {
     ipWithdrawWindowSeconds: 60 as number | string,
   })
 
+  const [rulesText, setRulesText] = useState('')
+  const [rulesLoading, setRulesLoading] = useState(false)
+  const [rulesSaving, setRulesSaving] = useState(false)
+
   const [originalSettings, setOriginalSettings] = useState(settings)
   const [isSaving, setIsSaving] = useState(false)
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
@@ -75,6 +79,50 @@ export default function AdminSettings() {
 
   useEffect(() => {
     fetchSettings()
+  }, [])
+
+  // Load game_rules config for rules editor
+  useEffect(() => {
+    const loadGameRules = async () => {
+      try {
+        setRulesLoading(true)
+        const value = await getConfig('game_rules')
+
+        const defaultRules = [
+          { title: 'Match 5 Numbers', body: 'Get 5 numbers in a row horizontally, vertically, or diagonally to win the game.' },
+          { title: 'Free Center Cell', body: 'The center cell is always FREE – it counts as filled for every pattern.' },
+          { title: 'First to BINGO Wins', body: 'The first player to correctly claim BINGO wins the full prize for this room.' },
+          { title: 'Fair & Secure Randomness', body: 'All numbers are generated using cryptographically secure randomness for fair play.' },
+          { title: 'Prize Pool & Commission', body: 'The winner receives the net prize pool after the platform commission is deducted.' },
+        ]
+
+        if (!value) {
+          setRulesText(JSON.stringify(defaultRules, null, 2))
+          return
+        }
+
+        let raw: any = value
+        // getConfig already parses JSON if possible, but handle both shapes
+        const items = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.items)
+            ? raw.items
+            : null
+
+        if (!items) {
+          setRulesText(JSON.stringify(defaultRules, null, 2))
+          return
+        }
+
+        setRulesText(JSON.stringify(items, null, 2))
+      } catch (e) {
+        console.warn('Failed to load game_rules config, using defaults')
+      } finally {
+        setRulesLoading(false)
+      }
+    }
+
+    loadGameRules()
   }, [])
 
   // Load admins when opening Security tab
@@ -425,6 +473,55 @@ export default function AdminSettings() {
     </div>
   )
 
+  const handleSaveRules = async () => {
+    if (!canManage) {
+      showNotification('error', 'You do not have permission to manage settings')
+      return
+    }
+    try {
+      setRulesSaving(true)
+      let parsed: any
+      try {
+        parsed = JSON.parse(rulesText || '[]')
+      } catch (e: any) {
+        showNotification('error', 'Rules JSON is invalid. Please fix and try again.')
+        return
+      }
+
+      const items = Array.isArray(parsed) ? parsed : parsed?.items
+      if (!Array.isArray(items) || items.length === 0) {
+        showNotification('error', 'Rules must be a non-empty array or an object with an "items" array.')
+        return
+      }
+
+      const cleaned = items
+        .map((r: any) => ({
+          id: r.id ?? undefined,
+          title: String(r.title || '').trim(),
+          body: String(r.body || '').trim(),
+        }))
+        .filter((r: any) => r.title && r.body)
+
+      if (cleaned.length === 0) {
+        showNotification('error', 'Each rule must have both a title and body.')
+        return
+      }
+
+      const ok = await setConfig('game_rules', { items: cleaned }, admin?.id)
+      if (!ok) {
+        showNotification('error', 'Failed to save game rules')
+        return
+      }
+
+      setRulesText(JSON.stringify(cleaned, null, 2))
+      showNotification('success', 'Game rules saved')
+    } catch (e: any) {
+      showNotification('error', e?.message || 'Failed to save game rules')
+    } finally {
+      setRulesSaving(false)
+    }
+  }
+
   if (authLoading) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Loading…</div>
   if (!isAuthenticated || !canView) {
     return (
@@ -569,6 +666,41 @@ export default function AdminSettings() {
                 type="password"
                 description="Your Telegram bot token (keep secret)"
               />
+              {/* Game Rules Editor */}
+              <div className="mt-8 pt-6 border-t border-slate-700 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Game Rules (Lobby Modal)</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Edit the rules shown to players when they tap the <span className="font-semibold">Rules</span> button in the lobby.
+                      Value must be JSON: an array of objects with <code className="font-mono">title</code> and <code className="font-mono">body</code>.
+                    </p>
+                  </div>
+                  {rulesLoading && (
+                    <span className="text-[11px] text-slate-400">Loading…</span>
+                  )}
+                </div>
+                <textarea
+                  value={rulesText}
+                  onChange={(e) => setRulesText(e.target.value)}
+                  className="w-full h-48 bg-slate-900/40 border border-slate-700 rounded-lg p-3 text-xs text-slate-100 font-mono resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500/60"
+                  spellCheck={false}
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleSaveRules}
+                    disabled={rulesSaving || rulesLoading || !canManage}
+                    className={`px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 ${
+                      rulesSaving || rulesLoading || !canManage
+                        ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
+                  >
+                    {rulesSaving ? 'Saving Rules…' : 'Save Rules'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

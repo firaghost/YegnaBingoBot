@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
@@ -15,6 +15,12 @@ type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
 export default function GamePage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isDevEnv = process.env.NODE_ENV !== 'production'
+  const devModeParam = isDevEnv ? (searchParams.get('devMode') || null) : null
+  const devSpectator = devModeParam === 'spectator'
+  const devActive = devModeParam === 'active'
+  const devWaiting = devModeParam === 'waiting'
   const roomId = params?.roomId as string
   const { user, isAuthenticated, loading: authLoading } = useAuth()
   const { 
@@ -317,6 +323,16 @@ export default function GamePage() {
 
   // Direct room joining logic - join the specific room that was clicked
   useEffect(() => {
+    // In dev preview modes, don't auto-join real games
+    if (isDevEnv && (devSpectator || devActive || devWaiting)) {
+      // Best-effort: load room data for stake display, then stop loading
+      if (!roomData) {
+        fetchRoomData().finally(() => setLoading(false))
+      } else {
+        setLoading(false)
+      }
+      return
+    }
     if (!isAuthenticated || !user || !connected || !roomId) return
     if (gameId || gameState) return // Already in a game
 
@@ -779,7 +795,7 @@ export default function GamePage() {
 
   // Generate bingo card when game becomes active (fallback)
   useEffect(() => {
-    if (gameState?.status === 'active' && bingoCard.length === 0) {
+    if ((gameState?.status === 'active' || (isDevEnv && devActive)) && bingoCard.length === 0) {
       console.log('🎯 Game is active but no bingo card - generating now')
       
       // Generate bingo card
@@ -794,7 +810,7 @@ export default function GamePage() {
       
       console.log('✅ Fallback bingo card generated')
     }
-  }, [gameState?.status, bingoCard.length])
+  }, [gameState?.status, bingoCard.length, isDevEnv, devActive])
 
   // Poll for game finish state (fallback for losers/spectators if realtime is slow)
   useEffect(() => {
@@ -1284,7 +1300,14 @@ export default function GamePage() {
 
   // If gameState hasn't loaded yet, show a brief loading state
   // BUT allow waiting room to be shown even without gameState
-  if (!gameState && !isInWaitingRoom && !isSpectator && !gameId) {
+  // and skip this guard entirely in dev preview modes
+  if (
+    !gameState &&
+    !isInWaitingRoom &&
+    !isSpectator &&
+    !gameId &&
+    !(isDevEnv && (devSpectator || devActive || devWaiting))
+  ) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
@@ -1295,12 +1318,31 @@ export default function GamePage() {
     )
   }
 
-  const gameStatus = gameState?.status || 'waiting'
-  const calledNumbers = gameState?.called_numbers || []
-  const latestNumber = gameState?.latest_number
-  const humanPlayers = gameState?.players?.length || 0
-  const botPlayers = gameState?.bots?.length || 0
+  // Dev preview mock game state (only used when devMode is set and no live gameState yet)
+  const devMockGameState: any = (isDevEnv && (devSpectator || devActive) && !gameState)
+    ? {
+        status: 'active',
+        players: ['dev-player-1', 'dev-player-2'],
+        bots: [],
+        called_numbers: Array.from({ length: 25 }, (_, i) => i + 1),
+        latest_number: { letter: 'O', number: 64 },
+        prize_pool: 170,
+        net_prize: 136,
+      }
+    : null
+
+  const viewGameState = (devMockGameState || gameState) as typeof gameState
+  const viewIsSpectator = devSpectator || isSpectator
+
+  const gameStatus = (viewGameState?.status as GameStatus) || 'waiting'
+  const calledNumbers = viewGameState?.called_numbers || []
+  const latestNumber = viewGameState?.latest_number
+  const humanPlayers = viewGameState?.players?.length || 0
+  const botPlayers = viewGameState?.bots?.length || 0
   const players = humanPlayers
+
+  // Financial summary for header
+  const totalBalance = user ? user.balance + (user.bonus_balance || 0) : 0
   
   // Debug logging
   console.log('🎮 Game render state:', {
@@ -1370,7 +1412,14 @@ export default function GamePage() {
           >
             ×
           </button>
-          <h1 className="text-xl font-bold text-slate-900">{getRoomName()}</h1>
+          <div className="flex flex-col items-center justify-center">
+            <h1 className="text-base font-semibold text-slate-900 leading-tight">{getRoomName()}</h1>
+            {user && (
+              <div className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                Balance {formatCurrency(totalBalance)}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => {
               setSoundEnabled((s) => {
@@ -1423,8 +1472,8 @@ export default function GamePage() {
         )}
 
         {/* Enhanced Waiting Room System - Not for spectators */}
-        {!isSpectator && (gameStatus === 'waiting' || gameStatus === 'waiting_for_players' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
-          <div className="space-y-4 animate-in fade-in duration-500">
+        {!viewIsSpectator && (gameStatus === 'waiting' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
+          <div className="space-y-3 animate-in fade-in duration-500">
             
             {/* Invite Toast */}
             {inviteToastVisible && (
@@ -1435,49 +1484,60 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* Game Level Header */}
-            <div className={`bg-gradient-to-r ${getGameLevelColor(roomData?.game_level || roomData?.default_level || 'medium')} rounded-xl p-4 text-white shadow-lg transition-all duration-500`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                    <Trophy className="w-6 h-6 text-white" />
-                  </div>
+            {/* Game Level Header - Compact */}
+            <div className={`bg-gradient-to-r ${getGameLevelColor(roomData?.game_level || roomData?.default_level || 'medium')} rounded-lg p-3 text-white shadow-md transition-all duration-500`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5" />
                   <div>
-                    <h2 className="text-xl font-bold">
-                      {roomData?.name || 'Game Room'}
-                    </h2>
-                    <p className="text-white/80 text-sm">Stake: {roomData?.stake} ETB • Max: {roomData?.max_players} players</p>
+                    <h2 className="font-bold text-base">{roomData?.name || 'Game Room'}</h2>
+                    <p className="text-white/80 text-xs">Stake: {roomData?.stake} ETB • Max: {roomData?.max_players} players</p>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-2xl font-bold">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || 1}</div>
-                  <div className="text-white/80 text-sm">/ {roomData?.max_players || 8}</div>
+                  <div className="text-white/80 text-xs">/ {roomData?.max_players || 8}</div>
                 </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-white h-full rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${Math.min(100, ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) / (roomData?.max_players || 8) * 100)}%` }}
+                />
+              </div>
+              
+              {/* Status Line */}
+              <div className="mt-1.5 flex items-center justify-between text-xs">
+                <span className="text-white/80">
+                  {((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) === (roomData?.max_players || 8) 
+                    ? 'Room Full' 
+                    : ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) >= (roomData?.max_players || 8) * 0.75
+                    ? 'Almost Full'
+                    : ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) >= (roomData?.max_players || 8) * 0.5
+                    ? 'Filling Up'
+                    : 'Waiting'}
+                </span>
+                {gameState?.countdown_time && gameState.countdown_time <= 10 && (
+                  <span className="font-bold animate-pulse">Starts in {gameState.countdown_time}s</span>
+                )}
               </div>
             </div>
 
             {/* Main Content */}
-            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`p-2 rounded-lg ${getGameLevelTheme(roomData?.game_level || roomData?.default_level || 'medium').bg}`}>
-                  <Users className={`w-5 h-5 ${getGameLevelTheme(roomData?.game_level || roomData?.default_level || 'medium').text}`} />
-                </div>
-                <h3 className="text-base font-bold text-slate-900">Players & Status</h3>
-              </div>
-              
-              <div className="space-y-4">
-                {/* Compact Players List */}
+            <div className="bg-white rounded-lg p-3 border border-slate-200 shadow-sm">
+              <div className="space-y-3">
+                {/* Players List with Avatars */}
                 <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                      <Users className="w-4 h-4" />
-                      <span>Players ({(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
-                    </div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700 mb-2">
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    <span>Players ({(gameState?.players?.length || 0) + (gameState?.bots?.length || 0) || waitingRoomState?.currentPlayers || 1}/{roomData?.max_players || 8})</span>
                   </div>
 
-                  {/* Simplified Players Display */}
+                  {/* Players Display with Avatars */}
                   {(gameState?.players && gameState.players.length > 0) ? (
-                    <div className="flex flex-wrap gap-2 mb-3">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
                       {(() => {
                         // Create a combined list of all participants (humans + bots)
                         type P = { username: string; isCurrentUser: boolean; playerNumber: number; isBot?: boolean }
@@ -1508,39 +1568,34 @@ export default function GamePage() {
                         return allPlayers.map((player, index) => (
                           <div 
                             key={index} 
-                            className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${
+                            className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
                               player.isCurrentUser 
-                                ? 'bg-green-100 text-green-800 border-2 border-green-300' 
-                                : 'bg-blue-100 text-blue-800'
+                                ? 'bg-green-100 text-green-800 border border-green-300' 
+                                : 'bg-blue-50 text-slate-700 border border-blue-200'
                             }`}
                           >
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-xs ${
-                              player.isCurrentUser ? 'bg-green-600' : 'bg-blue-600'
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${
+                              player.isCurrentUser ? 'bg-green-600' : 'bg-indigo-600'
                             }`}>
                               {getRandomEmoji(player.username)}
                             </div>
-                            {player.username}{player.isCurrentUser ? ' (You)' : ''}
+                            <span>{player.username}</span>
                           </div>
                         ))
                       })()}
                     </div>
-                  ) : (
-                    <div className="text-center py-4 text-slate-500">
-                      <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                      <p className="text-sm">Waiting for players to join...</p>
-                    </div>
-                  )}
+                  ) : null}
 
                   {/* Spectators List */}
                   {waitingRoomState?.spectators && waitingRoomState.spectators.length > 0 && (
-                    <div className="border-t pt-4">
-                      <div className="flex items-center gap-2 text-sm font-medium text-slate-600 mb-3">
-                        <Star className="w-4 h-4" />
+                    <div className="border-t pt-2">
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1.5">
+                        <Star className="w-3 h-3" />
                         <span>Watching ({waitingRoomState.spectators.length})</span>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1">
                         {waitingRoomState.spectators.map((spectator: any, index: number) => (
-                          <div key={index} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
+                          <div key={index} className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-medium">
                             {spectator.username}
                           </div>
                         ))}
@@ -1548,136 +1603,72 @@ export default function GamePage() {
                     </div>
                   )}
                   
-                  {/* Compact Waiting Status */}
-                  {waitingRoomState?.countdown ? (
-                    <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg p-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <Clock className="w-4 h-4 text-orange-600" />
-                        <span className="font-medium text-orange-700">Starting in {waitingRoomState.countdown}s</span>
+                  {/* Waiting Status */}
+                  {gameStatus === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10 ? (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 text-center">
+                      <div className="text-3xl font-bold text-orange-600 animate-pulse">
+                        {gameState.countdown_time}s
                       </div>
+                      <span className="text-xs font-medium text-orange-700">Get Ready</span>
                     </div>
-                  ) : waitingRoomState?.waitingForMore ? (
-                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <Users className="w-4 h-4 text-green-600" />
-                        <span className="font-medium text-green-700">
-                          Waiting for more players ({waitingRoomState.currentPlayers}/{waitingRoomState.minPlayers}+ needed)
-                        </span>
-                      </div>
-                      {waitingRoomState.waitingTime && (
-                        <div className="text-xs text-green-600 text-center mt-1">
-                          Game starts in {waitingRoomState.waitingTime}s if no more players join
-                        </div>
-                      )}
-                    </div>
-                  ) : (((waitingRoomState?.currentPlayers || 0) < 2) && (((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) < 2)) ? (
-                    <div className="bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 rounded-lg p-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <Users className="w-4 h-4 text-yellow-600" />
-                        <span className="font-medium text-yellow-700">
-                          Waiting for players... ({(waitingRoomState?.currentPlayers || 0) || ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0))}/2)
-                        </span>
-                      </div>
-                    </div>
-                  ) : gameStatus === 'waiting_for_players' && gameState?.countdown_time && gameState.countdown_time > 10 ? (
-                    <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Clock className="w-6 h-6 text-blue-600 animate-pulse" />
-                        <div className="text-center">
-                          <div className="text-3xl font-bold text-blue-600 mb-1">
-                            {gameState.countdown_time}s
-                          </div>
-                          <span className="text-sm font-medium text-blue-700">
-                            Waiting for more players...
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ) : gameStatus === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10 ? (
-                    <div className="bg-gradient-to-r from-orange-50 to-red-50 border border-orange-300 rounded-lg p-4">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <div className="text-5xl font-black text-orange-600 animate-pulse">
-                          {gameState.countdown_time}
-                        </div>
-                        <span className="text-lg font-bold text-orange-700">
-                          Get Ready!
-                        </span>
+                  ) : gameState?.countdown_time && gameState.countdown_time > 10 ? (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-center">
+                      <div className="text-sm font-medium text-blue-700">
+                        Starting in {gameState.countdown_time}s
                       </div>
                     </div>
                   ) : (
-                    <div className={`bg-gradient-to-r border rounded-lg p-3 ${
-                      gameStatus === 'countdown' 
-                        ? 'from-orange-50 to-yellow-50 border-orange-200' 
-                        : gameStatus === 'waiting_for_players'
-                        ? 'from-green-50 to-emerald-50 border-green-200'
-                        : 'from-blue-50 to-indigo-50 border-blue-200'
-                    }`}>
-                      <div className="flex items-center justify-center gap-2">
-                        <Loader2 className={`w-4 h-4 animate-spin ${
-                          gameStatus === 'countdown' ? 'text-orange-600' : 
-                          gameStatus === 'waiting_for_players' ? 'text-green-600' : 'text-blue-600'
-                        }`} />
-                        <span className={`font-medium ${
-                          gameStatus === 'countdown' ? 'text-orange-700' : 
-                          gameStatus === 'waiting_for_players' ? 'text-green-700' : 'text-blue-700'
-                        }`}>
-                          {gameStatus === 'countdown' 
-                            ? `Starting in ${gameState?.countdown_time || 10}s...` 
-                            : gameStatus === 'waiting_for_players'
-                            ? `Waiting for more players... ${gameState?.countdown_time || 30}s`
-                            : 'Waiting for players...'}
-                        </span>
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-center">
+                      <div className="text-xs font-medium text-yellow-700">
+                        Waiting for players...
                       </div>
                     </div>
                   )}
                 </div>
                 
-                {/* Compact Net Prize */}
+                {/* Prize */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                      <Trophy className="w-4 h-4" />
-                      <span>Derash</span>
-                    </div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-1">
+                    <Trophy className="w-4 h-4" />
+                    <span>Derash</span>
                   </div>
-                  <div className={`bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200 rounded-lg p-3 transition-all duration-500 ${prizePoolAnimation ? 'scale-105 shadow-lg' : ''}`}>
-                    <div className="text-2xl font-bold text-emerald-600 transition-all duration-300">
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                    <div className="text-xl font-bold text-emerald-600">
                       {formatCurrency(netPrizePool)}
                     </div>
                   </div>
                 </div>
 
-                {/* Lucky Number Picker Card (waiting room) */}
-                <div className="mt-4">
+                {/* Lucky Number Picker */}
+                <div className="bg-amber-50 rounded-lg p-2 border border-amber-200">
                   <div className="flex items-center justify-between mb-2">
-                    <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
-                      <Star className="w-4 h-4" />
-                      <span>Choose Your Lucky Number</span>
+                    <div className="text-xs font-bold text-amber-900 flex items-center gap-1">
+                      <Star className="w-3 h-3 text-amber-500" />
+                      <span>Lucky Number</span>
                     </div>
                     <button
                       onClick={() => setLuckyNumber(Math.floor(Math.random() * 100) + 1)}
-                      className="text-xs px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700"
+                      className="text-xs px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-600 text-white font-semibold transition-colors"
                     >
                       Random
                     </button>
                   </div>
-                  <div className="bg-white rounded-2xl p-3 border border-amber-200 shadow-sm max-w-md mx-auto">
-                    <div className="grid grid-cols-10 gap-1">
+                  <div className="bg-white rounded p-2 border border-amber-200">
+                    <div className="grid grid-cols-10 gap-0.5">
                       {Array.from({ length: 100 }, (_, i) => i + 1).map((n) => (
                         <button
                           key={n}
                           onClick={() => setLuckyNumber(n)}
-                          className={`h-8 text-xs rounded-md border transition-all duration-150 ${
+                          className={`h-6 text-xs font-bold rounded border transition-all ${
                             luckyNumber === n
-                              ? 'bg-emerald-500 text-white border-emerald-600 ring-2 ring-emerald-300'
-                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                              ? 'bg-emerald-500 text-white border-emerald-600'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
                           }`}
                         >
                           {n}
                         </button>
                       ))}
                     </div>
-                    
                   </div>
                 </div>
 
@@ -1686,224 +1677,224 @@ export default function GamePage() {
             </div>
             
             {/* Action Buttons */}
-            <div className="space-y-3">
-              {/* Invite Friend Button */}
+            <div className="grid grid-cols-2 gap-2">
               <button 
                 onClick={generateInviteLink}
-                className="w-full bg-gradient-to-r from-purple-500 to-purple-600 text-white py-3 rounded-xl font-medium hover:from-purple-600 hover:to-purple-700 transition-all duration-200 flex items-center justify-center gap-2"
+                className="bg-purple-600 text-white py-2 rounded-lg font-semibold text-sm hover:bg-purple-700 transition-colors"
               >
-                <Star className="w-4 h-4" />
-                <span>Invite a Friend</span>
+                Invite Friend
               </button>
-
-
-              {/* Secondary Actions */}
-              <div className="grid grid-cols-1 gap-3">
-                <button 
-                  onClick={async () => {
-                    // Explicitly leave the game when clicking back to lobby
-                    if (gameId && user?.id) {
-                      console.log('🚪 Player explicitly leaving game via Back to Lobby button')
-                      try {
-                        await fetch('/api/game/leave', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            gameId: gameId,
-                            userId: user.id
-                          })
-                        })
-                      } catch (error) {
-                        console.error('Error leaving game:', error)
-                      }
+              <button 
+                onClick={async () => {
+                  if (gameId && user?.id) {
+                    try {
+                      await fetch('/api/game/leave', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ gameId, userId: user.id })
+                      })
+                    } catch (error) {
+                      console.error('Error leaving game:', error)
                     }
-                    
-                    if (isInWaitingRoom) {
-                      leaveWaitingRoom()
-                      // Also call the leave API to properly clean up the game from DB
-                      if (gameId && user?.id) {
-                        try {
-                          await fetch('/api/game/leave', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              gameId: gameId,
-                              userId: user.id
-                            })
-                          })
-                        } catch (error) {
-                          console.error('Error leaving waiting room game:', error)
-                        }
-                      }
-                    }
-                    router.push('/lobby')
-                  }}
-                  className="bg-slate-600 text-white py-3 rounded-xl font-medium hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Back to Lobby</span>
-                </button>
-              </div>
+                  }
+                  if (isInWaitingRoom) {
+                    leaveWaitingRoom()
+                  }
+                  router.push('/lobby')
+                }}
+                className="bg-slate-600 text-white py-2 rounded-lg font-semibold text-sm hover:bg-slate-700 transition-colors"
+              >
+                Back to Lobby
+              </button>
             </div>
           </div>
         )}
 
-        {/* Simplified Spectator Mode - Fits on one screen */}
-        {isSpectator && (
-          <div className="space-y-3 animate-in fade-in duration-500">
-            {/* Waiting Message for Spectators */}
-            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
-              <p className="text-blue-700 font-medium">እባኮ አዲስ ጨዋታ እስኪጀምር ቲንሽ ይታገሱ፡፡</p>
-              <p className="text-sm text-blue-600 mt-1">Please wait patiently until a new game starts.</p>
+        {/* Spectator Mode - Compact redesign */}
+        {viewIsSpectator && (
+          <div className="space-y-1.5 animate-in fade-in duration-500 pb-2 bg-gradient-to-b from-white to-slate-50 rounded-lg p-2">
+            {/* Compact stats row */}
+            <div className="grid grid-cols-5 gap-1.5 text-[10px]">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-blue-700 font-medium">Game ID</div>
+                <div className="font-bold text-xs text-blue-900 truncate">
+                  {gameId ? String(gameId).slice(0, 6).toUpperCase() : '—'}
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-blue-700 font-medium">Players</div>
+                <div className="font-bold text-xs text-blue-900">
+                  {(viewGameState?.players?.length || 0) + (viewGameState?.bots?.length || 0)}
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-blue-700 font-medium">Bet</div>
+                <div className="font-bold text-xs text-blue-900">
+                  {formatCurrency(stake)}
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-blue-700 font-medium">Derash</div>
+                <div className="font-bold text-xs text-blue-900">
+                  {formatCurrency(typeof viewGameState?.net_prize === 'number' ? viewGameState.net_prize : netPrizePool)}
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg px-2 py-1.5 text-center">
+                <div className="text-blue-700 font-medium">Called</div>
+                <div className="font-bold text-xs text-blue-900">
+                  {viewGameState?.called_numbers?.length || 0}/75
+                </div>
+              </div>
             </div>
-            
-            {/* Latest Number Called - Prominent Display */}
-            {gameState?.latest_number && (
-              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white shadow-lg">
-                <div className="text-center">
-                  <div className="text-sm font-medium mb-2 opacity-90">Latest Number Called</div>
-                  <div className="text-6xl font-black">
-                    {gameState.latest_number.letter}{gameState.latest_number.number}
+
+            {/* Latest number card - at top */}
+            <div className="bg-gradient-to-br from-indigo-500 via-indigo-600 to-indigo-700 rounded-lg p-2 text-white shadow-md">
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-sm font-semibold opacity-90">Latest</div>
+                <div className="flex gap-0.5">
+                  {(viewGameState?.called_numbers || []).length > 0 &&
+                    [...(viewGameState?.called_numbers || [])]
+                      .reverse()
+                      .slice(0, 3)
+                      .map((num, idx) => {
+                        const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
+                        const colors = ['bg-red-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500']
+                        const colorIdx = ['B', 'I', 'N', 'G', 'O'].indexOf(letter)
+                        return (
+                          <div
+                            key={idx}
+                            className={`${colors[colorIdx]} text-white px-2 py-1 rounded text-xs font-bold`}
+                          >
+                            {letter}-{num}
+                          </div>
+                        )
+                      })}
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center justify-center py-1">
+                {latestNumber ? (
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-300 to-amber-400 flex items-center justify-center text-lg font-black text-slate-900 shadow-lg border-2 border-yellow-200">
+                    {latestNumber.letter}
+                    {latestNumber.number}
                   </div>
-                </div>
-              </div>
-            )}
-
-            {/* Game Info - Compact */}
-            <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-              <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                <div>
-                  <div className="text-slate-600 text-xs font-semibold">Players</div>
-                  <div className="text-lg font-bold text-slate-900">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</div>
-                </div>
-                <div>
-                  <div className="text-slate-600 text-xs font-semibold">Called</div>
-                  <div className="text-lg font-bold text-slate-900">{gameState?.called_numbers?.length || 0}/75</div>
-                </div>
-                <div>
-                  <div className="text-slate-600 text-xs font-semibold">Prize Pool</div>
-                  <div className="text-lg font-bold text-emerald-600">{formatCurrency(typeof gameState?.net_prize === 'number' ? gameState.net_prize : netPrizePool)}</div>
-                </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-indigo-400 flex items-center justify-center text-[9px] opacity-70">
+                    —
+                  </div>
+                )}
               </div>
 
-              {/* Game Progress Bar */}
-              <div className="mt-4">
-                <div className="flex justify-between text-xs text-slate-600 mb-1">
-                  <span>Game Progress</span>
-                  <span>{gameState?.called_numbers ? Math.round((gameState.called_numbers.length / 75) * 100) : 0}%</span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div 
-                    className="bg-gradient-to-r from-purple-500 to-purple-600 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${gameState?.called_numbers ? (gameState.called_numbers.length / 75) * 100 : 0}%` }}
-                  ></div>
-                </div>
+              <div className="text-center">
+                <div className="text-sm font-semibold mb-0.5">Watching</div>
+                <p className="text-xs leading-tight opacity-90">
+                  ይህ እይታ ብቻ ነው።
+                </p>
               </div>
             </div>
 
-            {/* Called Numbers List - Compact */}
-            {gameState?.called_numbers && gameState.called_numbers.length > 0 && (
-              <div className="bg-slate-50 rounded-xl p-3">
-                <h4 className="font-bold text-slate-900 text-sm mb-2">Called Numbers ({gameState.called_numbers.length}/75)</h4>
-                <div className="flex flex-wrap gap-1.5">
-                  {[...gameState.called_numbers].reverse().map((num, index) => {
-                    const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
-                    const colorClass = 
-                      letter === 'B' ? 'bg-red-100 text-red-700' :
-                      letter === 'I' ? 'bg-blue-100 text-blue-700' :
-                      letter === 'N' ? 'bg-emerald-100 text-emerald-700' :
-                      letter === 'G' ? 'bg-amber-100 text-amber-700' :
-                      'bg-purple-100 text-purple-700'
+            {/* 75-number board - below latest number */}
+            <div className="bg-white border-2 border-slate-200 rounded-lg p-2 shadow-md flex-1">
+              <div className="grid grid-cols-5 gap-0 mb-1 border-b-2 border-slate-300 pb-1">
+                {['B', 'I', 'N', 'G', 'O'].map((letter, idx) => {
+                  const colors = ['text-red-500', 'text-blue-500', 'text-emerald-500', 'text-amber-500', 'text-purple-500']
+                  return (
+                    <div key={letter} className={`text-center font-bold text-base ${colors[idx]}`}>
+                      {letter}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="grid grid-cols-5 gap-0.5">
+                {Array.from({ length: 15 }, (_, ri) => ri).map((ri) =>
+                  Array.from({ length: 5 }, (_, ci) => ci).map((ci) => {
+                    const num = ri + 1 + 15 * ci
+                    const isCalled = viewGameState?.called_numbers?.includes(num)
                     return (
                       <div
-                        key={index}
-                        className={`${colorClass} px-2 py-1 rounded-lg text-xs font-bold`}
+                        key={`${ri}-${ci}`}
+                        className={`
+                          h-6 flex items-center justify-center text-xs font-bold
+                          border border-slate-300 rounded
+                          ${
+                            isCalled
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-slate-100 text-slate-700'
+                          }
+                        `}
                       >
-                        {letter}{num}
+                        {num}
                       </div>
                     )
-                  })}
-                </div>
+                  })
+                )}
               </div>
-            )}
+            </div>
 
-          </div>
-        )}
-
-
-
-        {/* Debug Info (remove in production) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="bg-gray-100 p-2 rounded text-xs mb-4">
-            <div>gameStatus: {gameStatus}</div>
-            <div>isInWaitingRoom: {isInWaitingRoom.toString()}</div>
-            <div>bingoCard.length: {bingoCard.length}</div>
-            <div>gameState: {gameState ? 'exists' : 'null'}</div>
+            {/* Footer buttons */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => router.push('/lobby')}
+                className="bg-red-600 text-white py-1.5 rounded-lg font-semibold text-xs hover:bg-red-700 transition-colors"
+              >
+                Leave
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-slate-600 text-white py-1.5 rounded-lg font-semibold text-xs hover:bg-slate-700 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         )}
 
         {/* Active Game - Only for players, not spectators */}
-        {gameStatus === 'active' && !isSpectator && (
-          <div className="space-y-3 pb-4">
-            {/* Stake & Prize Info - Clean header */}
-            <div className="text-center text-sm text-slate-700 font-medium py-2">
-              <span>Stake: <span className="font-bold text-amber-600">{formatCurrency(stake)}</span></span>
-              <span className="mx-3 text-slate-300">|</span>
-              <span>Players: <span className="font-bold text-slate-900">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</span></span>
-              <span className="mx-3 text-slate-300">|</span>
-              <span>Prize Pool: <span className="font-bold text-emerald-600">{formatCurrency(netPrizePool)}</span></span>
-              <span className="mx-3 text-slate-300">|</span>
-              <span>
-                Wallet:
-                <span className="font-bold text-slate-900 ml-1">
-                  {stakeSource === 'main'
-                    ? 'Cash'
-                    : stakeSource === 'bonus'
-                      ? 'Bonus'
-                      : stakeSource === 'mixed'
-                        ? 'Cash + Bonus'
-                        : '—'}
-                </span>
-              </span>
+        {gameStatus === 'active' && !viewIsSpectator && (
+          <div className="min-h-screen bg-white flex flex-col p-4">
+            {/* Compact Header Stats */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              <div className="bg-slate-100 rounded-lg p-2 text-center">
+                <div className="text-slate-600 text-xs font-medium mb-1">Stake</div>
+                <div className="text-slate-900 font-bold text-sm">{formatCurrency(stake)}</div>
+              </div>
+              <div className="bg-slate-100 rounded-lg p-2 text-center">
+                <div className="text-slate-600 text-xs font-medium mb-1">Players</div>
+                <div className="text-slate-900 font-bold text-sm">{(gameState?.players?.length || 0) + (gameState?.bots?.length || 0)}</div>
+              </div>
+              <div className="bg-slate-100 rounded-lg p-2 text-center">
+                <div className="text-slate-600 text-xs font-medium mb-1">Derash</div>
+                <div className="text-emerald-600 font-bold text-sm">{formatCurrency(netPrizePool)}</div>
+              </div>
+              <div className="bg-slate-100 rounded-lg p-2 text-center">
+                <div className="text-slate-600 text-xs font-medium mb-1">Called</div>
+                <div className="text-slate-900 font-bold text-sm">{calledNumbers.length}/75</div>
+              </div>
             </div>
 
-            {/* Number Called Section - Beautiful card */}
-            <div className="bg-white rounded-2xl p-4 shadow-md border border-slate-100">
-              <h3 className="text-slate-700 font-bold text-sm mb-3">Latest Number Called</h3>
-              
-              <div className="flex items-center gap-4">
-                {/* Latest Number - Prominent */}
-                <div className="flex-shrink-0">
-                  {latestNumber ? (
-                    <div className="text-center">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-xl ring-4 ring-blue-100">
-                        {latestNumber.letter}{latestNumber.number}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-medium">
-                      Wait...
-                    </div>
-                  )}
-                </div>
-
-                {/* Recent Numbers - Styled badges */}
-                <div className="flex-1">
-                  <div className="text-slate-600 text-xs font-semibold mb-2">Recent:</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[...calledNumbers].reverse().slice(1, 5).map((num) => {
+            {/* Latest Number - Card Style */}
+            <div className="bg-white rounded-xl p-3 shadow-md mb-4 border border-slate-200">
+              <div className="flex items-center gap-3">
+                {latestNumber ? (
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-3xl font-black text-white shadow-lg ring-4 ring-blue-200 animate-pulse flex-shrink-0">
+                    {latestNumber.letter}{latestNumber.number}
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-xs font-medium flex-shrink-0">Waiting...</div>
+                )}
+                <div className="flex flex-col gap-1">
+                  <div className="text-slate-700 text-xs font-semibold">Recent:</div>
+                  <div className="flex gap-1">
+                    {[...calledNumbers].reverse().slice(0, 3).map((num) => {
                       const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
                       const colorClass = 
-                        letter === 'B' ? 'bg-red-100 text-red-700 ring-1 ring-red-200' :
-                        letter === 'I' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-200' :
-                        letter === 'N' ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200' :
-                        letter === 'G' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' :
-                        'bg-purple-100 text-purple-700 ring-1 ring-purple-200'
+                        letter === 'B' ? 'bg-red-500' :
+                        letter === 'I' ? 'bg-blue-500' :
+                        letter === 'N' ? 'bg-emerald-500' :
+                        letter === 'G' ? 'bg-amber-500' :
+                        'bg-purple-500'
                       return (
-                        <div
-                          key={num}
-                          className={`${colorClass} px-2 py-1 rounded-lg text-xs font-bold`}
-                        >
+                        <div key={num} className={`${colorClass} text-white px-2 py-1 rounded text-xs font-bold`}>
                           {letter}{num}
                         </div>
                       )
@@ -1913,25 +1904,25 @@ export default function GamePage() {
               </div>
             </div>
 
-            {/* Bingo Card - Beautiful and Compact */}
-            <div className="bg-white rounded-2xl p-3 border-4 border-amber-400 shadow-xl max-w-md mx-auto">
+            {/* Bingo Card - Premium Compact Design */}
+            <div className="bg-gradient-to-b from-slate-100 to-slate-200 rounded-2xl p-2 shadow-2xl flex flex-col max-w-sm mx-auto w-full">
               {/* B-I-N-G-O Headers */}
-              <div className="grid grid-cols-5 gap-0 mb-0 border-b-4 border-amber-400 pb-2.5">
+              <div className="grid grid-cols-5 gap-1 mb-2">
                 {[
-                  { letter: 'B', color: 'text-red-500' },
-                  { letter: 'I', color: 'text-blue-500' },
-                  { letter: 'N', color: 'text-emerald-500' },
-                  { letter: 'G', color: 'text-amber-500' },
-                  { letter: 'O', color: 'text-purple-500' }
+                  { letter: 'B', color: 'text-red-400' },
+                  { letter: 'I', color: 'text-blue-400' },
+                  { letter: 'N', color: 'text-emerald-400' },
+                  { letter: 'G', color: 'text-teal-400' },
+                  { letter: 'O', color: 'text-cyan-400' }
                 ].map(({ letter, color }) => (
-                  <div key={letter} className={`text-center font-black text-2xl ${color}`}>
+                  <div key={letter} className={`${color} text-center font-black text-2xl py-2 drop-shadow-lg`} style={{textShadow: '2px 2px 0px rgba(0,0,0,0.08)'}}>
                     {letter}
                   </div>
                 ))}
               </div>
 
-              {/* Bingo Grid - Optimized size */}
-              <div className="grid grid-cols-5 gap-0 pt-2.5">
+              {/* Bingo Grid - 3D Blocks */}
+              <div className="grid grid-cols-5 gap-1">
                 {bingoCard.length === 0 ? (
                   // Loading state for bingo card
                   <div className="col-span-5 text-center py-8">
@@ -1943,26 +1934,24 @@ export default function GamePage() {
                     row.map((num, ci) => {
                     const isMarked = markedCells[ri] && markedCells[ri][ci]
                     const isCalled = calledNumbers.includes(num) && num !== 0
-                    const isMarkedVisual = isMarked || (isSpectator && isCalled)
+                    const isMarkedVisual = isMarked || (viewIsSpectator && isCalled)
                     const isFree = num === 0
 
                     return (
                       <button
                         key={`${ri}-${ci}`}
                         onClick={() => handleCellClick(ri, ci)}
-                        disabled={isSpectator || (!isCalled && !isFree)}
+                        disabled={viewIsSpectator || (!isCalled && !isFree)}
                         className={`
-                          aspect-square flex items-center justify-center text-base font-bold
-                          transition-all duration-200 border-r border-b border-slate-200
-                          ${ci === 4 ? 'border-r-0' : ''}
-                          ${ri === 4 ? 'border-b-0' : ''}
+                          aspect-square flex items-center justify-center font-bold text-base
+                          transition-all duration-150 rounded-lg
                           ${isMarkedVisual
-                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-full m-1 shadow-lg cursor-default'
+                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-lg cursor-default active:shadow-md active:translate-y-0.5'
                             : isCalled
-                            ? 'bg-white text-slate-700 rounded-full m-1 ring-2 ring-blue-300 hover:bg-blue-50 cursor-pointer hover:scale-105 active:scale-95'
+                            ? 'bg-white text-slate-800 hover:bg-slate-50 cursor-pointer active:shadow-sm active:translate-y-0.5 shadow-md border-b-2 border-slate-300'
                             : isFree
-                            ? 'bg-slate-100 text-slate-600 rounded-full m-1 cursor-default'
-                            : 'bg-white text-slate-400 cursor-not-allowed'
+                            ? 'bg-gradient-to-b from-indigo-400 to-indigo-500 text-white font-black text-xl shadow-md cursor-default border-b-2 border-indigo-600'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-50'
                           }
                         `}
                       >
@@ -1977,20 +1966,20 @@ export default function GamePage() {
 
             {/* BINGO Error Message */}
             {bingoError && (
-              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-2.5 text-center animate-pulse max-w-md mx-auto">
-                <p className="text-red-600 font-semibold text-sm">{bingoError}</p>
+              <div className="bg-red-500/20 border border-red-400 rounded-lg p-2 text-center animate-pulse mt-2">
+                <p className="text-red-300 font-semibold text-xs">{bingoError}</p>
               </div>
             )}
 
-            {/* BINGO Button - only for players (not spectators) */}
-            {!isSpectator && (
+            {/* BINGO Button - Premium Compact */}
+            {!viewIsSpectator && (
               <button
                 onClick={handleBingoClick}
                 disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
-                className={`w-full max-w-md mx-auto py-3.5 rounded-xl font-bold text-lg transition-all duration-200 flex items-center justify-center gap-2 ${
+                className={`w-full max-w-sm mx-auto py-3 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2 mt-3 ${
                   markedCells.length && checkBingoWin(markedCells) && !claimingBingo
-                    ? 'bg-gradient-to-r from-green-600 to-green-700 text-white hover:from-green-700 hover:to-green-800 shadow-lg hover:shadow-xl active:scale-95'
-                    : 'bg-slate-400 text-slate-600 cursor-not-allowed opacity-60'
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95 shadow-lg'
+                    : 'bg-slate-600 text-slate-400 cursor-not-allowed opacity-50'
                 }`}
               >
                 {claimingBingo ? (
@@ -2079,7 +2068,7 @@ export default function GamePage() {
                   <p className="text-lg font-bold text-amber-600">{winnerName}</p>
                   {winAmount > 0 && (
                     <p className="text-slate-600 mt-1 text-xs">
-                      Prize: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
+                      Derash: <span className="font-bold text-emerald-600">{formatCurrency(winAmount)}</span>
                     </p>
                   )}
                 </div>
@@ -2198,8 +2187,8 @@ export default function GamePage() {
                 <button 
                   onClick={() => {
                     if (isSpectator) {
-                      // Spectator joins next game in same room
-                      router.push(`/rooms/${roomId}`)
+                      // Spectator joins next game in same room (valid route)
+                      router.push(`/game/${roomId}`)
                     } else {
                       // Loser goes to lobby
                       router.push('/lobby')

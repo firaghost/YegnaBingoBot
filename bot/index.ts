@@ -1,4 +1,4 @@
-import './telegram-bot.js'
+import './telegram-bot'
 
 console.log('🚀 Starting Telegram Bot...')
 console.log('📱 Bot Token:', process.env.BOT_TOKEN ? '✓ Configured' : '✗ Missing')

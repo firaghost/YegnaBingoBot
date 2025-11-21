@@ -40,6 +40,34 @@ export default function LobbyPage() {
   const [showChannelPrompt, setShowChannelPrompt] = useState(false)
   const [checkingChannelStatus, setCheckingChannelStatus] = useState(false)
   const [channelCheckError, setChannelCheckError] = useState<string | null>(null)
+  const [showRulesModal, setShowRulesModal] = useState(false)
+  const [gameRules, setGameRules] = useState<{ id?: string; title: string; body: string }[]>([
+    {
+      id: 'match-5',
+      title: 'Match 5 Numbers',
+      body: 'Get 5 numbers in a row horizontally, vertically, or diagonally to win the game.',
+    },
+    {
+      id: 'free-center',
+      title: 'Free Center Cell',
+      body: 'The center cell is always FREE – it counts as filled for every pattern.',
+    },
+    {
+      id: 'first-wins',
+      title: 'First to BINGO Wins',
+      body: 'The first player to correctly claim BINGO wins the full prize for this room.',
+    },
+    {
+      id: 'fair-random',
+      title: 'Fair & Secure Randomness',
+      body: 'All numbers are generated using cryptographically secure randomness for fair play.',
+    },
+    {
+      id: 'prize-pool',
+      title: 'Prize Pool & Commission',
+      body: 'The winner receives the net prize pool after the platform commission is deducted.',
+    },
+  ])
   const channelLink = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_URL || process.env.TELEGRAM_CHANNEL_URL || 'https://t.me/BingoXofficial'
   const channelUsername = process.env.NEXT_PUBLIC_TELEGRAM_CHANNEL_USERNAME || process.env.TELEGRAM_CHANNEL_USERNAME || ''
   const channelCheckAttempted = useRef(false)
@@ -531,6 +559,68 @@ export default function LobbyPage() {
         </div>
       )}
 
+      {/* Rules Modal - Simple & Engaging */}
+      {showRulesModal && (
+        <div className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-sm flex items-center justify-center px-4 py-8">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden animate-in zoom-in-95">
+            {/* Header - Clean & Simple */}
+            <div className="bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-4 text-white flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold">BingoX Rules</h2>
+              </div>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="w-6 h-6 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors"
+              >
+                <LuX className="w-4 h-4 text-white" />
+              </button>
+            </div>
+
+            {/* Content - Minimal & Clean */}
+            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-5">
+              {gameRules.map((rule, index) => {
+                const textColors = [
+                  'text-indigo-600',
+                  'text-emerald-600',
+                  'text-orange-600',
+                  'text-purple-600',
+                  'text-rose-600',
+                ]
+                const textColor = textColors[index % textColors.length]
+
+                return (
+                  <div key={rule.id || `rule-${index}`} className="flex gap-3">
+                    <div className={`${textColor} flex-shrink-0 text-sm font-bold`}>
+                      {index + 1}.
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-slate-900 text-sm">{rule.title}</h3>
+                      <p className="text-xs text-slate-600 mt-0.5 leading-snug">{rule.body}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Footer - Simple Button */}
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 border-t border-slate-200">
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="flex-1 px-4 py-2.5 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition-colors text-sm"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => setShowRulesModal(false)}
+                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 text-white font-semibold rounded-lg hover:from-indigo-700 hover:to-blue-700 transition-all text-sm"
+              >
+                Play Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sticky Header */}
       <div className="sticky top-0 bg-white border-b border-slate-200 z-40 shadow-sm">
         <div className="max-w-2xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
@@ -544,11 +634,21 @@ export default function LobbyPage() {
               </div>
             )}
           </div>
-          {user && (
-            <div className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg">
-              Balance {formatCurrency(user.balance + (user.bonus_balance || 0))}
-            </div>
-          )}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {user && (
+              <div className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg">
+                Balance {formatCurrency(user.balance + (user.bonus_balance || 0))}
+              </div>
+            )}
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 transition-colors"
+              title="View game rules"
+            >
+              <LuInfo className="w-4 h-4 text-slate-600" />
+              <span className="text-xs sm:text-sm font-medium text-slate-700 hidden sm:inline">Rules</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -649,47 +749,54 @@ export default function LobbyPage() {
               const IconComponent = roomStyle.icon
               
               return (
-                <div key={room.id} className={`bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-slate-300 transition-all duration-300 shadow-sm hover:shadow-md ${isUpdating ? 'ring-2 ring-blue-200 ring-opacity-50' : ''}`}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        index % 4 === 0 ? 'bg-emerald-100' :
-                        index % 4 === 1 ? 'bg-blue-100' :
-                        index % 4 === 2 ? 'bg-purple-100' :
-                        'bg-orange-100'
-                      }`}>
-                        <IconComponent className={`w-5 h-5 sm:w-6 sm:h-6 ${
-                          index % 4 === 0 ? 'text-emerald-600' :
-                          index % 4 === 1 ? 'text-blue-600' :
-                          index % 4 === 2 ? 'text-purple-600' :
-                          'text-orange-600'
-                        }`} />
-                      </div>
+                <div key={room.id} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-300 ring-opacity-50' : ''}`}>
+                  {/* Background Gradient */}
+                  <div className={`absolute inset-0 bg-gradient-to-br ${
+                    index % 4 === 0 ? 'from-emerald-500 to-emerald-600' :
+                    index % 4 === 1 ? 'from-blue-500 to-blue-600' :
+                    index % 4 === 2 ? 'from-indigo-500 to-indigo-600' :
+                    'from-orange-500 to-orange-600'
+                  } opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
+
+                  {/* Card Content */}
+                  <div className="relative bg-white rounded-2xl p-5 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-slate-300">
+                    {/* Top Section - Icon and Title */}
+                    <div className="flex items-center gap-3 mb-5">
+                      <IconComponent className={`w-6 h-6 flex-shrink-0 ${
+                        index % 4 === 0 ? 'text-emerald-500' :
+                        index % 4 === 1 ? 'text-blue-500' :
+                        index % 4 === 2 ? 'text-indigo-500' :
+                        'text-orange-500'
+                      }`} />
                       <div className="flex-1 min-w-0">
-                        <h3 className="text-base sm:text-lg font-semibold text-slate-900 truncate">{room.name}</h3>
-                        <p className="text-xs sm:text-sm text-slate-500 truncate mt-0.5">{room.description}</p>
+                        <h3 className="text-lg font-bold text-slate-900">{room.name}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">{room.description}</p>
                       </div>
                     </div>
+
+                  {/* Stats Grid - Simple Handcrafted */}
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 font-semibold mb-1">ENTRY</div>
+                      <div className="text-lg font-bold text-slate-900">{formatCurrency(room.stake)}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 font-semibold mb-1">DERASH</div>
+                      <div className="text-lg font-bold text-emerald-600">{formatCurrency(room.prize_pool)}</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-xs text-slate-500 font-semibold mb-1">WAITING</div>
+                      <div className="text-lg font-bold text-slate-900">{room.waiting_players}</div>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-3">
-                    <div className="text-center sm:text-left">
-                      <div className="text-slate-500 text-xs mb-1">Entry Fee</div>
-                      <div className="font-bold text-slate-900 text-sm sm:text-base">{formatCurrency(room.stake)}</div>
-                    </div>
-                    <div className="text-center sm:text-right">
-                      <div className="text-slate-500 text-xs mb-1">Net Prize</div>
-                      <div className="font-bold text-emerald-600 text-sm sm:text-base">{formatCurrency(room.prize_pool)}</div>
-                    </div>
-                  </div>
-
-                  {/* Waiting Players Info */}
-                  <div className="flex items-center gap-2 mb-4 p-2 bg-slate-50 rounded-lg">
-                    <LuUsers className="w-4 h-4 text-slate-500" />
-                    <span className="text-xs text-slate-600">
+                  {/* Players Status */}
+                  <div className="flex items-center gap-2 mb-5 text-sm text-slate-600">
+                    <LuUsers className="w-4 h-4" />
+                    <span>
                       {room.waiting_players > 0 
-                        ? `${room.waiting_players} waiting` 
-                        : 'No players waiting'
+                        ? `${room.waiting_players} player${room.waiting_players > 1 ? 's' : ''} waiting` 
+                        : 'Ready to play'
                       }
                     </span>
                   </div>
@@ -697,51 +804,52 @@ export default function LobbyPage() {
                   {authLoading ? (
                     <button 
                       disabled
-                      className="w-full bg-slate-200 text-slate-400 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-not-allowed text-sm sm:text-base"
+                      className="w-full bg-slate-300 text-slate-500 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-not-allowed text-sm sm:text-base"
                     >
-                      <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                      <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
                       <span>Loading...</span>
                     </button>
                   ) : isAuthenticated ? (
                     user?.status === 'inactive' ? (
                       <button
                         disabled
-                        className="w-full bg-slate-200 text-slate-500 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm sm:text-base cursor-not-allowed border border-slate-300"
+                        className="w-full bg-slate-300 text-slate-600 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm sm:text-base cursor-not-allowed"
                       >
                         <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Account suspended</span>
+                        <span>Account Suspended</span>
                       </button>
                     ) : hasInsufficientBalance ? (
                       <button 
                         onClick={() => handleInsufficientBalance(room.stake)}
-                        className="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"
+                        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"
                       >
                         <LuCoins className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Insufficient Balance</span>
+                        <span>Add Balance</span>
                       </button>
                     ) : (
                       <Link href={`/game/${room.id}`}>
                         <button 
-                          className={`w-full ${roomStyle.bg} hover:opacity-90 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
+                          className={`w-full bg-gradient-to-r ${
+                            index % 4 === 0 ? 'from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' :
+                            index % 4 === 1 ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' :
+                            index % 4 === 2 ? 'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700' :
+                            'from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                          } text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
                         >
                           <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span>
-                            {room.waiting_players > 0 
-                              ? `Join ${room.waiting_players} Player${room.waiting_players > 1 ? 's' : ''}` 
-                              : 'Join Game'
-                            }
-                          </span>
+                          <span>Join Game</span>
                         </button>
                       </Link>
                     )
                   ) : (
                     <Link href="/login">
-                      <button className="w-full bg-slate-100 text-slate-600 py-3 sm:py-3.5 rounded-xl font-semibold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 border border-slate-200 text-sm sm:text-base">
+                      <button className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl">
                         <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span>Connect to Play</span>
                       </button>
                     </Link>
                   )}
+                  </div>
                 </div>
               )
             })}
