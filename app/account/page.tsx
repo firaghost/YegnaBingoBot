@@ -525,7 +525,7 @@ export default function AccountPage() {
                   <span className="mx-1">•</span>
                   <span>Bonus Wins: {formatCurrency(bonusWinBalance)}</span>
                   <p className="mt-0.5 text-[10px] text-emerald-700">
-                    Bonus Wins cannot be withdrawn unless converted by an admin.
+                    Bonus Wins are locked until your first real-money deposit
                   </p>
                 </div>
               )}

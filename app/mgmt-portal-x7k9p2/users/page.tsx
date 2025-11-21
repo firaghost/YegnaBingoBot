@@ -697,11 +697,13 @@ export default function AdminUsersPage() {
                         )}
                       </td>
                       <td className="px-2 py-3">
-                        <div className="text-xs text-slate-400 mb-0.5">Real / Bonus</div>
-                        <div className="font-semibold text-emerald-400 text-xs">
+                        <div className="text-xs text-slate-400 mb-0.5">Real / Bonus / Locked</div>
+                        <div className="font-semibold text-emerald-400 text-[11px]">
                           {formatCurrency(user.balance || 0)}
                           <span className="text-slate-400"> / </span>
                           <span className="text-emerald-300">{formatCurrency(user.bonus_balance || 0)}</span>
+                          <span className="text-slate-400"> / </span>
+                          <span className="text-amber-300">{formatCurrency(user.bonus_win_balance || 0)}</span>
                         </div>
                       </td>
                       <td className="px-2 py-3 text-slate-300 font-medium text-xs">{user.games_played || 0}</td>

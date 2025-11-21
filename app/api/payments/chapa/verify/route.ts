@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
+import { applyFirstDepositUnlock } from '@/lib/server/wallet-service'
 
 const supabase = supabaseAdmin
 const CHAPA_SECRET_KEY = process.env.CHAPA_SECRET_KEY || process.env.NEXT_PUBLIC_CHAPA_SECRET_KEY || ''
@@ -76,12 +77,13 @@ async function finalizeDepositByTxRef(txRef: string) {
     .eq('id', tx.user_id)
     .single()
 
-  const { error: applyErr } = await supabase.rpc('apply_deposit', {
-    p_user_id: tx.user_id,
-    p_amount: totalCredit,
-    p_bonus: 0
+  // Apply deposit with first-deposit unlock semantics
+  await applyFirstDepositUnlock(tx.user_id, totalCredit, {
+    ...(tx.metadata || {}),
+    tx_ref: txRef,
+    method: 'Chapa',
+    via: 'verify-endpoint',
   })
-  if (applyErr) throw applyErr
 
   // Capture user's real balance after credit
   const { data: userAfter } = await supabase

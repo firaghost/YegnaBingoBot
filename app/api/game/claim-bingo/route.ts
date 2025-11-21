@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
+import { handleRoundWin, getStakeSourceForUserInGame } from '@/lib/server/wallet-service'
 
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
@@ -454,18 +455,12 @@ export async function POST(request: NextRequest) {
 
     // Record winner earnings
     if (!isBotClaim) {
-      // Human winner: credit via wagering-aware RPC (may credit to locked_balance)
+      // Human winner: route prize to correct wallet based on stake source.
       try {
-        const { error: creditErr } = await supabase.rpc('credit_win', {
-          p_user_id: userId,
-          p_game_id: gameId,
-          p_amount: netPrize
-        })
-        if (creditErr) {
-          console.error('Error crediting win via credit_win:', creditErr)
-        }
+        const stakeSource = await getStakeSourceForUserInGame(userId, gameId)
+        await handleRoundWin(userId, gameId, netPrize, stakeSource)
       } catch (e) {
-        console.error('credit_win RPC failed:', e)
+        console.error('Error settling human win via wallet-service:', e)
       }
     } else {
       // Bot winner: record bot earnings

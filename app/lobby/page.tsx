@@ -636,9 +636,19 @@ export default function LobbyPage() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             {user && (
-              <div className="text-xs sm:text-sm font-bold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg">
-                Balance {formatCurrency(user.balance + (user.bonus_balance || 0))}
-              </div>
+              (() => {
+                const cashBalance = user.balance || 0
+                const bonusBalance = user.bonus_balance || 0
+                const lockedBonus = (user as any).bonus_win_balance || 0
+                return (
+                  <div className="text-[10px] sm:text-xs font-semibold text-slate-900 bg-slate-100 px-2 sm:px-3 py-1 rounded-lg leading-tight">
+                    <div>Wallet: {formatCurrency(cashBalance + bonusBalance + lockedBonus)}</div>
+                    <div className="text-[9px] sm:text-[10px] text-slate-600">
+                      Cash {formatCurrency(cashBalance)} • Bonus {formatCurrency(bonusBalance)} • Locked {formatCurrency(lockedBonus)}
+                    </div>
+                  </div>
+                )
+              })()
             )}
             <button
               onClick={() => setShowRulesModal(true)}

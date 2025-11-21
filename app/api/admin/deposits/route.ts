@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
 import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
 import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
+import { applyFirstDepositUnlock } from '@/lib/server/wallet-service'
 
 const supabase = supabaseAdmin
 
@@ -135,14 +136,13 @@ export async function POST(request: NextRequest) {
         .eq('id', transaction.user_id)
         .single()
 
-      // Apply entire credit to real balance (bonus no longer stored in bonus wallet)
-      const { error: applyErr } = await supabase.rpc('apply_deposit', {
-        p_user_id: transaction.user_id,
-        p_amount: totalCredit,
-        p_bonus: 0
+      // Apply entire credit to real balance using first-deposit unlock semantics
+      await applyFirstDepositUnlock(transaction.user_id, totalCredit, {
+        ...(transaction.metadata || {}),
+        method: 'manual',
+        via: 'admin-approve',
+        transaction_id: transactionId,
       })
-
-      if (applyErr) throw applyErr
 
       // Capture real balance after credit
       const { data: userAfter } = await supabase

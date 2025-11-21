@@ -554,73 +554,44 @@ export default function GamePage() {
     if (gameState.status === 'countdown' || gameState.status === 'active') {
       const deductStake = async () => {
         try {
-          // Try bonus-first deduction via RPC (atomic)
-          const { data: deductionResult, error: deductErr } = await supabase.rpc('deduct_stake_with_bonus', {
-            p_user_id: user.id,
-            p_amount: roomData.stake,
-            p_game_id: gameId
-          })
+          // Decide stake source on the client for UX, but server enforces wallet rules.
+          const realAvailable = Math.max(0, user.balance || 0)
+          const bonusAvailable = Math.max(0, user.bonus_balance || 0)
+          let source: 'real' | 'bonus' | null = null
 
-          if (deductErr) {
-            console.warn('⚠️ deduct_stake_with_bonus RPC failed, attempting fallback:', deductErr)
-            // Fallback: manual single-row update (bonus first)
-            const { data: u, error: fetchErr } = await supabase
-              .from('users')
-              .select('balance, bonus_balance')
-              .eq('id', user.id)
-              .single()
-
-            if (fetchErr || !u) {
-              throw fetchErr || new Error('User not found for manual deduction')
-            }
-
-            const bonusAvailable = Math.max(0, u.bonus_balance || 0)
-            const mainAvailable = Math.max(0, u.balance || 0)
-            if (bonusAvailable + mainAvailable < roomData.stake) {
-              throw new Error('Insufficient total balance for stake deduction')
-            }
-
-            // REAL-FIRST fallback: use main balance first, then bonus for the remainder
-            const mainDeduct = Math.min(mainAvailable, roomData.stake)
-            const bonusDeduct = roomData.stake - mainDeduct
-
-            const { error: updateErr } = await supabase
-              .from('users')
-              .update({
-                bonus_balance: bonusAvailable - bonusDeduct,
-                balance: mainAvailable - mainDeduct,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', user.id)
-
-            if (updateErr) {
-              throw updateErr
-            }
-
-            // Log stake transaction with metadata so prize pool computation can use it
-            try {
-              await supabase.from('transactions').insert({
-                user_id: user.id,
-                type: 'stake',
-                amount: -roomData.stake,
-                game_id: gameId,
-                status: 'completed',
-                metadata: {
-                  source: mainDeduct === 0 ? 'bonus' : (bonusDeduct === 0 ? 'main' : 'mixed'),
-                  bonus_deducted: bonusDeduct,
-                  main_deducted: mainDeduct,
-                  total_deducted: roomData.stake
-                }
-              })
-            } catch (e) {
-              console.warn('⚠️ Failed to log fallback stake transaction:', e)
-            }
+          if (realAvailable >= roomData.stake) {
+            source = 'real'
+          } else if (bonusAvailable >= roomData.stake) {
+            source = 'bonus'
+          } else {
+            console.error('Insufficient wallet balance to deduct stake:', {
+              realAvailable,
+              bonusAvailable,
+              stake: roomData.stake
+            })
+            return
           }
 
-          // Note: When RPC succeeds, it already logs the stake with metadata.
-          
+          const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+          const resp = await fetch(`${apiBaseUrl}/api/game/confirm-join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gameId,
+              userId: user.id,
+              stakeSource: source
+            })
+          })
+
+          if (!resp.ok) {
+            const errBody = await resp.text().catch(() => '')
+            console.error('Failed to confirm join / deduct stake:', resp.status, errBody)
+            return
+          }
+
           setStakeDeducted(true)
-          console.log('💰 Stake deducted (bonus-first):', roomData.stake)
+          setStakeSource(source)
+          console.log('💰 Stake deducted via confirm-join:', roomData.stake, 'source=', source)
         } catch (error) {
           console.error('Error deducting stake:', error)
         }

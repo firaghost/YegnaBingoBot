@@ -64,18 +64,7 @@ export async function POST(request: Request) {
       const { data: totalDeposits } = await supabase.rpc('user_total_deposits', { p_user_id: userId })
       const sumDeposits = Number(totalDeposits || 0)
       if (sumDeposits <= 0) {
-        // Convert entire real balance to bonus and block request
-        try {
-          await supabase.rpc('convert_all_real_to_bonus', {
-            p_user_id: userId,
-            p_requested_amount: amount,
-            p_reason: 'withdraw_without_deposit'
-          })
-        } catch (convErr) {
-          console.warn('convert_all_real_to_bonus failed:', (convErr as any)?.message || convErr)
-        }
-
-        // Log location event
+        // Log location event for visibility and anti-abuse
         try {
           await supabase.from('user_location_events').insert({
             user_id: userId,
@@ -89,11 +78,11 @@ export async function POST(request: Request) {
           })
         } catch {}
 
-        // Notify user via Telegram
+        // Notify user via Telegram (no silent balance movement)
         try {
           const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
           if (botToken && user.telegram_id) {
-            const msg = '⚠️ Withdrawal Blocked\n\nYour withdrawal was generated from bonus-based funds. Bonus winnings require a real deposit before withdrawal. Your balance has been moved to your Bonus Wallet.'
+            const msg = '⚠️ Withdrawal Blocked\n\nBonus-based balances cannot be withdrawn before your first real-money deposit. Please make a cash deposit to unlock withdrawals.'
             await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -106,7 +95,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
           error: 'BONUS_ONLY_BLOCKED',
-          message: 'Bonus winnings require a real deposit before withdrawal. Your balance has been moved to your Bonus Wallet.'
+          message: 'Bonus-based balances cannot be withdrawn before your first real-money deposit. Please make a cash deposit to unlock withdrawals.'
         }, { status: 403 })
       }
     } catch (gateErr) {
