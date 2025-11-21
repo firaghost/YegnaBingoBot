@@ -10,6 +10,8 @@ import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 import { getGameConfig, getConfig } from '@/lib/admin-config'
 import { Users, Trophy, Clock, Loader2, LogOut, ArrowLeft, CheckCircle, XCircle, Star, Frown, Volume2, VolumeX } from 'lucide-react'
 
+// Game status as used by UI; backend may also send 'waiting_for_players', which we
+// normalize to 'waiting' below so the waiting room view still renders correctly.
 type GameStatus = 'waiting' | 'countdown' | 'active' | 'finished'
 
 export default function GamePage() {
@@ -1334,7 +1336,13 @@ export default function GamePage() {
   const viewGameState = (devMockGameState || gameState) as typeof gameState
   const viewIsSpectator = devSpectator || isSpectator
 
-  const gameStatus = (viewGameState?.status as GameStatus) || 'waiting'
+  // Normalize backend status (e.g. 'waiting_for_players') into the smaller
+  // set of UI statuses so our conditions render the correct view.
+  const rawStatus = viewGameState?.status as GameStatus | 'waiting_for_players' | undefined
+  const gameStatus: GameStatus =
+    rawStatus === 'waiting_for_players'
+      ? 'waiting'
+      : (rawStatus as GameStatus) || 'waiting'
   const calledNumbers = viewGameState?.called_numbers || []
   const latestNumber = viewGameState?.latest_number
   const humanPlayers = viewGameState?.players?.length || 0
