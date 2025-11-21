@@ -315,7 +315,7 @@ export default function BonusPage() {
         {/* Invite Header animation (sparkles) - centered, smaller */}
         <div className="mb-6 flex justify-center">
           <Player
-            src="/lottie/invite.json"
+            src="/lottie/Invite.json"
             autoplay
             loop
             style={{ width: 190, height: 95 }}

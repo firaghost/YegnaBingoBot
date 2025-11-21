@@ -244,12 +244,21 @@ export default function AccountPage() {
     <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Language Modal */}
       {showLanguageModal && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowLanguageModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowLanguageModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Select Language</h3>
-              <button onClick={() => setShowLanguageModal(false)} className="text-slate-400 hover:text-slate-600">
-                <LuX className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-slate-50">Select Language</h3>
+              <button
+                onClick={() => setShowLanguageModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-300"
+              >
+                <LuX className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-2">
@@ -260,14 +269,14 @@ export default function AccountPage() {
                     setLanguage(lang)
                     setShowLanguageModal(false)
                   }}
-                  className={`w-full flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${
-                    language === lang 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-slate-200 hover:border-slate-300'
+                  className={`w-full flex items-center justify-between p-4 rounded-xl border transition-colors text-sm ${
+                    language === lang
+                      ? 'border-emerald-500 bg-emerald-500/10 text-slate-50'
+                      : 'border-slate-700 bg-slate-900 hover:border-slate-500 hover:bg-slate-800 text-slate-200'
                   }`}
                 >
-                  <span className="font-medium text-slate-900">{lang}</span>
-                  {language === lang && <LuCheck className="w-5 h-5 text-blue-500" />}
+                  <span className="font-medium truncate">{lang}</span>
+                  {language === lang && <LuCheck className="w-5 h-5 text-emerald-400" />}
                 </button>
               ))}
             </div>
@@ -277,42 +286,51 @@ export default function AccountPage() {
 
       {/* Username Modal */}
       {showUsernameModal && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowUsernameModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowUsernameModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Edit Username</h3>
-              <button onClick={() => setShowUsernameModal(false)} className="text-slate-400 hover:text-slate-600">
-                <LuX className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-slate-50">Edit Username</h3>
+              <button
+                onClick={() => setShowUsernameModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-300"
+              >
+                <LuX className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Username</label>
+                <label className="block text-sm font-medium text-slate-200 mb-2">Username</label>
                 <input
                   type="text"
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   placeholder="Enter your username"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-700 bg-slate-900 text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                   maxLength={20}
                 />
-                <p className="text-xs text-slate-500 mt-1">Minimum 3 characters, maximum 20 characters</p>
+                <p className="text-xs text-slate-400 mt-1">Minimum 3 characters, maximum 20 characters</p>
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowUsernameModal(false)}
-                  className="flex-1 px-4 py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  className="flex-1 px-4 py-3 border border-slate-700 text-slate-200 rounded-lg bg-slate-900 hover:bg-slate-800 hover:border-slate-500 transition-colors font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleUsernameUpdate}
                   disabled={updatingUsername || !newUsername.trim() || newUsername.length < 3}
-                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-3 bg-emerald-500 text-slate-900 rounded-lg hover:bg-emerald-400 disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
                 >
                   {updatingUsername ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                       Updating...
                     </>
                   ) : (
@@ -327,15 +345,24 @@ export default function AccountPage() {
 
       {/* Terms Modal */}
       {showTermsModal && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowTermsModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowTermsModal(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Terms & Conditions</h3>
-              <button onClick={() => setShowTermsModal(false)} className="text-slate-400 hover:text-slate-600">
-                <LuX className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-slate-50">Terms & Conditions</h3>
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-300"
+              >
+                <LuX className="w-4 h-4" />
               </button>
             </div>
-            <div className="prose prose-sm text-slate-600">
+            <div className="prose prose-sm prose-invert text-slate-200">
               <p className="mb-4">Welcome to BingoX. By using our service, you agree to these terms and conditions.</p>
               <h4 className="font-semibold text-slate-900 mb-2">1. Account Usage</h4>
               <p className="mb-4">You must be 18 years or older to use this service. You are responsible for maintaining the security of your account.</p>
@@ -359,26 +386,35 @@ export default function AccountPage() {
 
       {/* Support Modal */}
       {showSupportModal && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowSupportModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowSupportModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Contact Support</h3>
-              <button onClick={() => setShowSupportModal(false)} className="text-slate-400 hover:text-slate-600">
-                <LuX className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-slate-50">Contact Support</h3>
+              <button
+                onClick={() => setShowSupportModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-300"
+              >
+                <LuX className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                <a href={`mailto:${supportInfo.email}`} className="text-blue-500 hover:text-blue-600">{supportInfo.email}</a>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Email</label>
+                <a href={`mailto:${supportInfo.email}`} className="text-emerald-400 hover:text-emerald-300">{supportInfo.email}</a>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Telegram</label>
-                <a href={`https://t.me/${supportInfo.telegram.replace('@', '')}`} className="text-blue-500 hover:text-blue-600">{supportInfo.telegram}</a>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Telegram</label>
+                <a href={`https://t.me/${supportInfo.telegram.replace('@', '')}`} className="text-emerald-400 hover:text-emerald-300">{supportInfo.telegram}</a>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Phone</label>
-                <a href={`tel:${supportInfo.phone.replace(/\s/g, '')}`} className="text-blue-500 hover:text-blue-600">{supportInfo.phone}</a>
+                <label className="block text-sm font-medium text-slate-300 mb-2">Phone</label>
+                <a href={`tel:${supportInfo.phone.replace(/\s/g, '')}`} className="text-emerald-400 hover:text-emerald-300">{supportInfo.phone}</a>
               </div>
             </div>
           </div>
@@ -387,33 +423,42 @@ export default function AccountPage() {
 
       {/* FAQ Modal */}
       {showFaqModal && (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowFaqModal(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
+          onClick={() => setShowFaqModal(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">Frequently Asked Questions</h3>
-              <button onClick={() => setShowFaqModal(false)} className="text-slate-400 hover:text-slate-600">
-                <LuX className="w-6 h-6" />
+              <h3 className="text-lg font-semibold text-slate-50">Frequently Asked Questions</h3>
+              <button
+                onClick={() => setShowFaqModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-900 hover:bg-slate-800 flex items-center justify-center text-slate-300"
+              >
+                <LuX className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <h4 className="font-semibold text-slate-900 mb-2">How do I deposit money?</h4>
-                <p className="text-sm text-slate-600">Go to the Deposit page, enter the amount, and follow the payment instructions. Your balance will be updated after verification.</p>
+                <h4 className="font-semibold text-slate-50 mb-2">How do I deposit money?</h4>
+                <p className="text-sm text-slate-200">Go to the Deposit page, enter the amount, and follow the payment instructions. Your balance will be updated after verification.</p>
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 mb-2">How long do withdrawals take?</h4>
-                <p className="text-sm text-slate-600">Withdrawals are typically processed within 24-48 hours after approval.</p>
+                <h4 className="font-semibold text-slate-50 mb-2">How long do withdrawals take?</h4>
+                <p className="text-sm text-slate-200">Withdrawals are typically processed within 24-48 hours after approval.</p>
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 mb-2">What is bonus balance?</h4>
-                <p className="text-sm text-slate-600">
+                <h4 className="font-semibold text-slate-50 mb-2">What is bonus balance?</h4>
+                <p className="text-sm text-slate-200">
                   Bonus balance is promotional credit that can be used to play games. It cannot be withdrawn directly. Any winnings generated from bonus play are
                   stored as <strong>Bonus Wins</strong> and are also non-withdrawable unless they are manually converted by an admin.
                 </p>
               </div>
               <div>
-                <h4 className="font-semibold text-slate-900 mb-2">How do I claim the daily streak bonus?</h4>
-                <p className="text-sm text-slate-600">Play games daily for 5 consecutive days, then go to the Bonus page to claim your reward.</p>
+                <h4 className="font-semibold text-slate-50 mb-2">How do I claim the daily streak bonus?</h4>
+                <p className="text-sm text-slate-200">Play games daily for 5 consecutive days, then go to the Bonus page to claim your reward.</p>
               </div>
             </div>
           </div>
