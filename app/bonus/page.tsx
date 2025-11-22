@@ -303,8 +303,7 @@ export default function BonusPage() {
 
       {/* Simple Header */}
       <div
-        className="bg-slate-950 border-b border-slate-800"
-        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 20px)' }}
+        className="bg-slate-950 border-b border-slate-800 safe-top"
       >
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
