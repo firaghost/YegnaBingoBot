@@ -4,6 +4,7 @@ import { getConfig } from '@/lib/admin-config'
 import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
 import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
 import { applyFirstDepositUnlock } from '@/lib/server/wallet-service'
+import { recordDeposit } from '@/lib/server/tournament-service'
 
 const supabase = supabaseAdmin
 
@@ -167,6 +168,13 @@ export async function POST(request: NextRequest) {
         .eq('id', transactionId)
 
       if (updateError) throw updateError
+
+      // Record tournament metrics for approved deposit (principal amount only)
+      try {
+        await recordDeposit(transaction.user_id, Number(transaction.amount || 0))
+      } catch (e) {
+        console.warn('Failed to record tournament deposit metric:', e)
+      }
 
       // If there's a bonus, create a separate bonus transaction
       if (bonusAmount > 0) {

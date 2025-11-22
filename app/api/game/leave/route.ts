@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
 import { clearGameTimer } from '@/lib/game-timers'
+import { recordPlay } from '@/lib/server/tournament-service'
 
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
@@ -206,6 +207,16 @@ export async function POST(request: NextRequest) {
         won: true,
         winnings: netPrize
       })
+
+      // Record tournament plays for winner and the player who left
+      try {
+        await recordPlay(winnerId, gameId, null)
+        if (userId && userId !== winnerId) {
+          await recordPlay(userId, gameId, null)
+        }
+      } catch (e) {
+        console.error('Error recording tournament plays on auto-win:', e)
+      }
 
       console.log(`💰 Auto-win prize: ${netPrize} ETB (after ${commissionRate}% commission, Total Pool: ${totalPrizePool} ETB)`)
 

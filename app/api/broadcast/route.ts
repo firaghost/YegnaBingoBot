@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       if (filters?.activeOnly) {
         const yesterday = new Date()
         yesterday.setDate(yesterday.getDate() - 1)
-        query = query.gte('last_active', yesterday.toISOString())
+        query = query.gte('updated_at', yesterday.toISOString())
       }
 
       if (filters?.minBalance) {

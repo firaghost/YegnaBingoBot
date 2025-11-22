@@ -53,6 +53,7 @@ import BottomNav from '@/app/components/BottomNav'
 import DepositModal from '@/app/components/DepositModal'
 import WithdrawModal from '@/app/components/WithdrawModal'
 import AvatarPickerModal from '@/app/components/AvatarPickerModal'
+import PromoClaimModal from '@/app/components/PromoClaimModal'
 import { LuLogOut, LuRefreshCw, LuPlus, LuMinus, LuGift, LuUser, LuCoins, LuHistory, LuChevronRight, LuGlobe, LuFileText, LuMail, LuCircleHelp, LuX, LuCheck, LuVolume2, LuVolumeX, LuPhone } from 'react-icons/lu'
 
 interface Transaction {
@@ -82,6 +83,7 @@ export default function AccountPage() {
   const [showDepositModal, setShowDepositModal] = useState(false)
   const [showWithdrawModal, setShowWithdrawModal] = useState(false)
   const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [showPromoModal, setShowPromoModal] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
   const [language, setLanguage] = useState('English')
   const [showLanguageModal, setShowLanguageModal] = useState(false)
@@ -572,6 +574,20 @@ export default function AccountPage() {
           <h3 className="text-base font-semibold text-slate-50 mb-4">Settings & Support</h3>
           
           <div className="space-y-2">
+            {/* Claim Promo */}
+            <button 
+              onClick={() => setShowPromoModal(true)}
+              className="w-full flex items-center justify-between py-3 border-b border-slate-800 hover:bg-slate-800 transition-colors rounded-lg px-2"
+            >
+              <div className="flex items-center gap-3">
+                <LuGift className="w-5 h-5 text-amber-300" />
+                <span className="text-sm font-medium text-slate-50">Claim Promo</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <LuChevronRight className="w-4 h-4 text-slate-500" />
+              </div>
+            </button>
+
             {/* Game Sound */}
             <button 
               onClick={() => setSoundOn(s => { const next = !s; try { window.dispatchEvent(new CustomEvent('bingo_sound_pref_changed', { detail: { enabled: next } })) } catch {}; return next })}
@@ -651,6 +667,7 @@ export default function AccountPage() {
         onClose={() => setShowWithdrawModal(false)}
       />
       <AvatarPickerModal open={showAvatarModal} onClose={() => setShowAvatarModal(false)} />
+      <PromoClaimModal open={showPromoModal} onClose={() => setShowPromoModal(false)} />
       <BottomNav />
     </div>
   )

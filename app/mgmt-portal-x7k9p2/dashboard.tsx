@@ -559,12 +559,14 @@ export default function ProfessionalDashboard() {
     { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
     { href: '/mgmt-portal-x7k9p2/suspended-users', label: 'Suspended', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
     { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null, permsAny: ['games_view','games_manage'] },
+    { href: '/mgmt-portal-x7k9p2/tournaments', label: 'Tournaments', icon: Gamepad2, badge: null, permsAny: ['tournaments_view','tournaments_manage'] },
     { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits, permsAny: ['deposits_view','deposits_manage'] },
     { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals, permsAny: ['withdrawals_view','withdrawals_manage'] },
     { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: BarChart3, badge: null, permsAny: ['transactions_view'] },
     { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null, permsAny: ['rooms_view','rooms_manage'] },
     { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null, permsAny: ['banks_view','banks_manage'] },
     { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: Megaphone, badge: null, permsAny: ['broadcast_manage'] },
+    { href: '/mgmt-portal-x7k9p2/promos', label: 'Promos', icon: Share2, badge: null, permsAny: ['broadcast_manage'] },
     { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null, permsAny: ['settings_view','settings_manage'] },
   ] as const
 

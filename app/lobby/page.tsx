@@ -11,6 +11,7 @@ import BottomNav from '@/app/components/BottomNav'
 import DepositModal from '@/app/components/DepositModal'
 import WalletModal from '@/app/components/WalletModal'
 import WithdrawModal from '@/app/components/WithdrawModal'
+import LobbyTournamentCard, { LobbyTournamentPreview } from '@/app/components/LobbyTournamentCard'
 import { LuZap, LuUsers, LuTrophy, LuLock, LuCoins, LuPlay, LuStar, LuX, LuMegaphone, LuCheck, LuLoaderCircle, LuInfo, LuPlus, LuWallet, LuEye, LuEyeOff, LuChevronDown } from 'react-icons/lu'
 import { getConfig, clearConfigCache } from '@/lib/admin-config'
 
@@ -34,6 +35,8 @@ export default function LobbyPage() {
   const { user, isAuthenticated, loading: authLoading } = useAuth()
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
+  const [tournament, setTournament] = useState<LobbyTournamentPreview | null>(null)
+  const [tournamentLoading, setTournamentLoading] = useState(false)
   const [showInsufficientBalance, setShowInsufficientBalance] = useState(false)
   const [insufficientBalanceMessage, setInsufficientBalanceMessage] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
@@ -201,6 +204,56 @@ export default function LobbyPage() {
       } catch {}
     })()
   }, [user?.id])
+
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        setTournamentLoading(true)
+        const res = await fetch('/api/tournaments')
+        if (!res.ok) return
+        const json = await res.json().catch(() => null)
+        const list = Array.isArray(json?.tournaments) ? json.tournaments : []
+        const raw = list.find((t: any) => t.status === 'live')
+        if (!raw) return
+
+        const topDepositorsSource = raw.topDepositors || raw.top_depositors || []
+        const topPlayersSource = raw.topPlayers || raw.top_players || []
+
+        const preview: LobbyTournamentPreview = {
+          id: raw.id,
+          name: raw.settings?.display_name || raw.name,
+          type: (raw.type || 'weekly') as LobbyTournamentPreview['type'],
+          status: (raw.status || 'upcoming') as LobbyTournamentPreview['status'],
+          start_at: raw.start_at,
+          end_at: raw.end_at,
+          prize_summary: raw.prize_summary || raw.prize_label || '',
+          eligibility_summary: raw.eligibility_summary || raw.eligibility_text || '',
+          topDepositors: topDepositorsSource.map((r: any) => ({
+            username: r.username || r.handle || 'player',
+            valueLabel: r.valueLabel || r.label || '',
+          })),
+          topPlayers: topPlayersSource.map((r: any) => ({
+            username: r.username || r.handle || 'player',
+            valueLabel: r.valueLabel || r.label || '',
+          })),
+        }
+
+        if (mounted) {
+          setTournament(preview)
+        }
+      } catch {
+      } finally {
+        if (mounted) {
+          setTournamentLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Prefetch game routes for top visible rooms to make join nearly instant
   useEffect(() => {
@@ -754,6 +807,24 @@ export default function LobbyPage() {
               )}
             </div>
           </div>
+        )}
+
+        {tournament && (
+          <LobbyTournamentCard
+            tournament={tournament}
+            onViewDetails={(id) => {
+              try {
+                router.push(`/tournaments/${id}`)
+              } catch {}
+            }}
+            onPlayNow={() => {
+              if (rooms && rooms.length > 0) {
+                try {
+                  router.push(`/game/${rooms[0].id}`)
+                } catch {}
+              }
+            }}
+          />
         )}
 
         <h2 className="text-lg sm:text-xl font-semibold text-slate-50 mb-4 sm:mb-6">

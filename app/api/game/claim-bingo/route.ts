@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getConfig } from '@/lib/admin-config'
 import { handleRoundWin, getStakeSourceForUserInGame } from '@/lib/server/wallet-service'
+import { recordPlay } from '@/lib/server/tournament-service'
 
 // Use admin client to bypass RLS in production
 const supabase = supabaseAdmin
@@ -538,6 +539,18 @@ export async function POST(request: NextRequest) {
       } catch (xpError) {
         console.error('Error in XP system:', xpError)
       }
+    }
+
+    // Record tournament plays for all human players in the game
+    try {
+      const allPlayers: string[] = Array.isArray(game.players) ? game.players : []
+      if (allPlayers.length > 0) {
+        for (const playerId of allPlayers) {
+          await recordPlay(playerId, gameId, null)
+        }
+      }
+    } catch (e) {
+      console.error('Error recording tournament plays:', e)
     }
 
     console.log(`🎉 User ${userId} won game ${gameId}`)
