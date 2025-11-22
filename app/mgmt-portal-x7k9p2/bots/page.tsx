@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 type Bot = {
   id: string
@@ -54,6 +55,16 @@ export default function AdminBotsPage() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   const selectedIds = useMemo(() => Object.keys(selected).filter(id => selected[id]), [selected])
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   const filtered = useMemo(() => {
     let list = bots
@@ -162,9 +173,8 @@ export default function AdminBotsPage() {
     finally { setLoading(false) }
   }
 
-  const bulkDelete = async () => {
+  const doBulkDelete = async () => {
     if (selectedIds.length === 0) return
-    if (!confirm(`Delete ${selectedIds.length} selected bot(s)?`)) return
     setLoading(true)
     try {
       await Promise.all(selectedIds.map(id => fetch(`/api/admin/bots/${id}`, { method: 'DELETE' })))
@@ -216,6 +226,19 @@ export default function AdminBotsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
       <div className="container mx-auto px-4 sm:px-6 py-6">
+        <AdminConfirmModal
+          open={confirmOpen}
+          title={confirmConfig.title}
+          message={confirmConfig.message}
+          confirmLabel={confirmConfig.confirmLabel}
+          cancelLabel={confirmConfig.cancelLabel}
+          variant={confirmConfig.variant}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            confirmConfig.onConfirm?.()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
             <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
@@ -292,7 +315,26 @@ export default function AdminBotsPage() {
             <div className="flex items-end md:items-center gap-2">
               <button disabled={selectedIds.length===0} onClick={()=>bulkUpdateActive(true)} className="bg-emerald-600/80 hover:bg-emerald-600 text-white px-3 py-2 rounded text-sm disabled:opacity-40">Activate</button>
               <button disabled={selectedIds.length===0} onClick={()=>bulkUpdateActive(false)} className="bg-yellow-600/80 hover:bg-yellow-600 text-white px-3 py-2 rounded text-sm disabled:opacity-40">Deactivate</button>
-              <button disabled={selectedIds.length===0} onClick={bulkDelete} className="bg-red-600/80 hover:bg-red-600 text-white px-3 py-2 rounded text-sm disabled:opacity-40">Delete</button>
+              <button
+                disabled={selectedIds.length===0}
+                onClick={() => {
+                  if (selectedIds.length === 0) return
+                  setConfirmConfig({
+                    title: 'Delete bots',
+                    message: `Delete ${selectedIds.length} selected bot(s)?`,
+                    confirmLabel: 'Delete',
+                    cancelLabel: 'Cancel',
+                    variant: 'destructive',
+                    onConfirm: () => {
+                      void doBulkDelete()
+                    },
+                  })
+                  setConfirmOpen(true)
+                }}
+                className="bg-red-600/80 hover:bg-red-600 text-white px-3 py-2 rounded text-sm disabled:opacity-40"
+              >
+                Delete
+              </button>
             </div>
           </div>
           <div className="mt-2 text-gray-300 text-xs">Selected: {selectedIds.length}</div>
@@ -342,7 +384,25 @@ export default function AdminBotsPage() {
                   <td className="p-3 align-middle text-right">
                     <div className="inline-flex gap-2">
                       <button onClick={()=>openEdit(bot)} className="bg-blue-600/80 hover:bg-blue-600 text-white px-3 py-1.5 rounded">Edit</button>
-                      <button onClick={async ()=>{ if (confirm(`Delete ${bot.name}?`)) { await fetch(`/api/admin/bots/${bot.id}`, { method: 'DELETE' }); refresh() } }} className="bg-red-600/80 hover:bg-red-600 text-white px-3 py-1.5 rounded">Delete</button>
+                      <button
+                        onClick={() => {
+                          setConfirmConfig({
+                            title: 'Delete bot',
+                            message: `Delete ${bot.name}?`,
+                            confirmLabel: 'Delete',
+                            cancelLabel: 'Cancel',
+                            variant: 'destructive',
+                            onConfirm: async () => {
+                              await fetch(`/api/admin/bots/${bot.id}`, { method: 'DELETE' })
+                              refresh()
+                            },
+                          })
+                          setConfirmOpen(true)
+                        }}
+                        className="bg-red-600/80 hover:bg-red-600 text-white px-3 py-1.5 rounded"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>

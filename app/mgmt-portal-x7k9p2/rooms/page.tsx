@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useLocalStorage } from '@/lib/hooks/usePageState'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 export default function AdminRoomsPage() {
   const [rooms, setRooms] = useState<any[]>([])
@@ -22,6 +23,16 @@ export default function AdminRoomsPage() {
     color: 'from-blue-500 to-blue-700',
     default_level: 'medium'
   })
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   useEffect(() => {
     fetchRooms()
@@ -141,14 +152,8 @@ export default function AdminRoomsPage() {
     }
   }
 
-  const handleDeleteRoom = async (roomId: string) => {
-    // Simple confirmation
-    if (!confirm(`Are you sure you want to delete room "${roomId}"?\n\nThis will permanently delete the room and all associated games, players, and data.\n\nThis action cannot be undone.`)) {
-      return
-    }
-
+  const doDeleteRoom = async (roomId: string) => {
     try {
-      // Direct deletion - CASCADE constraints will handle associated data
       const { error } = await supabase
         .from('rooms')
         .delete()
@@ -156,22 +161,43 @@ export default function AdminRoomsPage() {
 
       if (error) {
         console.error('Error deleting room:', error)
-        
-        // Check if it's still a foreign key constraint error
-        if (error.code === '23503') {
-          alert(`Cannot delete room: Foreign key constraint error.\n\nPlease run the database fix first:\n1. Go to Supabase SQL Editor\n2. Run: supabase/fix_foreign_key_constraints.sql\n\nThis will enable automatic deletion of associated data.`)
+
+        if ((error as any).code === '23503') {
+          showNotification(
+            'error',
+            'Cannot delete room due to foreign key constraints. Please run the SQL fix script in Supabase first.',
+          )
         } else {
-          alert(`Failed to delete room: ${error.message}`)
+          showNotification('error', `Failed to delete room: ${error.message}`)
         }
         return
       }
 
-      alert('Room deleted successfully!')
+      showNotification('success', 'Room deleted successfully!')
       fetchRooms()
     } catch (error: any) {
       console.error('Error deleting room:', error)
-      alert(`Failed to delete room: ${error?.message || 'Unknown error'}`)
+      showNotification('error', `Failed to delete room: ${error?.message || 'Unknown error'}`)
     }
+  }
+
+  const handleDeleteRoom = (roomId: string) => {
+    const message =
+      `Are you sure you want to delete room "${roomId}"?` +
+      '\n\nThis will permanently delete the room and all associated games, players, and data.' +
+      '\n\nThis action cannot be undone.'
+
+    setConfirmConfig({
+      title: 'Delete room',
+      message,
+      confirmLabel: 'Delete room',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+      onConfirm: () => {
+        void doDeleteRoom(roomId)
+      },
+    })
+    setConfirmOpen(true)
   }
 
   const filteredRooms = rooms.filter(room =>
@@ -181,6 +207,19 @@ export default function AdminRoomsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <AdminConfirmModal
+        open={confirmOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        variant={confirmConfig.variant}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          confirmConfig.onConfirm?.()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import { formatCurrency } from '@/lib/utils'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 interface UserResult {
   id: string
@@ -68,6 +69,19 @@ export default function AdminPromosPage() {
   const [userResults, setUserResults] = useState<UserResult[]>([])
   const [selectedUsers, setSelectedUsers] = useState<UserResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({
+    title: '',
+    message: '',
+  })
 
   useEffect(() => {
     const loadTournaments = async () => {
@@ -264,33 +278,10 @@ export default function AdminPromosPage() {
     })
   }, [])
 
-  const handleSendPromos = async () => {
+  const doSendPromos = async () => {
     if (!admin) return
 
-    if (!title.trim() || !message.trim()) {
-      showNotification('error', 'Please fill in title and message')
-      return
-    }
-
     const amountNum = Number(promoAmount || 0)
-    if (!promoTournamentId) {
-      showNotification('error', 'Please select a tournament for this promo')
-      return
-    }
-    if (!amountNum || amountNum <= 0) {
-      showNotification('error', 'Please enter a valid promo amount')
-      return
-    }
-
-    if (!estimatedRecipients) {
-      if (!confirm('No recipients are currently matched. Send anyway?')) {
-        return
-      }
-    }
-
-    if (!confirm(`Send promo codes to approximately ${estimatedRecipients} users?`)) {
-      return
-    }
 
     try {
       setIsSending(true)
@@ -359,6 +350,42 @@ export default function AdminPromosPage() {
     }
   }
 
+  const handleSendPromos = () => {
+    if (!admin) return
+
+    if (!title.trim() || !message.trim()) {
+      showNotification('error', 'Please fill in title and message')
+      return
+    }
+
+    const amountNum = Number(promoAmount || 0)
+    if (!promoTournamentId) {
+      showNotification('error', 'Please select a tournament for this promo')
+      return
+    }
+    if (!amountNum || amountNum <= 0) {
+      showNotification('error', 'Please enter a valid promo amount')
+      return
+    }
+
+    const approx = estimatedRecipients || 0
+    const plural = approx === 1 ? '' : 's'
+
+    setConfirmConfig({
+      title: 'Send promo campaign',
+      message: approx
+        ? `Send promo codes to approximately ${approx.toLocaleString()} user${plural}?`
+        : 'No users currently match your filters (0 recipients). Send this promo anyway?',
+      confirmLabel: 'Send promo',
+      cancelLabel: 'Cancel',
+      variant: approx ? 'default' : 'destructive',
+      onConfirm: () => {
+        void doSendPromos()
+      },
+    })
+    setConfirmOpen(true)
+  }
+
   if (adminLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">
@@ -391,6 +418,19 @@ export default function AdminPromosPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <AdminConfirmModal
+        open={confirmOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        variant={confirmConfig.variant}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          confirmConfig.onConfirm?.()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       {notification && (
         <div
           className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base ${

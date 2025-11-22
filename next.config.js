@@ -8,11 +8,6 @@ const securityHeaders = [
     key: 'Strict-Transport-Security',
     value: 'max-age=63072000; includeSubDomains; preload',
   },
-  // Prevent clickjacking
-  {
-    key: 'X-Frame-Options',
-    value: 'DENY',
-  },
   // MIME sniffing protection
   {
     key: 'X-Content-Type-Options',
@@ -27,6 +22,11 @@ const securityHeaders = [
   {
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  },
+  // Allow embedding in Telegram while preventing arbitrary framing elsewhere
+  {
+    key: 'Content-Security-Policy',
+    value: "frame-ancestors 'self' https://web.telegram.org https://telegram.org https://*.telegram.org",
   },
 ]
 

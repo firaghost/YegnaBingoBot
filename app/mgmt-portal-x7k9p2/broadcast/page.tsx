@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 interface UserResult {
   id: string
@@ -35,6 +36,16 @@ export default function AdminBroadcast() {
   const [userResults, setUserResults] = useState<UserResult[]>([])
   const [selectedUsers, setSelectedUsers] = useState<UserResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   useEffect(() => {
     fetchEstimatedRecipients()
@@ -145,13 +156,9 @@ export default function AdminBroadcast() {
     })
   }, [])
 
-  const handleSend = async () => {
+  const doSendBroadcast = async () => {
     if (!title || !message) {
       showNotification('error', 'Please fill in title and message')
-      return
-    }
-
-    if (!confirm(`Send broadcast to ${estimatedRecipients} users?`)) {
       return
     }
 
@@ -186,11 +193,11 @@ export default function AdminBroadcast() {
           filters: {
             activeOnly,
             minBalance: minBalance ? parseInt(minBalance) : null,
-            minGames: minGames ? parseInt(minGames) : null
+            minGames: minGames ? parseInt(minGames) : null,
           },
-          targetUserIds: selectedUsers.length > 0 ? selectedUsers.map(user => user.id) : null,
-          imageUrl: finalImageUrl || null
-        })
+          targetUserIds: selectedUsers.length > 0 ? selectedUsers.map((user) => user.id) : null,
+          imageUrl: finalImageUrl || null,
+        }),
       })
 
       const data = await response.json()
@@ -214,6 +221,30 @@ export default function AdminBroadcast() {
     } finally {
       setIsSending(false)
     }
+  }
+
+  const handleSend = () => {
+    if (!title || !message) {
+      showNotification('error', 'Please fill in title and message')
+      return
+    }
+
+    const approx = estimatedRecipients || 0
+    const plural = approx === 1 ? '' : 's'
+
+    setConfirmConfig({
+      title: 'Send broadcast',
+      message: approx
+        ? `Send broadcast to approximately ${approx.toLocaleString()} user${plural}?`
+        : 'No users currently match your filters (0 recipients). Send this broadcast anyway?',
+      confirmLabel: 'Send broadcast',
+      cancelLabel: 'Cancel',
+      variant: approx ? 'default' : 'destructive',
+      onConfirm: () => {
+        void doSendBroadcast()
+      },
+    })
+    setConfirmOpen(true)
   }
 
   const handleImageUpload = useCallback(async (file: File) => {
@@ -257,6 +288,19 @@ export default function AdminBroadcast() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <AdminConfirmModal
+        open={confirmOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        variant={confirmConfig.variant}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          confirmConfig.onConfirm?.()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base ${

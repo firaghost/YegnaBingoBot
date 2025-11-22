@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 interface BankAccount {
   id: string
@@ -31,6 +32,16 @@ export default function BankManagement() {
     swift_code: '',
     is_active: true
   })
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   useEffect(() => {
     fetchBanks()
@@ -140,10 +151,6 @@ export default function BankManagement() {
   }
 
   const handleDeleteBank = async (bankId: string) => {
-    if (!confirm('Are you sure you want to delete this bank account? This action cannot be undone.')) {
-      return
-    }
-
     try {
       const { error } = await supabase
         .from('bank_accounts')
@@ -168,6 +175,19 @@ export default function BankManagement() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <AdminConfirmModal
+        open={confirmOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        variant={confirmConfig.variant}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          confirmConfig.onConfirm?.()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${
@@ -293,7 +313,20 @@ export default function BankManagement() {
                             {bank.is_active ? '⊘' : '✓'}
                           </button>
                           <button
-                            onClick={() => handleDeleteBank(bank.id)}
+                            onClick={() => {
+                              setConfirmConfig({
+                                title: 'Delete bank account',
+                                message:
+                                  'Are you sure you want to delete this bank account? This action cannot be undone.',
+                                confirmLabel: 'Delete',
+                                cancelLabel: 'Cancel',
+                                variant: 'destructive',
+                                onConfirm: () => {
+                                  void handleDeleteBank(bank.id)
+                                },
+                              })
+                              setConfirmOpen(true)
+                            }}
                             className="bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-600/30 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-semibold transition-colors text-xs"
                             title="Delete account"
                           >

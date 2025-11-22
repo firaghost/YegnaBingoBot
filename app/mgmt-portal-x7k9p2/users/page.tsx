@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
 
 type SortField = 'username' | 'balance' | 'games_played' | 'games_won' | 'created_at' | 'total_referrals' | 'referral_earnings'
 type SortOrder = 'asc' | 'desc'
@@ -68,6 +69,16 @@ export default function AdminUsersPage() {
   const { admin } = useAdminAuth()
   const [walletActionLoading, setWalletActionLoading] = useState(false)
   const [referralStats, setReferralStats] = useState<{ total: number; earnings: number } | null>(null)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   // Save preferences to sessionStorage (only for current session)
   useEffect(() => {
@@ -282,7 +293,7 @@ export default function AdminUsersPage() {
     }
   }
 
-  const handleConvertBonusWins = async () => {
+  const doConvertBonusWins = async () => {
     if (!selectedUser) return
     if (!admin) {
       alert('Admin session missing. Please log in again.')
@@ -295,23 +306,19 @@ export default function AdminUsersPage() {
       return
     }
 
-    const confirmMsg = `Convert ${formatCurrency(bonusWins)} Bonus Wins to Cash for ${selectedUser.username || 'this user'}?` 
-      + '\n\nThis will move funds from Bonus Wins to the Cash Wallet and will be logged.'
-    if (!window.confirm(confirmMsg)) return
-
     try {
       setWalletActionLoading(true)
       const res = await fetch('/api/admin/wallet/convert-bonus-wins', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-id': admin.id
+          'x-admin-id': admin.id,
         },
         body: JSON.stringify({
           userId: selectedUser.id,
           amount: bonusWins,
-          reason: 'manual_admin_conversion'
-        })
+          reason: 'manual_admin_conversion',
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -320,7 +327,7 @@ export default function AdminUsersPage() {
 
       if (data.user) {
         setSelectedUser((prev: any) => (prev && prev.id === data.user.id ? { ...prev, ...data.user } : prev))
-        setUsers(prev => prev.map(u => (u.id === data.user.id ? { ...u, ...data.user } : u)))
+        setUsers((prev) => prev.map((u) => (u.id === data.user.id ? { ...u, ...data.user } : u)))
       }
 
       alert(`Converted ${formatCurrency(data.convertedAmount || bonusWins)} Bonus Wins to Cash Wallet.`)
@@ -330,6 +337,36 @@ export default function AdminUsersPage() {
     } finally {
       setWalletActionLoading(false)
     }
+  }
+
+  const handleConvertBonusWins = () => {
+    if (!selectedUser) return
+    if (!admin) {
+      alert('Admin session missing. Please log in again.')
+      return
+    }
+
+    const bonusWins = Number(selectedUser.bonus_win_balance || 0)
+    if (!bonusWins || bonusWins <= 0) {
+      alert('This user has no Bonus Wins to convert.')
+      return
+    }
+
+    const confirmMsg =
+      `Convert ${formatCurrency(bonusWins)} Bonus Wins to Cash for ${selectedUser.username || 'this user'}?` +
+      '\n\nThis will move funds from Bonus Wins to the Cash Wallet and will be logged.'
+
+    setConfirmConfig({
+      title: 'Convert Bonus Wins',
+      message: confirmMsg,
+      confirmLabel: 'Convert',
+      cancelLabel: 'Cancel',
+      variant: 'default',
+      onConfirm: () => {
+        void doConvertBonusWins()
+      },
+    })
+    setConfirmOpen(true)
   }
 
   const fetchUserGames = async (user: any) => {
@@ -480,6 +517,19 @@ export default function AdminUsersPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800">
+      <AdminConfirmModal
+        open={confirmOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmLabel={confirmConfig.confirmLabel}
+        cancelLabel={confirmConfig.cancelLabel}
+        variant={confirmConfig.variant}
+        onConfirm={() => {
+          setConfirmOpen(false)
+          confirmConfig.onConfirm?.()
+        }}
+        onCancel={() => setConfirmOpen(false)}
+      />
       {/* Premium Header */}
       <header className="bg-gradient-to-r from-slate-900 to-slate-800 border-b border-slate-700/50 shadow-2xl sticky top-0 z-40">
         <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6">
