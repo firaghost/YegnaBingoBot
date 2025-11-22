@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === 'production'
 
-// Global security headers for all routes
-const securityHeaders = [
+// Base security headers shared by all routes (no frame restrictions here)
+const baseSecurityHeaders = [
   // Enforce HTTPS
   {
     key: 'Strict-Transport-Security',
@@ -23,11 +23,6 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   },
-  // Allow embedding in Telegram while preventing arbitrary framing elsewhere
-  {
-    key: 'Content-Security-Policy',
-    value: "frame-ancestors 'self' https://web.telegram.org https://telegram.org https://*.telegram.org",
-  },
 ]
 
 const nextConfig = {
@@ -38,9 +33,21 @@ const nextConfig = {
   },
   async headers() {
     return [
+      // Admin / management portal: DO NOT allow embedding
+      {
+        source: '/mgmt-portal-x7k9p2/:path*',
+        headers: [
+          ...baseSecurityHeaders,
+          {
+            key: 'X-Frame-Options',
+            value: 'DENY',
+          },
+        ],
+      },
+      // All other routes (mini app, APIs, etc.) – no frame restriction so Telegram can embed the mini app
       {
         source: '/(.*)',
-        headers: securityHeaders,
+        headers: baseSecurityHeaders,
       },
     ]
   },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requirePermission } from '@/lib/server/admin-permissions'
 import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
+import crypto from 'crypto'
 
 const supabase = supabaseAdmin
 
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const { title, message, filters, targetUserIds, promo } = body || {}
-    const { amount, tournamentId, metric = 'deposits', rank = 1, expiresInDays = 7 } = promo || {}
+    const { amount, tournamentId, metric = 'deposits', rank = 1, expiresAmount, expiresUnit, expiresInDays } =
+      promo || {}
 
     if (!title || !message) {
       return NextResponse.json(
@@ -87,6 +89,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Generate a stable id to link promo rows to this broadcast record
+    const broadcastId = crypto.randomUUID()
+
     const { data: users, error } = await query
 
     if (error) throw error
@@ -98,9 +103,29 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const expires = new Date()
-    const days = Number(expiresInDays) || 7
-    expires.setDate(expires.getDate() + days)
+    const now = new Date()
+    const expires = new Date(now)
+    let labelAmount: number
+    let labelUnit: 'hours' | 'days'
+
+    if (typeof expiresAmount === 'number' && expiresAmount > 0 && expiresUnit === 'hours') {
+      labelAmount = expiresAmount
+      labelUnit = 'hours'
+      expires.setHours(expires.getHours() + expiresAmount)
+    } else if (typeof expiresAmount === 'number' && expiresAmount > 0 && expiresUnit === 'days') {
+      labelAmount = expiresAmount
+      labelUnit = 'days'
+      expires.setDate(expires.getDate() + expiresAmount)
+    } else if (typeof expiresInDays === 'number' && expiresInDays > 0) {
+      labelAmount = expiresInDays
+      labelUnit = 'days'
+      expires.setDate(expires.getDate() + expiresInDays)
+    } else {
+      labelAmount = 7
+      labelUnit = 'days'
+      expires.setDate(expires.getDate() + 7)
+    }
+
     const expiresIso = expires.toISOString()
 
     const results = {
@@ -147,9 +172,11 @@ export async function POST(req: NextRequest) {
             metric,
             rank,
             expires_at: expiresIso,
+            broadcast_id: broadcastId,
             meta: {
               broadcast: true,
               created_by: admin.id,
+              broadcast_id: broadcastId,
             },
           })
 
@@ -174,7 +201,11 @@ export async function POST(req: NextRequest) {
         lines.push('3️⃣ Enter your promo code and confirm')
         lines.push('')
         lines.push('🔥 Do not share this code. It works only once per account.')
-        lines.push(`This code expires in ${days} day${days === 1 ? '' : 's'}.`)
+        if (labelUnit === 'hours') {
+          lines.push(`This code expires in ${labelAmount} hour${labelAmount === 1 ? '' : 's'}.`)
+        } else {
+          lines.push(`This code expires in ${labelAmount} day${labelAmount === 1 ? '' : 's'}.`)
+        }
 
         const text = lines.join('\n')
 
@@ -234,6 +265,7 @@ export async function POST(req: NextRequest) {
 
     try {
       await supabase.from('broadcasts').insert({
+        id: broadcastId,
         title,
         message,
         recipients: results.total,
@@ -246,7 +278,9 @@ export async function POST(req: NextRequest) {
             tournamentId,
             metric,
             rank,
-            expiresInDays: days,
+            expiresAmount: labelAmount,
+            expiresUnit: labelUnit,
+            ...(labelUnit === 'days' ? { expiresInDays: labelAmount } : {}),
           },
         },
         created_at: new Date().toISOString(),

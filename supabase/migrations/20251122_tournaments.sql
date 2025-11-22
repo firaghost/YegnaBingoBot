@@ -205,7 +205,7 @@ BEGIN
   -- 2) Credit real balance directly on users table
   -- If you use a wallet ledger or RPC-based wallet, replace this logic accordingly.
   UPDATE public.users
-  SET real_balance = COALESCE(real_balance, 0) + p_amount
+  SET balance = COALESCE(balance, 0) + p_amount
   WHERE id = p_user_id;
 
   -- 3) Optionally, you can emit NOTIFY or write to a log table here

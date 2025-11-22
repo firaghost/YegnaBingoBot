@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getUserFromSession } from '@/lib/server/user-session'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, amount, paymentMethod, bankId, bankInfo, transactionRef, proofUrl } = await request.json()
+    const { amount, paymentMethod, bankId, bankInfo, transactionRef, proofUrl, userId: bodyUserId } = await request.json()
+
+    let userId: string | null = null
+    try {
+      const sessionUser = await getUserFromSession(request)
+      userId = sessionUser.id
+    } catch {
+      // Temporary fallback for older clients that still send userId explicitly
+      userId = bodyUserId || null
+    }
 
     if (!userId || !amount || amount <= 0) {
       return NextResponse.json(

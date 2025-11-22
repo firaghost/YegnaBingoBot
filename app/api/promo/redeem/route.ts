@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getUserFromSession } from '@/lib/server/user-session'
 
 const supabase = supabaseAdmin
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
-    const { userId, code } = body || {}
+    const { code } = body || {}
+
+    let userId: string | null = null
+    try {
+      const sessionUser = await getUserFromSession(req)
+      userId = sessionUser.id
+    } catch (e) {
+      // Temporary fallback for old clients that still send userId explicitly
+      userId = (body as any)?.userId || null
+      if (userId) {
+        console.warn('Promo redeem is falling back to body.userId; consider migrating client to cookie-based sessions.')
+      }
+    }
 
     if (!userId || !code || typeof code !== 'string') {
-      return NextResponse.json({ error: 'Missing userId or promo code' }, { status: 400 })
+      return NextResponse.json({ error: 'Missing user or promo code' }, { status: 400 })
     }
 
     const trimmed = code.trim().toUpperCase()
@@ -50,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     const { data: user } = await supabase
       .from('users')
-      .select('balance, real_balance, bonus_balance, bonus_win_balance')
+      .select('balance, bonus_balance, bonus_win_balance')
       .eq('id', userId)
       .maybeSingle()
 

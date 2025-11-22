@@ -92,48 +92,21 @@ export function useAuth() {
     try {
       setLoading(true)
 
-      const telegramId = String(telegramData.id)
+      const res = await fetch('/api/auth/telegram-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegramData }),
+      })
 
-      // Check if user exists
-      let { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('telegram_id', telegramId)
-        .maybeSingle()
-
-      if (!existingUser) {
-        // Get registration bonus from admin config (0 if disabled or missing)
-        const rawBonus = await getConfig('welcome_bonus')
-        const parsedBonus = Number(rawBonus)
-        const registrationBonus = Number.isFinite(parsedBonus) ? parsedBonus : 0
-
-        // Create new user
-        const { data: newUser, error } = await supabase
-          .from('users')
-          .insert({
-            telegram_id: telegramId,
-            username: telegramData.username || `Player_${telegramId}`,
-            balance: 0, // No main balance initially
-            bonus_balance: registrationBonus, // Registration bonus from admin settings
-            games_played: 0,
-            games_won: 0,
-            total_winnings: 0,
-            referral_code: telegramId,
-            daily_streak: 0,
-            // Add phone number if available in Telegram WebApp data
-            phone: telegramData.phone_number
-          })
-          .select()
-          .single()
-
-        if (error) {
-          console.error('Error creating user:', error)
-          throw error
-        }
-        existingUser = newUser
+      const json = await res.json()
+      if (!res.ok) {
+        console.error('Telegram login failed:', json)
+        throw new Error(json.error || 'Failed to login with Telegram')
       }
 
-      // Store user ID in localStorage
+      const existingUser = json.data as AuthUser
+
+      // Keep localStorage for backwards compatibility/UI convenience
       localStorage.setItem('user_id', existingUser.id)
       setUser(existingUser)
       return existingUser

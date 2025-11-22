@@ -16,6 +16,7 @@ ALTER TABLE transactions
       'withdrawal',
       'conversion',
       'referral_bonus',
+      'tournament_prize',
       -- wallet v2 specific types
       'win_real',
       'win_bonus_locked',

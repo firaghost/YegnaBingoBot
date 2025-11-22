@@ -27,6 +27,8 @@ export default function AdminBroadcast() {
   const [activeOnly, setActiveOnly] = useState(false)
   const [minBalance, setMinBalance] = useState('')
   const [minGames, setMinGames] = useState('')
+  const [newUsersSinceDays, setNewUsersSinceDays] = useState('')
+  const [dormantDays, setDormantDays] = useState('')
   const [estimatedRecipients, setEstimatedRecipients] = useState(0)
   const [isSending, setIsSending] = useState(false)
   const [previousBroadcasts, setPreviousBroadcasts] = useState<any[]>([])
@@ -50,7 +52,7 @@ export default function AdminBroadcast() {
   useEffect(() => {
     fetchEstimatedRecipients()
     fetchPreviousBroadcasts()
-  }, [targetAll, activeOnly, minBalance, minGames, selectedUsers])
+  }, [targetAll, activeOnly, minBalance, minGames, newUsersSinceDays, dormantDays, selectedUsers])
 
   const fetchEstimatedRecipients = async () => {
     try {
@@ -75,6 +77,24 @@ export default function AdminBroadcast() {
 
       if (minGames) {
         query = query.gte('games_played', parseInt(minGames))
+      }
+
+      if (newUsersSinceDays) {
+        const days = parseInt(newUsersSinceDays)
+        if (!Number.isNaN(days) && days > 0) {
+          const since = new Date()
+          since.setDate(since.getDate() - days)
+          query = query.gte('created_at', since.toISOString())
+        }
+      }
+
+      if (dormantDays) {
+        const days = parseInt(dormantDays)
+        if (!Number.isNaN(days) && days > 0) {
+          const since = new Date()
+          since.setDate(since.getDate() - days)
+          query = query.lt('updated_at', since.toISOString())
+        }
       }
 
       const { count } = await query
@@ -156,6 +176,32 @@ export default function AdminBroadcast() {
     })
   }, [])
 
+  const applySegment = (segment: 'newcomers' | 'highRollers' | 'dormant') => {
+    setSelectedUsers([])
+    setSearchTerm('')
+    setUserResults([])
+
+    if (segment === 'newcomers') {
+      setActiveOnly(true)
+      setNewUsersSinceDays('7')
+      setMinBalance('')
+      setMinGames('1')
+      setDormantDays('')
+    } else if (segment === 'highRollers') {
+      setActiveOnly(true)
+      setNewUsersSinceDays('')
+      setMinBalance('500')
+      setMinGames('20')
+      setDormantDays('')
+    } else if (segment === 'dormant') {
+      setActiveOnly(false)
+      setNewUsersSinceDays('')
+      setMinBalance('')
+      setMinGames('')
+      setDormantDays('14')
+    }
+  }
+
   const doSendBroadcast = async () => {
     if (!title || !message) {
       showNotification('error', 'Please fill in title and message')
@@ -186,7 +232,7 @@ export default function AdminBroadcast() {
 
       const response = await fetch('/api/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-id': adminId },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
           message: formattedMessage,
@@ -194,6 +240,8 @@ export default function AdminBroadcast() {
             activeOnly,
             minBalance: minBalance ? parseInt(minBalance) : null,
             minGames: minGames ? parseInt(minGames) : null,
+            newUsersSinceDays: newUsersSinceDays ? parseInt(newUsersSinceDays) : null,
+            dormantDays: dormantDays ? parseInt(dormantDays) : null,
           },
           targetUserIds: selectedUsers.length > 0 ? selectedUsers.map((user) => user.id) : null,
           imageUrl: finalImageUrl || null,
@@ -314,7 +362,7 @@ export default function AdminBroadcast() {
 
       {/* Header */}
       <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -323,16 +371,20 @@ export default function AdminBroadcast() {
             </Link>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-white">Broadcast Messages</h1>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram</p>
+              <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram.</p>
             </div>
+          </div>
+          <div className="hidden sm:flex flex-col items-end text-right text-xs text-slate-400">
+            <span className="font-semibold text-slate-200">Estimated recipients</span>
+            <span className="text-lg font-bold text-emerald-400">{estimatedRecipients.toLocaleString()}</span>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 xl:gap-8">
           {/* Compose Section */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="xl:col-span-2 space-y-6">
             {/* Compose Card */}
             <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
               <h2 className="text-xl sm:text-2xl font-bold text-white mb-6">Compose Message</h2>
@@ -434,7 +486,32 @@ export default function AdminBroadcast() {
                 {/* Filters Section */}
                 <div className="pt-6 border-t border-slate-700">
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Target Audience</h3>
-                  
+
+                  <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+                    <span className="text-slate-500 mr-1">Quick segments:</span>
+                    <button
+                      type="button"
+                      onClick={() => applySegment('newcomers')}
+                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                    >
+                      Newcomers (7d)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applySegment('highRollers')}
+                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                    >
+                      High rollers
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applySegment('dormant')}
+                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                    >
+                      Dormant users
+                    </button>
+                  </div>
+
                   <div className="space-y-3 sm:space-y-4">
                     {/* Direct User Search */}
                     <div className="bg-slate-700/30 rounded-lg border border-slate-700 p-4 space-y-3">
@@ -642,6 +719,24 @@ export default function AdminBroadcast() {
                   <div className="flex items-center justify-between">
                     <span className="text-slate-400">Min Games:</span>
                     <span className="text-emerald-400">{minGames}</span>
+                  </div>
+                )}
+                {newUsersSinceDays && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">New Users:</span>
+                    <span className="text-emerald-400">Last {newUsersSinceDays} days</span>
+                  </div>
+                )}
+                {dormantDays && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Dormant:</span>
+                    <span className="text-emerald-400">≥ {dormantDays} days</span>
+                  </div>
+                )}
+                {selectedUsers.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Manually selected:</span>
+                    <span className="text-emerald-400">{selectedUsers.length}</span>
                   </div>
                 )}
               </div>

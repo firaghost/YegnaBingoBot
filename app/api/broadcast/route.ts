@@ -56,12 +56,24 @@ export async function POST(request: NextRequest) {
         query = query.gte('updated_at', yesterday.toISOString())
       }
 
-      if (filters?.minBalance) {
+      if (filters?.minBalance != null) {
         query = query.gte('balance', filters.minBalance)
       }
 
-      if (filters?.minGames) {
+      if (filters?.minGames != null) {
         query = query.gte('games_played', filters.minGames)
+      }
+
+      if (filters?.newUsersSinceDays != null && filters.newUsersSinceDays > 0) {
+        const since = new Date()
+        since.setDate(since.getDate() - filters.newUsersSinceDays)
+        query = query.gte('created_at', since.toISOString())
+      }
+
+      if (filters?.dormantDays != null && filters.dormantDays > 0) {
+        const since = new Date()
+        since.setDate(since.getDate() - filters.dormantDays)
+        query = query.lt('updated_at', since.toISOString())
       }
     }
 

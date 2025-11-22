@@ -44,7 +44,8 @@ export default function AdminPromosPage() {
   const [promoTournamentId, setPromoTournamentId] = useState('')
   const [promoMetric, setPromoMetric] = useState<'deposits' | 'plays'>('deposits')
   const [promoRank, setPromoRank] = useState(1)
-  const [promoExpiresInDays, setPromoExpiresInDays] = useState(7)
+  const [promoExpiresAmount, setPromoExpiresAmount] = useState(7)
+  const [promoExpiresUnit, setPromoExpiresUnit] = useState<'days' | 'hours'>('days')
 
   const [targetAll, setTargetAll] = useState(true)
   const [activeOnly, setActiveOnly] = useState(true)
@@ -69,6 +70,10 @@ export default function AdminPromosPage() {
   const [userResults, setUserResults] = useState<UserResult[]>([])
   const [selectedUsers, setSelectedUsers] = useState<UserResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
+
+  const [promoStats, setPromoStats] = useState<
+    Record<string, { total: number; used: number; expired: number; active: number }>
+  >({})
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -122,6 +127,32 @@ export default function AdminPromosPage() {
   useEffect(() => {
     fetchEstimatedRecipients()
   }, [activeOnly, minBalance, minGames, newUsersSinceDays, dormantDays, selectedUsers])
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        if (!previousPromos.length) {
+          setPromoStats({})
+          return
+        }
+        const res = await fetch('/api/admin/promo/stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ broadcastIds: previousPromos.map((p) => p.id) }),
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          console.warn('Failed to load promo stats:', json?.error || json)
+          return
+        }
+        setPromoStats(json.stats || {})
+      } catch (e) {
+        console.warn('Error while loading promo stats:', e)
+      }
+    }
+
+    loadStats()
+  }, [previousPromos])
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message })
@@ -310,14 +341,18 @@ export default function AdminPromosPage() {
           tournamentId: promoTournamentId,
           metric: promoMetric,
           rank: promoRank || 1,
-          expiresInDays: promoExpiresInDays || 7,
+          expiresAmount: promoExpiresAmount || 1,
+          expiresUnit: promoExpiresUnit,
+          ...(promoExpiresUnit === 'days'
+            ? { expiresInDays: promoExpiresAmount || 1 }
+            : {}),
         },
         imageUrl: bannerUrl || null,
       }
 
       const res = await fetch('/api/admin/promo-broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
       const json = await res.json()
@@ -591,14 +626,24 @@ export default function AdminPromosPage() {
 
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Expires in (days)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={promoExpiresInDays}
-                    onChange={(e) => setPromoExpiresInDays(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                  />
+                  <label className="block text-slate-300 text-xs font-medium mb-2">Expires in</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={promoExpiresAmount}
+                      onChange={(e) => setPromoExpiresAmount(parseInt(e.target.value) || 1)}
+                      className="w-20 bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
+                    />
+                    <select
+                      value={promoExpiresUnit}
+                      onChange={(e) => setPromoExpiresUnit(e.target.value as 'days' | 'hours')}
+                      className="flex-1 bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
+                    >
+                      <option value="days">Days</option>
+                      <option value="hours">Hours</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="sm:col-span-2 text-[11px] text-slate-400 flex items-center">
                   Each selected user receives a unique single-use code linked to this tournament. When they claim in the mini app, their real balance is credited automatically.
@@ -853,8 +898,9 @@ export default function AdminPromosPage() {
                     <p>2️⃣ Go to Profile → Claim Promo</p>
                     <p>3️⃣ Enter your promo code and confirm</p>
                     <p className="text-[10px] text-amber-200 mt-1">
-                      🔥 Do not share this code. It works only once and expires in {promoExpiresInDays || 7} day
-                      {promoExpiresInDays === 1 ? '' : 's'}.
+                      🔥 Do not share this code. It works only once and expires in {promoExpiresAmount}{' '}
+                      {promoExpiresUnit === 'hours' ? 'hour' : 'day'}
+                      {promoExpiresAmount === 1 ? '' : 's'}.
                     </p>
                   </div>
                 </div>
@@ -866,40 +912,57 @@ export default function AdminPromosPage() {
               {previousPromos.length === 0 ? (
                 <p className="text-xs text-slate-500">No promo campaigns recorded yet.</p>
               ) : (
-                <div className="space-y-3 max-h-[360px] overflow-y-auto text-xs">
+                <div className="space-y-3 max-h-[360px] overflow-y-auto text-xs scrollbar-hide pr-1">
                   {previousPromos.map((p) => {
                     const sent = p.sent ?? 0
                     const failed = p.failed ?? 0
                     const total = p.recipients ?? sent + failed
                     const filters = (p.filters || {}) as any
                     const promo = filters.promo || {}
+                    const stats = promoStats[p.id]
+                    const expAmount = promo.expiresAmount ?? promo.expiresInDays ?? 0
+                    const expUnit = promo.expiresUnit || (promo.expiresInDays ? 'days' : 'days')
+
                     return (
                       <div
                         key={p.id}
-                        className="rounded-lg border border-slate-700 bg-slate-900/70 px-3 py-2.5 flex flex-col gap-1"
+                        className="rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2.5 flex flex-col gap-1.5 shadow-sm"
                       >
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="font-semibold text-slate-50 truncate">{p.title}</p>
+                            <p className="font-semibold text-slate-50 truncate text-[13px]">{p.title}</p>
                             <p className="text-[10px] text-slate-500 truncate">
                               {new Date(p.created_at).toLocaleString()}
                             </p>
                           </div>
-                          <div className="text-right text-[10px] text-slate-300">
-                            <div>
-                              Sent: <span className="text-emerald-300 font-semibold">{sent}</span>
-                            </div>
-                            {failed > 0 && (
-                              <div>
-                                Failed: <span className="text-rose-300 font-semibold">{failed}</span>
-                              </div>
-                            )}
+                          <div className="flex flex-wrap gap-1 justify-end text-[10px]">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
+                              Sent {sent}
+                            </span>
                             {total > 0 && (
-                              <div className="text-slate-500">Total: {total}</div>
+                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
+                                Total {total}
+                              </span>
+                            )}
+                            {stats?.used > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-500/40">
+                                Claimed {stats.used}
+                              </span>
+                            )}
+                            {stats?.expired > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
+                                Expired {stats.expired}
+                              </span>
+                            )}
+                            {failed > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 border border-rose-500/40">
+                                Failed {failed}
+                              </span>
                             )}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
+
+                        <div className="flex flex-wrap gap-1.5 mt-0.5">
                           {promo.amount && (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
                               {formatCurrency(promo.amount)} ETB
@@ -910,9 +973,10 @@ export default function AdminPromosPage() {
                               {promo.metric === 'deposits' ? 'Top Depositor' : 'Most Played'}
                             </span>
                           )}
-                          {promo.expiresInDays && (
+                          {expAmount > 0 && (
                             <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
-                              Expires in {promo.expiresInDays}d
+                              Expires in {expAmount}
+                              {expUnit === 'hours' ? 'h' : 'd'}
                             </span>
                           )}
                         </div>
