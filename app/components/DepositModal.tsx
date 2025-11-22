@@ -331,12 +331,12 @@ export default function DepositModal({ open, onClose, onBack, isSheet = false }:
 
   return (
     <div 
-      className={`fixed inset-0 ${isSheet ? 'z-[160]' : 'z-[140]'} bg-black/60 backdrop-blur-sm flex items-end justify-center`}
+      className={`fixed inset-0 ${isSheet ? 'z-[160]' : 'z-[140]'} bg-slate-950/70 backdrop-blur-xl flex items-end justify-center`}
       role="dialog" aria-modal="true"
       onClick={isSheet ? undefined : onClose}
     >
       <div 
-        className={`w-full max-w-md bg-slate-950 rounded-t-3xl border border-b-0 border-slate-800 shadow-2xl flex flex-col h-[calc(100vh-4rem)] animate-in slide-in-from-bottom-5 duration-300`}
+        className={`w-full max-w-md rounded-t-3xl border border-b-0 border-white/10 bg-slate-900/70 backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.85)] flex flex-col h-[calc(100vh-4rem)] animate-in slide-in-from-bottom-5 duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -249,7 +249,7 @@ export default function AccountPage() {
           onClick={() => setShowLanguageModal(false)}
         >
           <div
-            className="w-full max-w-md rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            className="w-full max-w-md rounded-2xl bg-slate-900/75 backdrop-blur-xl border border-white/10 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.85)] animate-in zoom-in-95"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -350,7 +350,7 @@ export default function AccountPage() {
           onClick={() => setShowTermsModal(false)}
         >
           <div
-            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95"
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-slate-900/75 backdrop-blur-xl border border-white/10 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.85)] animate-in zoom-in-95"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -466,7 +466,10 @@ export default function AccountPage() {
       )}
 
       {/* Simple Header */}
-      <div className="bg-slate-950 border-b border-slate-800">
+      <div
+        className="bg-slate-950 border-b border-slate-800 pt-3 sm:pt-4"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
+      >
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LuUser className="w-6 h-6 text-blue-500" />

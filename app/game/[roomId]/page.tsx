@@ -1211,7 +1211,10 @@ export default function GamePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       {/* Header */}
-      <div className="bg-slate-950 border-b border-slate-800">
+      <div
+        className="bg-slate-950 border-b border-slate-800 pt-3 sm:pt-4"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
+      >
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <button 
             onClick={async () => {
