@@ -14,6 +14,7 @@ interface LeaderboardEntry {
   games_won: number
   total_winnings: number
   games_played: number
+  avatar_url?: string | null
 }
 
 export default function LeaderboardPage() {
@@ -38,7 +39,7 @@ export default function LeaderboardPage() {
       // Rank by games played for now to match the requested layout (top 10)
       let query = supabase
         .from('users')
-        .select('id, username, games_won, total_winnings, games_played')
+        .select('id, username, games_won, total_winnings, games_played, avatar_url')
         .order('games_played', { ascending: false })
         .limit(10)
 
@@ -62,8 +63,8 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Sticky Header */}
       <div
-        className="sticky top-0 bg-slate-950 border-b border-slate-800 z-40 shadow-sm pt-3 sm:pt-4"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
+        className="sticky top-0 bg-slate-950 border-b border-slate-800 z-40 shadow-sm"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 20px)' }}
       >
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -166,14 +167,20 @@ export default function LeaderboardPage() {
                     </div>
                     {(() => {
                       const p: any = player
-                      const img = p.avatar_url || p.profile_image_url || p.photo_url || null
-                      return img ? (
+                      const img = p.avatar_url || '/images/6.svg'
+                      return (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img} alt={player.username} className="w-8 h-8 rounded-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-blue-500 text-white text-xs font-semibold flex items-center justify-center">
-                          {player.username?.charAt(0) || '?'}
-                        </div>
+                        <img
+                          src={img}
+                          alt={player.username}
+                          className="w-8 h-8 rounded-full object-cover"
+                          onError={(e) => {
+                            const el = e.currentTarget as HTMLImageElement
+                            if (!el.src.endsWith('/images/6.svg')) {
+                              el.src = '/images/6.svg'
+                            }
+                          }}
+                        />
                       )
                     })()}
                     <span className="font-medium text-slate-50 truncate">{player.username}</span>

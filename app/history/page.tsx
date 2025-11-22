@@ -185,8 +185,8 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Sticky Header */}
       <div
-        className="sticky top-0 bg-slate-950 border-b border-slate-800 z-40 shadow-sm pt-3 sm:pt-4"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
+        className="sticky top-0 bg-slate-950 border-b border-slate-800 z-40 shadow-sm"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 20px)' }}
       >
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
