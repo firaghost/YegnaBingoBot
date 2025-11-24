@@ -40,6 +40,7 @@ export default function AdminPromosPage() {
   const [title, setTitle] = useState('Surprise Bonus Promo')
   const [message, setMessage] = useState('You have received a special promo code only for selected players.')
 
+  const [promoType, setPromoType] = useState<'tournament' | 'generic'>('tournament')
   const [promoAmount, setPromoAmount] = useState('50')
   const [promoTournamentId, setPromoTournamentId] = useState('')
   const [promoMetric, setPromoMetric] = useState<'deposits' | 'plays'>('deposits')
@@ -70,10 +71,18 @@ export default function AdminPromosPage() {
   const [userResults, setUserResults] = useState<UserResult[]>([])
   const [selectedUsers, setSelectedUsers] = useState<UserResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [maxRecipients, setMaxRecipients] = useState('')
 
   const [promoStats, setPromoStats] = useState<
     Record<string, { total: number; used: number; expired: number; active: number }>
   >({})
+
+  const [publicAmount, setPublicAmount] = useState('50')
+  const [publicMaxUses, setPublicMaxUses] = useState('100')
+  const [publicExpiresAmount, setPublicExpiresAmount] = useState(7)
+  const [publicExpiresUnit, setPublicExpiresUnit] = useState<'days' | 'hours'>('days')
+  const [publicCode, setPublicCode] = useState('')
+  const [publicGenerating, setPublicGenerating] = useState(false)
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -123,6 +132,46 @@ export default function AdminPromosPage() {
     loadTournaments()
     loadPrevious()
   }, [])
+
+  const generatePublicPromo = useCallback(async () => {
+    try {
+      setPublicGenerating(true)
+
+      const amountNum = Number(publicAmount || 0)
+      const maxUsesNum = Number(publicMaxUses || 0)
+      if (!amountNum || amountNum <= 0) {
+        showNotification('error', 'Enter a valid public promo amount')
+        return
+      }
+      if (!maxUsesNum || maxUsesNum <= 0) {
+        showNotification('error', 'Enter how many players can claim this code')
+        return
+      }
+
+      const res = await fetch('/api/admin/promo/public-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountNum,
+          maxUses: maxUsesNum,
+          expiresAmount: publicExpiresAmount,
+          expiresUnit: publicExpiresUnit,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to generate public promo')
+      }
+
+      setPublicCode(json.code)
+      showNotification('success', 'Public promo code generated')
+    } catch (e: any) {
+      console.error('Error generating public promo:', e)
+      showNotification('error', e?.message || 'Failed to generate public promo')
+    } finally {
+      setPublicGenerating(false)
+    }
+  }, [publicAmount, publicMaxUses, publicExpiresAmount, publicExpiresUnit])
 
   useEffect(() => {
     fetchEstimatedRecipients()
@@ -241,13 +290,20 @@ export default function AdminPromosPage() {
       }
 
       const { count } = await query
-      setEstimatedRecipients(count || 0)
+
+      let estimated = count || 0
+      const maxNum = parseInt(maxRecipients)
+      if (!Number.isNaN(maxNum) && maxNum > 0) {
+        estimated = Math.min(estimated, maxNum)
+      }
+
+      setEstimatedRecipients(estimated)
     } catch (e) {
       console.error('Error estimating promo recipients:', e)
     } finally {
       setLoadingRecipients(false)
     }
-  }, [activeOnly, minBalance, minGames, newUsersSinceDays, dormantDays, selectedUsers.length])
+  }, [activeOnly, minBalance, minGames, newUsersSinceDays, dormantDays, selectedUsers.length, maxRecipients])
 
   const applySegment = (segment: 'newcomers' | 'highRollers' | 'dormant') => {
     setSelectedUsers([])
@@ -336,7 +392,12 @@ export default function AdminPromosPage() {
         message,
         filters,
         targetUserIds: selectedUsers.length > 0 ? selectedUsers.map((u) => u.id) : null,
+        maxRecipients: (() => {
+          const n = parseInt(maxRecipients)
+          return !Number.isNaN(n) && n > 0 ? n : null
+        })(),
         promo: {
+          type: promoType,
           amount: amountNum,
           tournamentId: promoTournamentId,
           metric: promoMetric,
@@ -394,12 +455,13 @@ export default function AdminPromosPage() {
     }
 
     const amountNum = Number(promoAmount || 0)
-    if (!promoTournamentId) {
-      showNotification('error', 'Please select a tournament for this promo')
-      return
-    }
     if (!amountNum || amountNum <= 0) {
       showNotification('error', 'Please enter a valid promo amount')
+      return
+    }
+
+    if (promoType === 'tournament' && !promoTournamentId) {
+      showNotification('error', 'Please select a tournament for this tournament promo')
       return
     }
 
@@ -511,6 +573,37 @@ export default function AdminPromosPage() {
             <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
               <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Promo configuration</h2>
 
+              <div className="mb-4 flex flex-wrap gap-2 text-[11px] sm:text-xs items-center">
+                <span className="text-slate-400 mr-1">Promo type:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPromoType('tournament')
+                  }}
+                  className={`px-3 py-1 rounded-full border text-xs font-medium transition-colors ${
+                    promoType === 'tournament'
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/50'
+                      : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/60'
+                  }`}
+                >
+                  Tournament promo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPromoType('generic')
+                    setPromoTournamentId('')
+                  }}
+                  className={`px-3 py-1 rounded-full border text-xs font-medium transition-colors ${
+                    promoType === 'generic'
+                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/50'
+                      : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/60'
+                  }`}
+                >
+                  Gift promo
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-sm">
                 <div>
                   <label className="block text-slate-300 text-xs font-medium mb-2">Title</label>
@@ -522,21 +615,23 @@ export default function AdminPromosPage() {
                     placeholder="Promo headline shown at the top of message"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Tournament Context</label>
-                  <select
-                    value={promoTournamentId}
-                    onChange={(e) => setPromoTournamentId(e.target.value)}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                  >
-                    <option value="">Select tournament</option>
-                    {tournaments.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.settings?.display_name || t.name || 'Tournament'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {promoType === 'tournament' && (
+                  <div>
+                    <label className="block text-slate-300 text-xs font-medium mb-2">Tournament context</label>
+                    <select
+                      value={promoTournamentId}
+                      onChange={(e) => setPromoTournamentId(e.target.value)}
+                      className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
+                    >
+                      <option value="">Select tournament</option>
+                      {tournaments.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.settings?.display_name || t.name || 'Tournament'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div className="mb-4">
@@ -601,27 +696,31 @@ export default function AdminPromosPage() {
                     placeholder="e.g. 50"
                   />
                 </div>
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Metric tag</label>
-                  <select
-                    value={promoMetric}
-                    onChange={(e) => setPromoMetric(e.target.value as 'deposits' | 'plays')}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                  >
-                    <option value="deposits">Top Depositor</option>
-                    <option value="plays">Most Played</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Rank tag</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={promoRank}
-                    onChange={(e) => setPromoRank(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                  />
-                </div>
+                {promoType === 'tournament' && (
+                  <>
+                    <div>
+                      <label className="block text-slate-300 text-xs font-medium mb-2">Metric tag</label>
+                      <select
+                        value={promoMetric}
+                        onChange={(e) => setPromoMetric(e.target.value as 'deposits' | 'plays')}
+                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
+                      >
+                        <option value="deposits">Top Depositor</option>
+                        <option value="plays">Most Played</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 text-xs font-medium mb-2">Rank tag</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={promoRank}
+                        onChange={(e) => setPromoRank(parseInt(e.target.value) || 1)}
+                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
@@ -646,7 +745,7 @@ export default function AdminPromosPage() {
                   </div>
                 </div>
                 <div className="sm:col-span-2 text-[11px] text-slate-400 flex items-center">
-                  Each selected user receives a unique single-use code linked to this tournament. When they claim in the mini app, their real balance is credited automatically.
+                  Each selected user receives a unique single-use code. When they claim in the mini app, their real balance is credited automatically.
                 </div>
               </div>
             </div>
@@ -741,6 +840,17 @@ export default function AdminPromosPage() {
                       onChange={(e) => setDormantDays(e.target.value)}
                       className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
                       placeholder="e.g. 14 for inactive players"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-slate-300 text-xs font-medium">Max recipients (optional)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={maxRecipients}
+                      onChange={(e) => setMaxRecipients(e.target.value)}
+                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
+                      placeholder="Leave empty to send to all matched users"
                     />
                   </div>
                 </div>
@@ -922,6 +1032,8 @@ export default function AdminPromosPage() {
                     const stats = promoStats[p.id]
                     const expAmount = promo.expiresAmount ?? promo.expiresInDays ?? 0
                     const expUnit = promo.expiresUnit || (promo.expiresInDays ? 'days' : 'days')
+                    const allExpired =
+                      stats && stats.total > 0 && stats.expired > 0 && (stats as any).active === 0
 
                     return (
                       <div
@@ -975,8 +1087,9 @@ export default function AdminPromosPage() {
                           )}
                           {expAmount > 0 && (
                             <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
-                              Expires in {expAmount}
-                              {expUnit === 'hours' ? 'h' : 'd'}
+                              {allExpired
+                                ? 'Expired'
+                                : `Expires in ${expAmount}${expUnit === 'hours' ? 'h' : 'd'}`}
                             </span>
                           )}
                         </div>
@@ -985,6 +1098,81 @@ export default function AdminPromosPage() {
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="bg-slate-800/60 backdrop-blur-md rounded-lg border border-slate-700/60 p-4 sm:p-5">
+              <h3 className="text-sm sm:text-base font-semibold text-slate-100 mb-3">
+                Public promo code for channel posts
+              </h3>
+              <p className="text-[11px] text-slate-400 mb-3">
+                Generate a single promo code you can post in your Telegram channel. The first N players who
+                redeem it will receive the gift balance.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
+                <div>
+                  <label className="block text-slate-300 text-xs font-medium mb-1">Amount (ETB)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={publicAmount}
+                    onChange={(e) => setPublicAmount(e.target.value)}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 text-xs font-medium mb-1">Max players</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={publicMaxUses}
+                    onChange={(e) => setPublicMaxUses(e.target.value)}
+                    className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-4">
+                <div>
+                  <label className="block text-slate-300 text-xs font-medium mb-1">Expires in</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      value={publicExpiresAmount}
+                      onChange={(e) => setPublicExpiresAmount(parseInt(e.target.value) || 1)}
+                      className="w-20 bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
+                    />
+                    <select
+                      value={publicExpiresUnit}
+                      onChange={(e) => setPublicExpiresUnit(e.target.value as 'days' | 'hours')}
+                      className="flex-1 bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
+                    >
+                      <option value="days">Days</option>
+                      <option value="hours">Hours</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={() => void generatePublicPromo()}
+                    disabled={publicGenerating}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm shadow-emerald-900/60 transition-colors"
+                  >
+                    {publicGenerating ? 'Generating…' : 'Generate public promo code'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-900/70 border border-slate-700/80 rounded-lg p-3 text-xs text-slate-300 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-slate-400 mb-1">Latest generated code</div>
+                  <div className="font-mono text-sm text-emerald-300">
+                    {publicCode || 'No code generated yet'}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

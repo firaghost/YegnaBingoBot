@@ -24,9 +24,17 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}))
-    const { title, message, filters, targetUserIds, promo } = body || {}
-    const { amount, tournamentId, metric = 'deposits', rank = 1, expiresAmount, expiresUnit, expiresInDays } =
-      promo || {}
+    const { title, message, filters, targetUserIds, promo, maxRecipients } = body || {}
+    const {
+      type: promoType = 'tournament',
+      amount,
+      tournamentId,
+      metric = 'deposits',
+      rank = 1,
+      expiresAmount,
+      expiresUnit,
+      expiresInDays,
+    } = promo || {}
 
     if (!title || !message) {
       return NextResponse.json(
@@ -35,9 +43,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!amount || !tournamentId) {
+    if (!amount) {
+      return NextResponse.json({ error: 'Promo amount is required' }, { status: 400 })
+    }
+
+    if (promoType !== 'tournament' && promoType !== 'generic') {
+      return NextResponse.json({ error: 'Invalid promo type' }, { status: 400 })
+    }
+
+    if (promoType === 'tournament' && !tournamentId) {
       return NextResponse.json(
-        { error: 'Promo amount and tournament are required' },
+        { error: 'Tournament is required for tournament promos' },
         { status: 400 },
       )
     }
@@ -92,6 +108,13 @@ export async function POST(req: NextRequest) {
     // Generate a stable id to link promo rows to this broadcast record
     const broadcastId = crypto.randomUUID()
 
+    const maxRecipientsNum =
+      typeof maxRecipients === 'number' && maxRecipients > 0 ? Math.floor(maxRecipients) : null
+
+    if (maxRecipientsNum) {
+      query = query.limit(maxRecipientsNum)
+    }
+
     const { data: users, error } = await query
 
     if (error) throw error
@@ -141,6 +164,30 @@ export async function POST(req: NextRequest) {
         ? body.imageUrl.trim()
         : null
 
+    // For generic promos, generate a single shared code for all recipients
+    let sharedCode: string | null = null
+    if (promoType === 'generic') {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const base = Math.random().toString(36).substring(2, 8).toUpperCase()
+        const candidate = `PRM-${base}`
+        const { data: existing, error: existsErr } = await supabase
+          .from('tournament_promos')
+          .select('id')
+          .eq('code', candidate)
+          .maybeSingle()
+        if (existsErr || !existing) {
+          sharedCode = candidate
+          break
+        }
+      }
+      if (!sharedCode) {
+        return NextResponse.json(
+          { error: 'Failed to generate promo code. Please try again.' },
+          { status: 500 },
+        )
+      }
+    }
+
     for (const user of users as any[]) {
       try {
         if (!user.telegram_id) {
@@ -149,23 +196,28 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        // Generate promo code (best-effort uniqueness)
+        // Generate promo code
         let code = ''
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const base = Math.random().toString(36).substring(2, 8).toUpperCase()
-          code = `PRM-${base}`
-          const { data: existing, error: existsErr } = await supabase
-            .from('tournament_promos')
-            .select('id')
-            .eq('code', code)
-            .maybeSingle()
-          if (existsErr || !existing) break
+        if (promoType === 'generic' && sharedCode) {
+          code = sharedCode
+        } else {
+          // Tournament promos: best-effort unique code per user
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const base = Math.random().toString(36).substring(2, 8).toUpperCase()
+            code = `PRM-${base}`
+            const { data: existing, error: existsErr } = await supabase
+              .from('tournament_promos')
+              .select('id')
+              .eq('code', code)
+              .maybeSingle()
+            if (existsErr || !existing) break
+          }
         }
 
         const { error: promoErr } = await supabase
           .from('tournament_promos')
           .insert({
-            tournament_id: tournamentId,
+            tournament_id: promoType === 'tournament' ? tournamentId : null,
             user_id: user.id,
             code,
             amount: Number(amount),
@@ -173,6 +225,7 @@ export async function POST(req: NextRequest) {
             rank,
             expires_at: expiresIso,
             broadcast_id: broadcastId,
+            promo_type: promoType,
             meta: {
               broadcast: true,
               created_by: admin.id,
@@ -193,6 +246,14 @@ export async function POST(req: NextRequest) {
         if (baseMessage) {
           lines.push(baseMessage, '')
         }
+
+        if (promoType === 'generic') {
+          const amt = Number(amount)
+          const amtText = Number.isFinite(amt) && amt > 0 ? `${amt} ETB` : 'a free balance gift'
+          lines.push(`🎁 You\'ve received a free gift balance of ${amtText}.`)
+          lines.push('')
+        }
+
         lines.push(`🎟 Your promo code: \`${code}\``)
         lines.push('')
         lines.push('How to claim:')
@@ -274,6 +335,7 @@ export async function POST(req: NextRequest) {
         filters: {
           ...(filters || {}),
           promo: {
+            type: promoType,
             amount: Number(amount),
             tournamentId,
             metric,

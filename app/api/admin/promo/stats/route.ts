@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ stats: {} })
     }
 
-    const nowIso = new Date().toISOString()
+    const now = new Date()
     const stats: Record<string, { total: number; used: number; expired: number; active: number }> = {}
 
     for (const row of data as any[]) {
@@ -35,10 +35,18 @@ export async function POST(req: NextRequest) {
       }
       const s = stats[bId]
       s.total += 1
+
       const status = String(row.status || '').toLowerCase()
-      const expiredByStatus = status === 'expired'
-      const expiredByTime = row.expires_at && String(row.expires_at) <= nowIso && status === 'unused'
       const isUsed = status === 'used'
+      const expiredByStatus = status === 'expired'
+
+      let expiredByTime = false
+      if (row.expires_at && status === 'unused') {
+        const expiresAtDate = new Date(row.expires_at as string)
+        if (!Number.isNaN(expiresAtDate.getTime())) {
+          expiredByTime = expiresAtDate.getTime() <= now.getTime()
+        }
+      }
 
       if (isUsed) {
         s.used += 1

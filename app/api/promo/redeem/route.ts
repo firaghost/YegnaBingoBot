@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Promo code is required' }, { status: 400 })
     }
 
-    const { data: amount, error } = await supabase.rpc('redeem_tournament_promo', {
+    const { data: amount, error } = await supabase.rpc('redeem_any_promo', {
       p_user_id: userId,
       p_code: trimmed,
     })
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest) {
         status = 409
       } else if (msg.includes('PROMO_EXPIRED')) {
         clientMessage = 'This promo code has expired'
+        status = 410
+      } else if (msg.includes('PROMO_EXHAUSTED')) {
+        clientMessage = 'This promo is fully claimed'
         status = 410
       } else {
         status = 500
