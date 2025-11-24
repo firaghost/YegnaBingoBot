@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { handleGameStart, StakeSource } from '@/lib/server/wallet-service'
+import { handleGameStart, StakeSource, getUserWallet } from '@/lib/server/wallet-service'
 
 const supabase = supabaseAdmin
 
@@ -74,7 +74,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, alreadyStaked: true })
     }
 
-    const result = await handleGameStart(userId, gameId, stakeSource as StakeSource, stakeAmount)
+    // Resolve stake source on the server using the authoritative wallet view.
+    const wallet = await getUserWallet(userId)
+    if (!wallet) {
+      return NextResponse.json(
+        { error: 'Wallet not found for user' },
+        { status: 404 }
+      )
+    }
+
+    let resolvedStakeSource: StakeSource
+    const realAvailable = Number.isFinite(wallet.real_balance) ? wallet.real_balance : 0
+    const bonusAvailable = Number.isFinite(wallet.bonus_balance) ? wallet.bonus_balance : 0
+
+    if (realAvailable >= stakeAmount) {
+      resolvedStakeSource = 'real'
+    } else if (bonusAvailable >= stakeAmount) {
+      resolvedStakeSource = 'bonus'
+    } else {
+      return NextResponse.json(
+        { error: 'Insufficient wallet balance for stake' },
+        { status: 400 }
+      )
+    }
+
+    const result = await handleGameStart(userId, gameId, resolvedStakeSource, stakeAmount)
 
     if (!result.success) {
       let status = 400
