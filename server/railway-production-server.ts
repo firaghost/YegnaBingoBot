@@ -17,6 +17,7 @@ import { assignBotIfNeeded, autofillBotsForGame } from './bot-service'
 import { BotEngine } from './bot-engine'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
 import { gameStateCache } from './game-state-cache'
 
 const app = express()
@@ -1397,6 +1398,10 @@ io.on('connection', (socket) => {
 const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
 const inGameSocketServer = new InGameSocketServer(io as any)
 
+// Attach lifecycle manager to Socket.IO and start idle monitor for in-progress games
+roomLifecycleManager.attachIO(io as any)
+roomLifecycleManager.startIdleMonitor()
+
 // Connect waiting room to in-game transition
 class GameTransitionManager {
   constructor() {
@@ -1647,6 +1652,7 @@ const gracefulShutdown = () => {
   try {
     inGameSocketServer.cleanup()
     gameStateManager.cleanupAllGames()
+    roomLifecycleManager.stopIdleMonitor()
   } catch (error) {
     console.error('Error during cleanup:', error)
   }

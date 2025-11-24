@@ -2,6 +2,7 @@ import { Server as SocketServer } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { gameStateManager, GameState, BingoClaim } from '../lib/game-state-manager'
 import { supabaseAdmin } from '../lib/supabase'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
 
 // Socket event types for in-game functionality
 interface InGameServerToClientEvents {
@@ -158,8 +159,37 @@ export class InGameSocketServer {
     try {
       console.log(`🎮 Starting game for room ${roomId} with ${players.length} players`)
 
-      // Initialize game state
+      // Initialize game state (creates game_sessions row)
       const gameState = await gameStateManager.initializeGame(roomId, gameLevel, players)
+
+      // Deduct stakes for all active players in this room using wallet_v2 and
+      // record stake metadata on room_players via room_start_game_with_stakes.
+      try {
+        const { data: stakeResult, error: stakeError } = await supabaseAdmin.rpc('room_start_game_with_stakes', {
+          p_room_id: roomId,
+          p_session_id: gameState.id
+        })
+
+        if (stakeError) {
+          console.error('Error running room_start_game_with_stakes:', stakeError)
+        } else {
+          const chargedCount = typeof stakeResult === 'number' ? stakeResult : 0
+          console.log(`💰 room_start_game_with_stakes charged ${chargedCount} players for room ${roomId} (session ${gameState.id})`)
+
+          // Safety: if no one could be charged, end the game immediately and notify clients
+          if (chargedCount === 0) {
+            console.warn(`⚠️ No players were successfully charged for room ${roomId}, ending game session ${gameState.id}`)
+            await gameStateManager.endGame(roomId, null, 'no_stake_charged')
+            this.io.to(roomId).emit('game_error', { message: 'Game cancelled: could not charge any players.' })
+            return
+          }
+        }
+      } catch (stakeException) {
+        console.error('Unhandled exception in room_start_game_with_stakes:', stakeException)
+      }
+
+      // Record activity for this room in the lifecycle manager
+      await roomLifecycleManager.markInGameActivity(roomId)
 
       // Track room sockets
       const roomSockets = new Set<string>()
@@ -390,6 +420,9 @@ export class InGameSocketServer {
       socket.emit('game_error', { message: 'Cannot claim bingo as spectator' })
       return
     }
+
+    // Mark activity for this room when a bingo claim is made
+    await roomLifecycleManager.markInGameActivity(roomId)
 
     console.log(`🎯 Bingo claim from ${username} in room ${roomId}: ${bingoPattern}`)
 

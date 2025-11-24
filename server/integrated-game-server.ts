@@ -7,6 +7,7 @@ import WaitingRoomSocketServer from './waiting-room-server'
 import InGameSocketServer from './ingame-socket-server'
 import { waitingRoomManager } from '../lib/waiting-room-manager'
 import { gameStateManager } from '../lib/game-state-manager'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
 
 const app = express()
 const httpServer = createServer(app)
@@ -31,6 +32,10 @@ const io = new SocketServer(httpServer, {
 // Initialize both socket servers with the shared Socket.IO instance
 const waitingRoomSocketServer = new WaitingRoomSocketServer(io as any)
 const inGameSocketServer = new InGameSocketServer(io as any)
+
+// Attach lifecycle manager to Socket.IO and start idle monitor
+roomLifecycleManager.attachIO(io as any)
+roomLifecycleManager.startIdleMonitor()
 
 // Connect waiting room to in-game transition
 class GameTransitionManager {
@@ -349,6 +354,7 @@ const gracefulShutdown = () => {
   
   // Cleanup game states
   inGameSocketServer.cleanup()
+  roomLifecycleManager.stopIdleMonitor()
   
   // Close server
   httpServer.close(() => {

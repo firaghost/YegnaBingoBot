@@ -165,7 +165,7 @@ export class WaitingRoomManager {
         status: 'waiting',
         game_level: gameLevel,
         max_players: newRoom.max_players,
-        min_players: process.env.ALLOW_SINGLE_PLAYER === 'true' ? 1 : 2,
+        min_players: newRoom.min_players,
         current_players: 0,
         active_player_count: 0,
         created_at: new Date(newRoom.created_at),

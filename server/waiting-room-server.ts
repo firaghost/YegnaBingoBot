@@ -3,6 +3,7 @@ import { Server as HttpServer } from 'http'
 import { waitingRoomManager, WaitingRoom, Player } from '../lib/waiting-room-manager'
 import { getGameConfig } from '../lib/admin-config'
 import { supabaseAdmin } from '../lib/supabase'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
 
 // Socket event types
 interface ServerToClientEvents {
@@ -171,6 +172,9 @@ export class WaitingRoomSocketServer {
       // Send room update to all players
       this.emitRoomUpdate(room.id, updatedRoom)
 
+      // Mark activity for this waiting room
+      await roomLifecycleManager.markWaitingRoomActivity(room.id)
+
       // Check if we should start countdown or game
       await this.checkGameStart(room.id, updatedRoom)
 
@@ -203,6 +207,9 @@ export class WaitingRoomSocketServer {
       // Remove player from room
       const updatedRoom = await waitingRoomManager.removePlayerFromRoom(roomId, socket.id)
 
+      // Mark activity for this waiting room
+      await roomLifecycleManager.markWaitingRoomActivity(roomId)
+
       // Clean up tracking
       this.playerRooms.delete(socket.id)
       const roomSocketSet = this.roomSockets.get(roomId)
@@ -228,6 +235,8 @@ export class WaitingRoomSocketServer {
 
         // Check if countdown should be cancelled
         if (updatedRoom.active_player_count < updatedRoom.min_players) {
+          // Cancel any pre-countdown timer and active countdown
+          roomLifecycleManager.cancelPreCountdown(roomId)
           if (waitingRoomManager.isCountdownActive(roomId)) {
             waitingRoomManager.clearCountdown(roomId)
             this.io.to(roomId).emit('countdown_cancelled', {
@@ -240,6 +249,9 @@ export class WaitingRoomSocketServer {
             })
           }
         }
+      } else {
+        // Room has been cleaned up - ensure no pending pre-countdown timers remain
+        roomLifecycleManager.cancelPreCountdown(roomId)
       }
 
       console.log(`✅ Player ${username} left room ${roomId}`)
@@ -298,44 +310,48 @@ export class WaitingRoomSocketServer {
         // Wait for more players before starting countdown
         console.log(`⏳ Room ${roomId} has ${room.active_player_count} players, waiting ${config.waitingTime}s for more players`)
         
-        // Set a timer to start countdown after waiting period
-        setTimeout(async () => {
-          try {
-            const currentRoom = await waitingRoomManager.getRoom(roomId)
-            
-            // Check if room still exists and has enough players
-            if (currentRoom && currentRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
-              // Only start countdown if not already active
-              if (!waitingRoomManager.isCountdownActive(roomId)) {
-                console.log(`⏰ Starting countdown for room ${roomId} after waiting period`)
-                
-                waitingRoomManager.startCountdown(
-                  roomId,
-                  (seconds) => {
-                    // Emit countdown update
-                    this.io.to(roomId).emit('game_starting_in', { seconds, roomId })
-                  },
-                  async () => {
-                    // Countdown finished, start game
-                    console.log(`🎮 Countdown finished for room ${roomId}, starting game`)
-                    try {
-                      const finalRoom = await waitingRoomManager.getRoom(roomId)
-                      if (finalRoom && finalRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
-                        await this.startGame(roomId, finalRoom)
-                      } else {
-                        console.log(`❌ Cannot start game for room ${roomId}: insufficient players`)
+        // Use lifecycle manager to manage pre-countdown timer to avoid ghost countdowns
+        roomLifecycleManager.schedulePreCountdown(
+          roomId,
+          WAITING_TIME,
+          async () => {
+            try {
+              const currentRoom = await waitingRoomManager.getRoom(roomId)
+              
+              // Check if room still exists and has enough players
+              if (currentRoom && currentRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
+                // Only start countdown if not already active
+                if (!waitingRoomManager.isCountdownActive(roomId)) {
+                  console.log(`⏰ Starting countdown for room ${roomId} after waiting period`)
+                  
+                  waitingRoomManager.startCountdown(
+                    roomId,
+                    (seconds) => {
+                      // Emit countdown update
+                      this.io.to(roomId).emit('game_starting_in', { seconds, roomId })
+                    },
+                    async () => {
+                      // Countdown finished, start game
+                      console.log(`🎮 Countdown finished for room ${roomId}, starting game`)
+                      try {
+                        const finalRoom = await waitingRoomManager.getRoom(roomId)
+                        if (finalRoom && finalRoom.active_player_count >= MIN_PLAYERS_REQUIRED) {
+                          await this.startGame(roomId, finalRoom)
+                        } else {
+                          console.log(`❌ Cannot start game for room ${roomId}: insufficient players`)
+                        }
+                      } catch (error) {
+                        console.error('Error starting game after countdown:', error)
                       }
-                    } catch (error) {
-                      console.error('Error starting game after countdown:', error)
                     }
-                  }
-                )
+                  )
+                }
               }
+            } catch (error) {
+              console.error('Error in delayed countdown start:', error)
             }
-          } catch (error) {
-            console.error('Error in delayed countdown start:', error)
           }
-        }, WAITING_TIME) // Wait configured time for more players
+        )
         
         // Emit waiting status
         this.io.to(roomId).emit('waiting_for_more_players', {
