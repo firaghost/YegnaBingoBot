@@ -908,20 +908,20 @@ app.post('/api/game/join', async (req, res) => {
       const participantCount = (activeGame.players?.length || 0) + (activeGame.bots?.length || 0)
       if (participantCount >= 2 && activeGame.status === 'waiting' && !activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⏳ Game ${activeGame.id} has ${activeGame.players.length} players, starting 30-second waiting period...`)
-        
+
         // Mark this game as having an active waiting period
         activeWaitingPeriods.add(activeGame.id)
-        
+
         // Update status to waiting_for_players with 30-second timer
         const { error: updateError } = await supabase
           .from('games')
-          .update({ 
+          .update({
             status: 'waiting_for_players',
             countdown_time: 30,
             waiting_started_at: new Date().toISOString()
           })
           .eq('id', activeGame.id)
-        
+
         if (updateError) {
           console.error('❌ Failed to update game status to waiting_for_players:', updateError)
           activeWaitingPeriods.delete(activeGame.id) // Remove from set on error
@@ -932,28 +932,65 @@ app.post('/api/game/join', async (req, res) => {
         } else {
           console.log('✅ Game status updated to waiting_for_players')
         }
-        
+
         // Start the waiting period directly
         console.log(`🔔 Starting waiting period directly for game ${activeGame.id}`)
-        
+
         // Start the 30-second waiting period
         setTimeout(async () => {
           try {
+            // If no active human players remain, cancel before starting countdown
+            const activeSet = activePlayers.get(activeGame.id)
+            const activeHumans = activeSet?.size || 0
+
+            const { data: currentGame, error: currentErr } = await supabase
+              .from('games')
+              .select('bots, status')
+              .eq('id', activeGame.id)
+              .maybeSingle()
+
+            if (currentErr || !currentGame) {
+              console.warn(`⚠️ Skipping countdown for game ${activeGame.id}: game row missing or error`)
+              activeCountdowns.delete(activeGame.id)
+              activeWaitingPeriods.delete(activeGame.id)
+              return
+            }
+
+            const botCount = currentGame.bots?.length || 0
+            const effectiveParticipants = activeHumans + botCount
+
+            if (activeHumans === 0 || ['finished', 'cancelled'].includes(currentGame.status) || effectiveParticipants < 2) {
+              console.log(`⚠️ Not starting countdown for game ${activeGame.id}: status=${currentGame.status}, activeHumans=${activeHumans}, bots=${botCount}`)
+              activeCountdowns.delete(activeGame.id)
+              activeWaitingPeriods.delete(activeGame.id)
+
+              // Reset back to pure waiting state so a future join can restart fresh
+              await supabase
+                .from('games')
+                .update({
+                  status: 'waiting',
+                  countdown_time: 0,
+                  waiting_started_at: null
+                })
+                .eq('id', activeGame.id)
+              return
+            }
+
             // Check if countdown is already active for this game
             if (activeCountdowns.has(activeGame.id)) {
               console.log(`⚠️ Countdown already active for game ${activeGame.id}, skipping`)
               return
             }
-            
+
             // Mark countdown as active
             activeCountdowns.add(activeGame.id)
-            
+
             // After 30 seconds, start the 10-second countdown
             console.log(`🔥 Starting 10-second countdown for game ${activeGame.id}`)
-            
+
             await supabase
               .from('games')
-              .update({ 
+              .update({
                 status: 'countdown',
                 countdown_time: 10,
                 countdown_started_at: new Date().toISOString()
@@ -964,37 +1001,78 @@ app.post('/api/game/join', async (req, res) => {
             let timeLeft = 10
             const countdownInterval = setInterval(async () => {
               timeLeft--
-              
-              if (timeLeft > 0) {
-                // Update countdown time
-                await supabase
-                  .from('games')
-                  .update({ countdown_time: timeLeft })
-                  .eq('id', activeGame.id)
-                
-                console.log(`⏰ Game ${activeGame.id} countdown: ${timeLeft}s`)
-              } else {
-                // Countdown finished, start the game
-                clearInterval(countdownInterval)
-                activeCountdowns.delete(activeGame.id) // Remove from active countdowns
-                console.log(`🎮 Starting game ${activeGame.id}`)
-                
-                await supabase
-                  .from('games')
-                  .update({ 
-                    status: 'active',
-                    countdown_time: 0,
-                    started_at: new Date().toISOString()
-                  })
-                  .eq('id', activeGame.id)
 
-                // Start number calling (with duplicate protection)
-                if (!gameIntervals.has(activeGame.id)) {
-                  console.log(`📢 Starting number calling for game ${activeGame.id}`)
-                  startNumberCalling(activeGame.id)
-                } else {
-                  console.log(`⚠️ Number calling already active for game ${activeGame.id}`)
+              try {
+                const activeSetInner = activePlayers.get(activeGame.id)
+                const activeHumansInner = activeSetInner?.size || 0
+
+                const { data: currentGameInner, error: currentErrInner } = await supabase
+                  .from('games')
+                  .select('bots, status')
+                  .eq('id', activeGame.id)
+                  .maybeSingle()
+
+                if (currentErrInner || !currentGameInner) {
+                  console.warn(`⚠️ Cancelling countdown for game ${activeGame.id}: game row missing or error`)
+                  clearInterval(countdownInterval)
+                  activeCountdowns.delete(activeGame.id)
+                  return
                 }
+
+                const botCountInner = currentGameInner.bots?.length || 0
+                const effectiveParticipantsInner = activeHumansInner + botCountInner
+
+                if (activeHumansInner === 0 || ['finished', 'cancelled'].includes(currentGameInner.status) || effectiveParticipantsInner < 2) {
+                  console.log(`⚠️ Cancelling countdown for game ${activeGame.id}: status=${currentGameInner.status}, activeHumans=${activeHumansInner}, bots=${botCountInner}`)
+                  clearInterval(countdownInterval)
+                  activeCountdowns.delete(activeGame.id)
+
+                  await supabase
+                    .from('games')
+                    .update({
+                      status: 'waiting',
+                      countdown_time: 0,
+                      waiting_started_at: null
+                    })
+                    .eq('id', activeGame.id)
+                  return
+                }
+
+                if (timeLeft > 0) {
+                  // Update countdown time
+                  await supabase
+                    .from('games')
+                    .update({ countdown_time: timeLeft })
+                    .eq('id', activeGame.id)
+
+                  console.log(`⏰ Game ${activeGame.id} countdown: ${timeLeft}s`)
+                } else {
+                  // Countdown finished, start the game
+                  clearInterval(countdownInterval)
+                  activeCountdowns.delete(activeGame.id) // Remove from active countdowns
+                  console.log(`🎮 Starting game ${activeGame.id}`)
+
+                  await supabase
+                    .from('games')
+                    .update({
+                      status: 'active',
+                      countdown_time: 0,
+                      started_at: new Date().toISOString()
+                    })
+                    .eq('id', activeGame.id)
+
+                  // Start number calling (with duplicate protection)
+                  if (!gameIntervals.has(activeGame.id)) {
+                    console.log(`📢 Starting number calling for game ${activeGame.id}`)
+                    startNumberCalling(activeGame.id)
+                  } else {
+                    console.log(`⚠️ Number calling already active for game ${activeGame.id}`)
+                  }
+                }
+              } catch (error) {
+                console.error('Error in countdown phase:', error)
+                clearInterval(countdownInterval)
+                activeCountdowns.delete(activeGame.id)
               }
             }, 1000)
 
@@ -1008,20 +1086,61 @@ app.post('/api/game/join', async (req, res) => {
         let waitingTimeLeft = 30
         const waitingInterval = setInterval(async () => {
           waitingTimeLeft--
-          
-          if (waitingTimeLeft > 0) {
-            await supabase
+
+          try {
+            const activeSet = activePlayers.get(activeGame.id)
+            const activeHumans = activeSet?.size || 0
+
+            const { data: currentGame, error: currentErr } = await supabase
               .from('games')
-              .update({ countdown_time: waitingTimeLeft })
+              .select('bots, status')
               .eq('id', activeGame.id)
-            
-            console.log(`⏳ Game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
-          } else {
+              .maybeSingle()
+
+            if (currentErr || !currentGame) {
+              console.warn(`⚠️ Cancelling waiting period for game ${activeGame.id}: game row missing or error`)
+              clearInterval(waitingInterval)
+              activeWaitingPeriods.delete(activeGame.id) // Remove from active waiting periods
+              return
+            }
+
+            const botCount = currentGame.bots?.length || 0
+            const effectiveParticipants = activeHumans + botCount
+
+            if (activeHumans === 0 || ['finished', 'cancelled'].includes(currentGame.status) || effectiveParticipants < 2) {
+              console.log(`⚠️ Cancelling waiting period for game ${activeGame.id}: status=${currentGame.status}, activeHumans=${activeHumans}, bots=${botCount}`)
+              clearInterval(waitingInterval)
+              activeWaitingPeriods.delete(activeGame.id)
+
+              await supabase
+                .from('games')
+                .update({
+                  status: 'waiting',
+                  countdown_time: 0,
+                  waiting_started_at: null
+                })
+                .eq('id', activeGame.id)
+              return
+            }
+
+            if (waitingTimeLeft > 0) {
+              await supabase
+                .from('games')
+                .update({ countdown_time: waitingTimeLeft })
+                .eq('id', activeGame.id)
+
+              console.log(`⏳ Game ${activeGame.id} waiting: ${waitingTimeLeft}s`)
+            } else {
+              clearInterval(waitingInterval)
+              activeWaitingPeriods.delete(activeGame.id) // Remove from active waiting periods
+            }
+          } catch (error) {
+            console.error('Error in waiting period phase:', error)
             clearInterval(waitingInterval)
-            activeWaitingPeriods.delete(activeGame.id) // Remove from active waiting periods
+            activeWaitingPeriods.delete(activeGame.id)
           }
         }, 1000)
-        
+
         console.log('✅ Waiting period started successfully')
       } else if (activeGame.players.length >= 2 && activeWaitingPeriods.has(activeGame.id)) {
         console.log(`⚠️ Game ${activeGame.id} already has active waiting period, player ${userId} joined existing process`)
@@ -1424,8 +1543,9 @@ const io = new SocketServer(httpServer, {
 
 // Make socket server globally available for number calling
 global.io = io
-// Track active players per game
-const activePlayers = new Map<string, Set<string>>() // gameId -> Set of socketIds
+// Track active players per game (unique users) and per-socket mappings
+const activePlayers = new Map<string, Map<string, number>>() // gameId -> Map<userId, connectionCount>
+const socketGameMap = new Map<string, Array<{ gameId: string; userId: string }>>() // socketId -> joined (game,user) pairs
 
 // Add global socket event handlers for game room joining
 io.on('connection', (socket) => {
@@ -1437,14 +1557,54 @@ io.on('connection', (socket) => {
     socket.join(`game-${gameId}`)
     socket.join(gameId) // Join both formats for compatibility
 
-    // Track this player as active in the game
+    // Track this player as active in the game (unique users, support multi-tab)
     if (!activePlayers.has(gameId)) {
-      activePlayers.set(gameId, new Set())
+      activePlayers.set(gameId, new Map())
     }
-    activePlayers.get(gameId)!.add(socket.id)
+    const userMap = activePlayers.get(gameId)!
+    const currentCount = userMap.get(userId) || 0
+    userMap.set(userId, currentCount + 1)
 
+    // Track mapping from socket -> (game,user) pairs for cleanup on disconnect/leave
+    const existing = socketGameMap.get(socket.id) || []
+    existing.push({ gameId, userId })
+    socketGameMap.set(socket.id, existing)
+
+    const activeHumans = userMap.size
     console.log(`✅ Global: User ${userId} joined rooms: game-${gameId} and ${gameId}`)
-    console.log(`👥 Active players in game ${gameId}: ${activePlayers.get(gameId)?.size || 0}`)
+    console.log(`👥 Active human players in game ${gameId}: ${activeHumans}`)
+  })
+
+  // Handle leave-game event (player leaving a specific game but keeping socket alive)
+  socket.on('leave-game', ({ gameId, userId }: any) => {
+    try {
+      console.log(`👋 Global: User ${userId} leaving game room ${gameId}`)
+      socket.leave(`game-${gameId}`)
+      socket.leave(gameId)
+
+      // Update per-socket mapping
+      const mappings = socketGameMap.get(socket.id)
+      if (mappings && mappings.length > 0) {
+        const remainingMappings = mappings.filter(m => !(m.gameId === gameId && m.userId === userId))
+        socketGameMap.set(socket.id, remainingMappings)
+      }
+
+      // Decrement this user's connection count for the game
+      const userMap = activePlayers.get(gameId)
+      if (userMap) {
+        const currentCount = userMap.get(userId) || 0
+        if (currentCount <= 1) {
+          userMap.delete(userId)
+        } else {
+          userMap.set(userId, currentCount - 1)
+        }
+
+        const remainingHumans = userMap.size
+        console.log(`👥 After leave-game, unique humans in game ${gameId}: ${remainingHumans}`)
+      }
+    } catch (e) {
+      console.warn('⚠️ leave-game handler error:', e)
+    }
   })
 
   // Handle spectate-game event (spectators should not be counted as active players)
@@ -1463,43 +1623,54 @@ io.on('connection', (socket) => {
   // Handle player disconnect
   socket.on('disconnect', async (reason) => {
     console.log(`🔌 Player disconnected: ${socket.id}, reason: ${reason}`)
-    
-    // Check all games to see if this player was in any
-    activePlayers.forEach(async (players, gId) => {
-      if (players.has(socket.id)) {
-        players.delete(socket.id)
-        console.log(`👋 Player ${socket.id} left game ${gId}. Remaining: ${players.size}`)
-        
-        // If no players left in an active game, stop it
-        if (players.size === 0 && gameIntervals.has(gId)) {
-          console.log(`⚠️ All players left game ${gId}, stopping game...`)
-          
-          try {
-            const { supabaseAdmin } = await import('../lib/supabase')
-            
-            // Mark game as finished with no winner
-            await supabaseAdmin
-              .from('games')
-              .update({
-                status: 'finished',
-                ended_at: new Date().toISOString(),
-                winner_id: null
-              })
-              .eq('id', gId)
-            
-            // Stop number calling
-            stopNumberCalling(gId)
-            
-            // Clean up tracking
-            activePlayers.delete(gId)
-            
-            console.log(`✅ Game ${gId} stopped due to all players leaving`)
-          } catch (error) {
-            console.error(`❌ Error stopping abandoned game ${gId}:`, error)
-          }
+
+    const mappings = socketGameMap.get(socket.id)
+    if (!mappings || mappings.length === 0) {
+      return
+    }
+
+    for (const { gameId: gId, userId } of mappings) {
+      const userMap = activePlayers.get(gId)
+      if (!userMap) continue
+
+      const currentCount = userMap.get(userId) || 0
+      if (currentCount <= 1) {
+        userMap.delete(userId)
+      } else {
+        userMap.set(userId, currentCount - 1)
+      }
+
+      const remainingHumans = userMap.size
+      console.log(`👋 Player ${socket.id} (${userId}) left game ${gId}. Remaining unique humans: ${remainingHumans}`)
+
+      // If no human players left in an active game, stop it
+      if (remainingHumans === 0 && gameIntervals.has(gId)) {
+        console.log(`⚠️ All players left game ${gId}, stopping game...`)
+
+        try {
+          const { supabaseAdmin } = await import('../lib/supabase')
+
+          await supabaseAdmin
+            .from('games')
+            .update({
+              status: 'finished',
+              ended_at: new Date().toISOString(),
+              winner_id: null
+            })
+            .eq('id', gId)
+
+          // Stop number calling and clean tracking
+          stopNumberCalling(gId)
+          activePlayers.delete(gId)
+
+          console.log(`✅ Game ${gId} stopped due to all players leaving`)
+        } catch (error) {
+          console.error(`❌ Error stopping abandoned game ${gId}:`, error)
         }
       }
-    })
+    }
+
+    socketGameMap.delete(socket.id)
   })
 })
 

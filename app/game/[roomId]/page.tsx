@@ -704,8 +704,28 @@ export default function GamePage() {
           })
 
           if (!resp.ok) {
-            const errBody = await resp.text().catch(() => '')
-            console.error('Failed to confirm join / deduct stake:', resp.status, errBody)
+            let parsed: any = null
+            let rawText: string | null = null
+            try {
+              rawText = await resp.text()
+              try {
+                parsed = rawText ? JSON.parse(rawText) : null
+              } catch {
+                parsed = null
+              }
+            } catch {
+              // Ignore parse errors
+            }
+
+            console.error('Failed to confirm join / deduct stake:', resp.status, parsed || rawText || '')
+
+            // If the backend says this user is not a player in this game, treat this
+            // as a non-fatal condition (e.g., spectator or stale game) and stop
+            // retrying stake deduction so we don't spam errors.
+            if (resp.status === 403 && parsed && parsed.error === 'User is not a player in this game') {
+              console.warn('Skipping further stake deductions because server reports user is not a player in this game')
+              setStakeDeducted(true)
+            }
             return
           }
 
