@@ -1543,8 +1543,9 @@ const io = new SocketServer(httpServer, {
 
 // Make socket server globally available for number calling
 global.io = io
-// Track active players per game
-const activePlayers = new Map<string, Set<string>>() // gameId -> Set of socketIds
+// Track active players per game (unique users) and per-socket mappings
+const activePlayers = new Map<string, Map<string, number>>() // gameId -> Map<userId, connectionCount>
+const socketGameMap = new Map<string, Array<{ gameId: string; userId: string }>>() // socketId -> joined (game,user) pairs
 
 // Add global socket event handlers for game room joining
 io.on('connection', (socket) => {
@@ -1556,14 +1557,54 @@ io.on('connection', (socket) => {
     socket.join(`game-${gameId}`)
     socket.join(gameId) // Join both formats for compatibility
 
-    // Track this player as active in the game
+    // Track this player as active in the game (unique users, support multi-tab)
     if (!activePlayers.has(gameId)) {
-      activePlayers.set(gameId, new Set())
+      activePlayers.set(gameId, new Map())
     }
-    activePlayers.get(gameId)!.add(socket.id)
+    const userMap = activePlayers.get(gameId)!
+    const currentCount = userMap.get(userId) || 0
+    userMap.set(userId, currentCount + 1)
 
+    // Track mapping from socket -> (game,user) pairs for cleanup on disconnect/leave
+    const existing = socketGameMap.get(socket.id) || []
+    existing.push({ gameId, userId })
+    socketGameMap.set(socket.id, existing)
+
+    const activeHumans = userMap.size
     console.log(`✅ Global: User ${userId} joined rooms: game-${gameId} and ${gameId}`)
-    console.log(`👥 Active players in game ${gameId}: ${activePlayers.get(gameId)?.size || 0}`)
+    console.log(`👥 Active human players in game ${gameId}: ${activeHumans}`)
+  })
+
+  // Handle leave-game event (player leaving a specific game but keeping socket alive)
+  socket.on('leave-game', ({ gameId, userId }: any) => {
+    try {
+      console.log(`👋 Global: User ${userId} leaving game room ${gameId}`)
+      socket.leave(`game-${gameId}`)
+      socket.leave(gameId)
+
+      // Update per-socket mapping
+      const mappings = socketGameMap.get(socket.id)
+      if (mappings && mappings.length > 0) {
+        const remainingMappings = mappings.filter(m => !(m.gameId === gameId && m.userId === userId))
+        socketGameMap.set(socket.id, remainingMappings)
+      }
+
+      // Decrement this user's connection count for the game
+      const userMap = activePlayers.get(gameId)
+      if (userMap) {
+        const currentCount = userMap.get(userId) || 0
+        if (currentCount <= 1) {
+          userMap.delete(userId)
+        } else {
+          userMap.set(userId, currentCount - 1)
+        }
+
+        const remainingHumans = userMap.size
+        console.log(`👥 After leave-game, unique humans in game ${gameId}: ${remainingHumans}`)
+      }
+    } catch (e) {
+      console.warn('⚠️ leave-game handler error:', e)
+    }
   })
 
   // Handle spectate-game event (spectators should not be counted as active players)
@@ -1582,43 +1623,54 @@ io.on('connection', (socket) => {
   // Handle player disconnect
   socket.on('disconnect', async (reason) => {
     console.log(`🔌 Player disconnected: ${socket.id}, reason: ${reason}`)
-    
-    // Check all games to see if this player was in any
-    activePlayers.forEach(async (players, gId) => {
-      if (players.has(socket.id)) {
-        players.delete(socket.id)
-        console.log(`👋 Player ${socket.id} left game ${gId}. Remaining: ${players.size}`)
-        
-        // If no players left in an active game, stop it
-        if (players.size === 0 && gameIntervals.has(gId)) {
-          console.log(`⚠️ All players left game ${gId}, stopping game...`)
-          
-          try {
-            const { supabaseAdmin } = await import('../lib/supabase')
-            
-            // Mark game as finished with no winner
-            await supabaseAdmin
-              .from('games')
-              .update({
-                status: 'finished',
-                ended_at: new Date().toISOString(),
-                winner_id: null
-              })
-              .eq('id', gId)
-            
-            // Stop number calling
-            stopNumberCalling(gId)
-            
-            // Clean up tracking
-            activePlayers.delete(gId)
-            
-            console.log(`✅ Game ${gId} stopped due to all players leaving`)
-          } catch (error) {
-            console.error(`❌ Error stopping abandoned game ${gId}:`, error)
-          }
+
+    const mappings = socketGameMap.get(socket.id)
+    if (!mappings || mappings.length === 0) {
+      return
+    }
+
+    for (const { gameId: gId, userId } of mappings) {
+      const userMap = activePlayers.get(gId)
+      if (!userMap) continue
+
+      const currentCount = userMap.get(userId) || 0
+      if (currentCount <= 1) {
+        userMap.delete(userId)
+      } else {
+        userMap.set(userId, currentCount - 1)
+      }
+
+      const remainingHumans = userMap.size
+      console.log(`👋 Player ${socket.id} (${userId}) left game ${gId}. Remaining unique humans: ${remainingHumans}`)
+
+      // If no human players left in an active game, stop it
+      if (remainingHumans === 0 && gameIntervals.has(gId)) {
+        console.log(`⚠️ All players left game ${gId}, stopping game...`)
+
+        try {
+          const { supabaseAdmin } = await import('../lib/supabase')
+
+          await supabaseAdmin
+            .from('games')
+            .update({
+              status: 'finished',
+              ended_at: new Date().toISOString(),
+              winner_id: null
+            })
+            .eq('id', gId)
+
+          // Stop number calling and clean tracking
+          stopNumberCalling(gId)
+          activePlayers.delete(gId)
+
+          console.log(`✅ Game ${gId} stopped due to all players leaving`)
+        } catch (error) {
+          console.error(`❌ Error stopping abandoned game ${gId}:`, error)
         }
       }
-    })
+    }
+
+    socketGameMap.delete(socket.id)
   })
 })
 
