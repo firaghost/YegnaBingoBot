@@ -59,19 +59,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to generate promo code' }, { status: 500 })
     }
 
-    const { error } = await supabase.from('public_promos').insert({
-      code,
-      amount: numericAmount,
-      max_uses: numericMaxUses,
-      expires_at: expiresIso,
-      created_by: admin.id,
-      meta: {
-        expiresAmount: labelAmount,
-        expiresUnit: labelUnit,
-      },
-    })
+    const { data: promo, error } = await supabase
+      .from('public_promos')
+      .insert({
+        code,
+        amount: numericAmount,
+        max_uses: numericMaxUses,
+        expires_at: expiresIso,
+        created_by: admin.id,
+        meta: {
+          expiresAmount: labelAmount,
+          expiresUnit: labelUnit,
+        },
+      })
+      .select('id, code, amount, max_uses, used_count, expires_at, created_at')
+      .single()
 
-    if (error) {
+    if (error || !promo) {
       console.error('Error inserting public promo:', error)
       return NextResponse.json({ error: 'Failed to create promo' }, { status: 500 })
     }
@@ -84,6 +88,7 @@ export async function POST(req: NextRequest) {
       expiresAt: expiresIso,
       expiresAmount: labelAmount,
       expiresUnit: labelUnit,
+      promo,
     })
   } catch (e: any) {
     console.error('Error in POST /api/admin/promo/public-generate:', e)

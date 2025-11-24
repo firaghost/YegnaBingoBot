@@ -37,7 +37,7 @@ BEGIN
     metadata
   ) VALUES (
     p_user_id,
-    'promo_gift',
+    'bonus',
     p_amount,
     'completed',
     jsonb_build_object(

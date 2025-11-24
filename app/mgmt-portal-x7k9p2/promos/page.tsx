@@ -34,6 +34,27 @@ interface BroadcastRecord {
   created_at: string
 }
 
+interface PublicPromoRecord {
+  id: string
+  code: string
+  amount: number
+  max_uses: number
+  used_count: number
+  expires_at: string | null
+  created_at: string
+}
+
+interface ClaimRecord {
+  id: string
+  code: string
+  amount: number
+  used_at: string | null
+  user_id: string
+  username: string | null
+  telegram_id: string | null
+  phone: string | null
+}
+
 export default function AdminPromosPage() {
   const { admin, loading: adminLoading } = useAdminAuth()
 
@@ -77,12 +98,23 @@ export default function AdminPromosPage() {
     Record<string, { total: number; used: number; expired: number; active: number }>
   >({})
 
+  const [promoStatusFilter, setPromoStatusFilter] = useState<'all' | 'active' | 'expired' | 'fully_claimed'>(
+    'all',
+  )
+
   const [publicAmount, setPublicAmount] = useState('50')
   const [publicMaxUses, setPublicMaxUses] = useState('100')
   const [publicExpiresAmount, setPublicExpiresAmount] = useState(7)
   const [publicExpiresUnit, setPublicExpiresUnit] = useState<'days' | 'hours'>('days')
   const [publicCode, setPublicCode] = useState('')
   const [publicGenerating, setPublicGenerating] = useState(false)
+  const [publicPromos, setPublicPromos] = useState<PublicPromoRecord[]>([])
+  const [publicStatusFilter, setPublicStatusFilter] = useState<'all' | 'active' | 'expired' | 'fully_claimed'>(
+    'all',
+  )
+
+  const [promoClaims, setPromoClaims] = useState<Record<string, ClaimRecord[]>>({})
+  const [promoClaimsLoading, setPromoClaimsLoading] = useState<Record<string, boolean>>({})
 
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -133,6 +165,29 @@ export default function AdminPromosPage() {
     loadPrevious()
   }, [])
 
+  const loadPublicPromos = useCallback(
+    async (status: 'all' | 'active' | 'expired' | 'fully_claimed') => {
+      try {
+        const res = await fetch('/api/admin/promo/public-list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, limit: 20 }),
+        })
+        const json = await res.json()
+        if (res.ok && Array.isArray(json.promos)) {
+          setPublicPromos(json.promos as PublicPromoRecord[])
+        }
+      } catch (e) {
+        console.error('Error loading public promos:', e)
+      }
+    },
+    [],
+  )
+
+  useEffect(() => {
+    void loadPublicPromos(publicStatusFilter)
+  }, [publicStatusFilter, loadPublicPromos])
+
   const generatePublicPromo = useCallback(async () => {
     try {
       setPublicGenerating(true)
@@ -164,6 +219,9 @@ export default function AdminPromosPage() {
       }
 
       setPublicCode(json.code)
+      if (json.promo) {
+        setPublicPromos((prev) => [json.promo as PublicPromoRecord, ...prev])
+      }
       showNotification('success', 'Public promo code generated')
     } catch (e: any) {
       console.error('Error generating public promo:', e)
@@ -172,6 +230,35 @@ export default function AdminPromosPage() {
       setPublicGenerating(false)
     }
   }, [publicAmount, publicMaxUses, publicExpiresAmount, publicExpiresUnit])
+
+  const loadClaimsForBroadcast = useCallback(
+    async (broadcastId: string) => {
+      if (!broadcastId) return
+
+      // If already loaded, do not refetch
+      if (promoClaims[broadcastId] && promoClaims[broadcastId].length > 0) {
+        return
+      }
+
+      setPromoClaimsLoading((prev) => ({ ...prev, [broadcastId]: true }))
+      try {
+        const res = await fetch('/api/admin/promo/claims', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ broadcastId }),
+        })
+        const json = await res.json()
+        if (res.ok && Array.isArray(json.claims)) {
+          setPromoClaims((prev) => ({ ...prev, [broadcastId]: json.claims as ClaimRecord[] }))
+        }
+      } catch (e) {
+        console.error('Error loading promo claims:', e)
+      } finally {
+        setPromoClaimsLoading((prev) => ({ ...prev, [broadcastId]: false }))
+      }
+    },
+    [promoClaims],
+  )
 
   useEffect(() => {
     fetchEstimatedRecipients()
@@ -1034,6 +1121,7 @@ export default function AdminPromosPage() {
                     const expUnit = promo.expiresUnit || (promo.expiresInDays ? 'days' : 'days')
                     const allExpired =
                       stats && stats.total > 0 && stats.expired > 0 && (stats as any).active === 0
+                    const fullyClaimed = stats && stats.total > 0 && stats.used === stats.total
 
                     return (
                       <div
@@ -1059,6 +1147,11 @@ export default function AdminPromosPage() {
                             {stats?.used > 0 && (
                               <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-500/40">
                                 Claimed {stats.used}
+                              </span>
+                            )}
+                            {fullyClaimed && (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-100 border border-emerald-400/60">
+                                Fully claimed
                               </span>
                             )}
                             {stats?.expired > 0 && (
@@ -1173,10 +1266,92 @@ export default function AdminPromosPage() {
                   </div>
                 </div>
               </div>
+
+              <div className="mt-4 text-xs">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="text-slate-200 font-semibold">Recent public promos</div>
+                  <div className="flex flex-wrap gap-1">
+                      {([
+                        ['all', 'All'],
+                        ['active', 'Active'],
+                        ['fully_claimed', 'Fully claimed'],
+                        ['expired', 'Expired'],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setPublicStatusFilter(value)}
+                          className={`px-2 py-0.5 rounded-full border text-[10px] transition-colors ${
+                            publicStatusFilter === value
+                              ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/60'
+                              : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/60'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {publicPromos.length === 0 ? (
+                  <div className="text-[11px] text-slate-500">No public promos for this filter yet.</div>
+                ) : (
+                  <div className="space-y-2 max-h-52 overflow-y-auto scrollbar-hide pr-1">
+                    {publicPromos.map((p) => {
+                      const expiresAt = p.expires_at ? new Date(p.expires_at) : null
+                      const now = new Date()
+                      const isExpired = expiresAt ? expiresAt.getTime() <= now.getTime() : false
+                      const fullyClaimed = p.used_count >= p.max_uses
+                      const statusLabel = fullyClaimed
+                        ? 'Fully claimed'
+                        : isExpired
+                        ? 'Expired'
+                        : 'Active'
+                      const statusClass = fullyClaimed
+                        ? 'bg-emerald-500/10 text-emerald-200 border-emerald-400/60'
+                        : isExpired
+                        ? 'bg-amber-500/10 text-amber-200 border-amber-500/60'
+                        : 'bg-sky-500/10 text-sky-200 border-sky-500/60'
+
+                      return (
+                        <div
+                          key={p.id}
+                          className="border border-slate-700/80 bg-slate-950/70 rounded-lg px-3 py-2 flex flex-col gap-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="font-mono text-[11px] text-emerald-300 truncate">{p.code}</div>
+                              <div className="text-[10px] text-slate-500 truncate">
+                                {new Date(p.created_at).toLocaleString()}
+                              </div>
+                            </div>
+                            <span className={`px-2 py-0.5 rounded-full border text-[10px] ${statusClass}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 text-[10px]">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-500/40">
+                              {formatCurrency(p.amount)} ETB
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
+                              Used {p.used_count}/{p.max_uses}
+                            </span>
+                            {expiresAt && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
+                                Expires {expiresAt.toLocaleString()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    
   )
 }
