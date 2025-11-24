@@ -587,6 +587,41 @@ app.post('/api/game/join', async (req, res) => {
             // After 30 seconds, start 10s countdown, then activate the game
             setTimeout(async () => {
               try {
+                // Re-check game state before starting countdown
+                const { data: currentGame, error: currentErr } = await supabase
+                  .from('games')
+                  .select('players, bots, status')
+                  .eq('id', prefilledGame.id)
+                  .maybeSingle()
+
+                if (currentErr || !currentGame) {
+                  console.warn(`⚠️ Skipping countdown for game ${prefilledGame.id}: game row missing or error`)
+                  activeCountdowns.delete(prefilledGame.id)
+                  activeWaitingPeriods.delete(prefilledGame.id)
+                  return
+                }
+
+                const currentParticipants = (currentGame.players?.length || 0) + (currentGame.bots?.length || 0)
+
+                if (['finished', 'cancelled'].includes(currentGame.status) || currentParticipants < 2) {
+                  console.log(`⚠️ Not starting countdown for game ${prefilledGame.id}: status=${currentGame.status}, participants=${currentParticipants}`)
+                  activeCountdowns.delete(prefilledGame.id)
+                  activeWaitingPeriods.delete(prefilledGame.id)
+
+                  // If we dropped below 2 during waiting_for_players, reset back to waiting
+                  if (currentParticipants < 2 && ['waiting', 'waiting_for_players', 'countdown'].includes(currentGame.status)) {
+                    await supabase
+                      .from('games')
+                      .update({
+                        status: 'waiting',
+                        countdown_time: 0,
+                        waiting_started_at: null
+                      })
+                      .eq('id', prefilledGame.id)
+                  }
+                  return
+                }
+
                 // Prevent duplicate countdowns
                 if (activeCountdowns.has(prefilledGame.id)) {
                   console.log(`⚠️ Countdown already active for game ${prefilledGame.id}, skipping`)
@@ -607,33 +642,70 @@ app.post('/api/game/join', async (req, res) => {
                 let timeLeft = 10
                 const countdownInterval = setInterval(async () => {
                   timeLeft--
-                  if (timeLeft > 0) {
-                    await supabase
+                  try {
+                    const { data: currentGame, error: currentErr } = await supabase
                       .from('games')
-                      .update({ countdown_time: timeLeft })
+                      .select('players, bots, status')
                       .eq('id', prefilledGame.id)
-                    console.log(`⏰ Game ${prefilledGame.id} countdown: ${timeLeft}s`)
-                  } else {
-                    clearInterval(countdownInterval)
-                    activeCountdowns.delete(prefilledGame.id)
+                      .maybeSingle()
 
-                    console.log(`🎮 Starting game ${prefilledGame.id}`)
-                    await supabase
-                      .from('games')
-                      .update({
-                        status: 'active',
-                        countdown_time: 0,
-                        started_at: new Date().toISOString()
-                      })
-                      .eq('id', prefilledGame.id)
-
-                    // Start number calling with duplicate protection
-                    if (!gameIntervals.has(prefilledGame.id)) {
-                      console.log(`📢 Starting number calling for new game ${prefilledGame.id}`)
-                      startNumberCalling(prefilledGame.id)
-                    } else {
-                      console.log(`⚠️ Number calling already active for game ${prefilledGame.id}`)
+                    if (currentErr || !currentGame) {
+                      console.warn(`⚠️ Cancelling countdown for game ${prefilledGame.id}: game row missing or error`)
+                      clearInterval(countdownInterval)
+                      activeCountdowns.delete(prefilledGame.id)
+                      return
                     }
+
+                    const currentParticipants = (currentGame.players?.length || 0) + (currentGame.bots?.length || 0)
+
+                    if (['finished', 'cancelled'].includes(currentGame.status) || currentParticipants < 2) {
+                      console.log(`⚠️ Cancelling countdown for game ${prefilledGame.id}: status=${currentGame.status}, participants=${currentParticipants}`)
+                      clearInterval(countdownInterval)
+                      activeCountdowns.delete(prefilledGame.id)
+
+                      if (currentParticipants < 2 && ['waiting', 'waiting_for_players', 'countdown'].includes(currentGame.status)) {
+                        await supabase
+                          .from('games')
+                          .update({
+                            status: 'waiting',
+                            countdown_time: 0,
+                            waiting_started_at: null
+                          })
+                          .eq('id', prefilledGame.id)
+                      }
+                      return
+                    }
+
+                    if (timeLeft > 0) {
+                      await supabase
+                        .from('games')
+                        .update({ countdown_time: timeLeft })
+                        .eq('id', prefilledGame.id)
+                      console.log(`⏰ Game ${prefilledGame.id} countdown: ${timeLeft}s`)
+                    } else {
+                      clearInterval(countdownInterval)
+                      activeCountdowns.delete(prefilledGame.id)
+
+                      console.log(`🎮 Starting game ${prefilledGame.id}`)
+                      await supabase
+                        .from('games')
+                        .update({
+                          status: 'active',
+                          countdown_time: 0,
+                          started_at: new Date().toISOString()
+                        })
+                        .eq('id', prefilledGame.id)
+
+                      // Start number calling with duplicate protection
+                      if (!gameIntervals.has(prefilledGame.id)) {
+                        console.log(`📢 Starting number calling for new game ${prefilledGame.id}`)
+                        startNumberCalling(prefilledGame.id)
+                      } else {
+                        console.log(`⚠️ Number calling already active for game ${prefilledGame.id}`)
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error during countdown tick:', e)
                   }
                 }, 1000)
 
@@ -647,15 +719,52 @@ app.post('/api/game/join', async (req, res) => {
             let waitingTimeLeft = 30
             const waitingInterval = setInterval(async () => {
               waitingTimeLeft--
-              if (waitingTimeLeft > 0) {
-                await supabase
+              try {
+                const { data: currentGame, error: currentErr } = await supabase
                   .from('games')
-                  .update({ countdown_time: waitingTimeLeft })
+                  .select('players, bots, status')
                   .eq('id', prefilledGame.id)
-                console.log(`⏳ Game ${prefilledGame.id} waiting: ${waitingTimeLeft}s`)
-              } else {
-                clearInterval(waitingInterval)
-                activeWaitingPeriods.delete(prefilledGame.id)
+                  .maybeSingle()
+
+                if (currentErr || !currentGame) {
+                  console.warn(`⚠️ Cancelling waiting period for game ${prefilledGame.id}: game row missing or error`)
+                  clearInterval(waitingInterval)
+                  activeWaitingPeriods.delete(prefilledGame.id)
+                  return
+                }
+
+                const currentParticipants = (currentGame.players?.length || 0) + (currentGame.bots?.length || 0)
+
+                if (['finished', 'cancelled'].includes(currentGame.status) || currentParticipants < 2) {
+                  console.log(`⚠️ Cancelling waiting period for game ${prefilledGame.id}: status=${currentGame.status}, participants=${currentParticipants}`)
+                  clearInterval(waitingInterval)
+                  activeWaitingPeriods.delete(prefilledGame.id)
+
+                  if (currentParticipants < 2 && ['waiting', 'waiting_for_players', 'countdown'].includes(currentGame.status)) {
+                    await supabase
+                      .from('games')
+                      .update({
+                        status: 'waiting',
+                        countdown_time: 0,
+                        waiting_started_at: null
+                      })
+                      .eq('id', prefilledGame.id)
+                  }
+                  return
+                }
+
+                if (waitingTimeLeft > 0) {
+                  await supabase
+                    .from('games')
+                    .update({ countdown_time: waitingTimeLeft })
+                    .eq('id', prefilledGame.id)
+                  console.log(`⏳ Game ${prefilledGame.id} waiting: ${waitingTimeLeft}s`)
+                } else {
+                  clearInterval(waitingInterval)
+                  activeWaitingPeriods.delete(prefilledGame.id)
+                }
+              } catch (e) {
+                console.error('Error during waiting-period tick:', e)
               }
             }, 1000)
           }

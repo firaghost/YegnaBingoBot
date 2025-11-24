@@ -91,55 +91,40 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // If player leaves during waiting/waiting_for_players and only 1 player remains, END the game (don't keep it open)
+    // If player leaves during waiting/waiting_for_players/countdown and only 1 player remains,
+    // reset the game back to a waiting state so the remaining player can wait for a new opponent.
     if (remainingPlayers === 1 && ['waiting', 'waiting_for_players', 'countdown'].includes(game.status)) {
-      console.log(`🏁 Game ${gameId} ending - only 1 player remaining in waiting room`)
-      
-      // Clear any active countdown timer
+      console.log(`⏳ Game ${gameId}: player left during pre-start, keeping single remaining player in waiting state`)
+
+      // Clear any locally tracked countdown timer
       try {
         clearGameTimer(gameId)
       } catch (error) {
         console.warn('Could not clear game timer:', error)
       }
-      
-      // End the game instead of keeping it open
+
+      // Reset game back to waiting state; server-side waiting/countdown loops will
+      // see the updated status / player count and will not auto-start.
       await supabase
         .from('games')
         .update({
-          status: 'finished',
-          ended_at: new Date().toISOString(),
-          players: updatedPlayers
+          status: 'waiting',
+          countdown_time: 0,
+          waiting_started_at: null,
+          players: updatedPlayers,
+          prize_pool: game.stake * remainingPlayers
         })
         .eq('id', gameId)
 
-      console.log(`🏁 Game ended - single player cannot continue in waiting room`)
-      
-      // Stop number calling and force-sync cache
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
-        await fetch(`${baseUrl}/api/game/stop-calling`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId })
-        })
-        await fetch(`${baseUrl}/api/cache/force-sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ gameId })
-        })
-      } catch (e) {
-        console.warn('Failed to stop number calling after single player left:', e)
-      }
-
       return NextResponse.json({
         success: true,
-        message: 'Game ended - insufficient players',
-        refunded: false
+        message: 'Player left; remaining player is waiting for more opponents',
+        remainingPlayers
       })
     }
 
-    // If only 1 player remains and game is active/countdown, declare them winner
-    if (remainingPlayers === 1 && (game.status === 'active' || game.status === 'countdown')) {
+    // If only 1 player remains and game is active, declare them winner
+    if (remainingPlayers === 1 && game.status === 'active') {
       const winnerId = updatedPlayers[0]
       
       console.log(`🏆 Auto-win: Player ${winnerId} wins by default (opponent left)`)

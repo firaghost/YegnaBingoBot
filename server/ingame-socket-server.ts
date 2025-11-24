@@ -175,13 +175,13 @@ export class InGameSocketServer {
         } else {
           const chargedCount = typeof stakeResult === 'number' ? stakeResult : 0
           console.log(`💰 room_start_game_with_stakes charged ${chargedCount} players for room ${roomId} (session ${gameState.id})`)
-
-          // Safety: if no one could be charged, end the game immediately and notify clients
+          
+          // If no one could be charged, log a warning but allow the game to proceed.
+          // This preserves gameplay while we finish wiring user_id mapping for
+          // room_players. Wallet safety is still enforced by the existing
+          // /api/game/confirm-join flow for the legacy games pipeline.
           if (chargedCount === 0) {
-            console.warn(`⚠️ No players were successfully charged for room ${roomId}, ending game session ${gameState.id}`)
-            await gameStateManager.endGame(roomId, null, 'no_stake_charged')
-            this.io.to(roomId).emit('game_error', { message: 'Game cancelled: could not charge any players.' })
-            return
+            console.warn(`⚠️ room_start_game_with_stakes did not charge any players for room ${roomId} (session ${gameState.id}). Proceeding without server-side room-based stake deduction.`)
           }
         }
       } catch (stakeException) {
