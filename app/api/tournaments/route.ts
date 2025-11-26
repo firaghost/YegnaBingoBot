@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getLeaderboard } from '@/lib/server/tournament-service'
 
+export const dynamic = 'force-dynamic'
+
 const supabase = supabaseAdmin
 
 export async function GET(_req: NextRequest) {

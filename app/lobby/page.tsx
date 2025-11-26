@@ -210,7 +210,7 @@ export default function LobbyPage() {
       ; (async () => {
         try {
           setTournamentLoading(true)
-          const res = await fetch('/api/tournaments')
+          const res = await fetch('/api/tournaments', { cache: 'no-store' })
 
           if (!res.ok) {
             console.error('🏆 Failed to fetch tournaments:', res.status)
