@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       if (action === 'create') {
         const { data, error } = await supabase
           .from('tournaments')
-          .insert({ ...base, created_by: admin.id })
+          .insert({ ...base, created_by: null })
           .select()
           .maybeSingle()
 
