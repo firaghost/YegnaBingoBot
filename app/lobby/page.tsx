@@ -210,31 +210,34 @@ export default function LobbyPage() {
       ; (async () => {
         try {
           setTournamentLoading(true)
-          console.log('🏆 Fetching tournaments from /api/tournaments...')
           const res = await fetch('/api/tournaments')
-          console.log('🏆 Tournament API response status:', res.status, res.ok)
 
           if (!res.ok) {
-            console.error('🏆 Tournament API returned error status:', res.status)
+            console.error('🏆 Failed to fetch tournaments:', res.status)
             return
           }
 
           const json = await res.json().catch((err) => {
-            console.error('🏆 Failed to parse tournament JSON:', err)
+            console.error('🏆 Failed to parse JSON:', err)
             return null
           })
-          console.log('🏆 Tournament API response:', json)
 
           const list = Array.isArray(json?.tournaments) ? json.tournaments : []
-          console.log('🏆 Found tournaments:', list.length, list)
-
           const raw = list.find((t: any) => t.status === 'live')
-          console.log('🏆 Live tournament found:', raw)
 
           if (!raw) {
-            console.log('🏆 No live tournaments found')
+            console.log('🏆 No live tournaments found. Total tournaments:', list.length)
+            if (list.length > 0) {
+              console.log('🏆 Available tournaments:', list.map((t: any) => ({
+                name: t.name,
+                status: t.status,
+                is_enabled: t.is_enabled
+              })))
+            }
             return
           }
+
+          console.log('🏆 Live tournament found:', raw.name)
 
           const topDepositorsSource = raw.topDepositors || raw.top_depositors || []
           const topPlayersSource = raw.topPlayers || raw.top_players || []
@@ -258,11 +261,9 @@ export default function LobbyPage() {
             })),
           }
 
-          console.log('🏆 Tournament preview created:', preview)
-
           if (mounted) {
             setTournament(preview)
-            console.log('🏆 Tournament state updated')
+            console.log('🏆 Tournament displayed in lobby')
           }
         } catch (error) {
           console.error('🏆 Error fetching tournaments:', error)
@@ -929,9 +930,9 @@ export default function LobbyPage() {
                 <div key={room.id} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-400 ring-opacity-60' : ''}`}>
                   {/* Background Gradient */}
                   <div className={`absolute inset-0 bg-gradient-to-br ${index % 4 === 0 ? 'from-emerald-500 to-emerald-600' :
-                      index % 4 === 1 ? 'from-blue-500 to-blue-600' :
-                        index % 4 === 2 ? 'from-indigo-500 to-indigo-600' :
-                          'from-orange-500 to-orange-600'
+                    index % 4 === 1 ? 'from-blue-500 to-blue-600' :
+                      index % 4 === 2 ? 'from-indigo-500 to-indigo-600' :
+                        'from-orange-500 to-orange-600'
                     } opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
 
                   {/* Card Content */}
@@ -948,9 +949,9 @@ export default function LobbyPage() {
                           />
                         ) : (
                           <IconComponent className={`w-6 h-6 flex-shrink-0 ${index % 4 === 0 ? 'text-emerald-500' :
-                              index % 4 === 1 ? 'text-blue-500' :
-                                index % 4 === 2 ? 'text-indigo-500' :
-                                  'text-orange-500'
+                            index % 4 === 1 ? 'text-blue-500' :
+                              index % 4 === 2 ? 'text-indigo-500' :
+                                'text-orange-500'
                             }`} />
                         )}
                       </div>
@@ -1016,9 +1017,9 @@ export default function LobbyPage() {
                         <Link href={`/game/${room.id}`}>
                           <button
                             className={`w-full bg-gradient-to-r ${index % 4 === 0 ? 'from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' :
-                                index % 4 === 1 ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' :
-                                  index % 4 === 2 ? 'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700' :
-                                    'from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                              index % 4 === 1 ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' :
+                                index % 4 === 2 ? 'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700' :
+                                  'from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                               } text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
                           >
                             <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
