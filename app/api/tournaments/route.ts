@@ -7,6 +7,7 @@ const supabase = supabaseAdmin
 export async function GET(_req: NextRequest) {
   try {
     const nowIso = new Date().toISOString()
+    console.log('🏆 [API] Fetching tournaments, current time:', nowIso)
 
     const { data: tournaments, error } = await supabase
       .from('tournaments')
@@ -14,15 +15,29 @@ export async function GET(_req: NextRequest) {
       .eq('is_enabled', true)
       .in('status', ['live', 'upcoming'])
       .lte('start_at', nowIso)
+      .gte('end_at', nowIso)
       .order('status', { ascending: false })
       .order('start_at', { ascending: true })
 
     if (error) {
-      console.error('Error loading tournaments:', error)
+      console.error('🏆 [API] Error loading tournaments:', error)
       return NextResponse.json({ tournaments: [] })
     }
 
+    console.log('🏆 [API] Found tournaments:', tournaments?.length || 0)
+    if (tournaments && tournaments.length > 0) {
+      console.log('🏆 [API] Tournament details:', tournaments.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        status: t.status,
+        is_enabled: t.is_enabled,
+        start_at: t.start_at,
+        end_at: t.end_at
+      })))
+    }
+
     if (!tournaments || tournaments.length === 0) {
+      console.log('🏆 [API] No tournaments found, returning empty array')
       return NextResponse.json({ tournaments: [] })
     }
 

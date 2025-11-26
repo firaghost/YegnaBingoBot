@@ -103,36 +103,36 @@ export default function LobbyPage() {
       }
     }
     loadCommission()
-    
-    // Send a heartbeat once user is known so identity cookies are set (uid/tgid/uname)
-    ;(async () => {
-      try {
-        // user may not be ready immediately; guard below useEffect covers changes too
-        if (user?.id) {
-          await fetch('/api/telemetry/heartbeat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
-          })
-        }
-      } catch {}
-    })()
-    
+
+      // Send a heartbeat once user is known so identity cookies are set (uid/tgid/uname)
+      ; (async () => {
+        try {
+          // user may not be ready immediately; guard below useEffect covers changes too
+          if (user?.id) {
+            await fetch('/api/telemetry/heartbeat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
+            })
+          }
+        } catch { }
+      })()
+
     // Subscribe to real-time updates
     const roomsChannel = supabase
       .channel('lobby-updates')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'rooms' 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'rooms'
       }, (payload: any) => {
         console.log('🏠 Room update:', payload)
         handleRoomUpdate(payload)
       })
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'games' 
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'games'
       }, (payload: any) => {
         console.log('🎮 Game update:', payload)
         handleGameUpdate(payload)
@@ -166,89 +166,112 @@ export default function LobbyPage() {
   // Load channel join requirement from admin config (clear cache to avoid stale values)
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        clearConfigCache()
-        const cfg = await getConfig('require_channel_join')
-        let val: boolean
-        if (typeof cfg === 'boolean') val = cfg
-        else if (cfg == null) val = true
-        else {
-          const s = String(cfg).trim().toLowerCase()
-          val = !(s === 'false' || s === '0' || s === 'no')
+      ; (async () => {
+        try {
+          clearConfigCache()
+          const cfg = await getConfig('require_channel_join')
+          let val: boolean
+          if (typeof cfg === 'boolean') val = cfg
+          else if (cfg == null) val = true
+          else {
+            const s = String(cfg).trim().toLowerCase()
+            val = !(s === 'false' || s === '0' || s === 'no')
+          }
+          if (mounted) {
+            setRequireChannelJoin(val)
+            setRequireChannelJoinLoaded(true)
+          }
+        } catch {
+          if (mounted) {
+            setRequireChannelJoin(true)
+            setRequireChannelJoinLoaded(true)
+          }
         }
-        if (mounted) {
-          setRequireChannelJoin(val)
-          setRequireChannelJoinLoaded(true)
-        }
-      } catch {
-        if (mounted) {
-          setRequireChannelJoin(true)
-          setRequireChannelJoinLoaded(true)
-        }
-      }
-    })()
+      })()
     return () => { mounted = false }
   }, [])
 
   // Also resend heartbeat when user id becomes available later
   useEffect(() => {
     if (!user?.id) return
-    ;(async () => {
-      try {
-        await fetch('/api/telemetry/heartbeat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
-        })
-      } catch {}
-    })()
+      ; (async () => {
+        try {
+          await fetch('/api/telemetry/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, eventKey: 'lobby_open' })
+          })
+        } catch { }
+      })()
   }, [user?.id])
 
   useEffect(() => {
     let mounted = true
-    ;(async () => {
-      try {
-        setTournamentLoading(true)
-        const res = await fetch('/api/tournaments')
-        if (!res.ok) return
-        const json = await res.json().catch(() => null)
-        const list = Array.isArray(json?.tournaments) ? json.tournaments : []
-        const raw = list.find((t: any) => t.status === 'live')
-        if (!raw) return
+      ; (async () => {
+        try {
+          setTournamentLoading(true)
+          console.log('🏆 Fetching tournaments from /api/tournaments...')
+          const res = await fetch('/api/tournaments')
+          console.log('🏆 Tournament API response status:', res.status, res.ok)
 
-        const topDepositorsSource = raw.topDepositors || raw.top_depositors || []
-        const topPlayersSource = raw.topPlayers || raw.top_players || []
+          if (!res.ok) {
+            console.error('🏆 Tournament API returned error status:', res.status)
+            return
+          }
 
-        const preview: LobbyTournamentPreview = {
-          id: raw.id,
-          name: raw.settings?.display_name || raw.name,
-          type: (raw.type || 'weekly') as LobbyTournamentPreview['type'],
-          status: (raw.status || 'upcoming') as LobbyTournamentPreview['status'],
-          start_at: raw.start_at,
-          end_at: raw.end_at,
-          prize_summary: raw.prize_summary || raw.prize_label || '',
-          eligibility_summary: raw.eligibility_summary || raw.eligibility_text || '',
-          topDepositors: topDepositorsSource.map((r: any) => ({
-            username: r.username || r.handle || 'player',
-            valueLabel: r.valueLabel || r.label || '',
-          })),
-          topPlayers: topPlayersSource.map((r: any) => ({
-            username: r.username || r.handle || 'player',
-            valueLabel: r.valueLabel || r.label || '',
-          })),
-        }
+          const json = await res.json().catch((err) => {
+            console.error('🏆 Failed to parse tournament JSON:', err)
+            return null
+          })
+          console.log('🏆 Tournament API response:', json)
 
-        if (mounted) {
-          setTournament(preview)
+          const list = Array.isArray(json?.tournaments) ? json.tournaments : []
+          console.log('🏆 Found tournaments:', list.length, list)
+
+          const raw = list.find((t: any) => t.status === 'live')
+          console.log('🏆 Live tournament found:', raw)
+
+          if (!raw) {
+            console.log('🏆 No live tournaments found')
+            return
+          }
+
+          const topDepositorsSource = raw.topDepositors || raw.top_depositors || []
+          const topPlayersSource = raw.topPlayers || raw.top_players || []
+
+          const preview: LobbyTournamentPreview = {
+            id: raw.id,
+            name: raw.settings?.display_name || raw.name,
+            type: (raw.type || 'weekly') as LobbyTournamentPreview['type'],
+            status: (raw.status || 'upcoming') as LobbyTournamentPreview['status'],
+            start_at: raw.start_at,
+            end_at: raw.end_at,
+            prize_summary: raw.prize_summary || raw.prize_label || '',
+            eligibility_summary: raw.eligibility_summary || raw.eligibility_text || '',
+            topDepositors: topDepositorsSource.map((r: any) => ({
+              username: r.username || r.handle || 'player',
+              valueLabel: r.valueLabel || r.label || '',
+            })),
+            topPlayers: topPlayersSource.map((r: any) => ({
+              username: r.username || r.handle || 'player',
+              valueLabel: r.valueLabel || r.label || '',
+            })),
+          }
+
+          console.log('🏆 Tournament preview created:', preview)
+
+          if (mounted) {
+            setTournament(preview)
+            console.log('🏆 Tournament state updated')
+          }
+        } catch (error) {
+          console.error('🏆 Error fetching tournaments:', error)
+        } finally {
+          if (mounted) {
+            setTournamentLoading(false)
+          }
         }
-      } catch {
-      } finally {
-        if (mounted) {
-          setTournamentLoading(false)
-        }
-      }
-    })()
+      })()
 
     return () => {
       mounted = false
@@ -260,9 +283,9 @@ export default function LobbyPage() {
     if (!rooms || rooms.length === 0) return
     try {
       rooms.slice(0, 6).forEach(r => {
-        try { router.prefetch(`/game/${r.id}`) } catch {}
+        try { router.prefetch(`/game/${r.id}`) } catch { }
       })
-    } catch {}
+    } catch { }
   }, [rooms, router])
 
   // Sync wallet visibility with WalletModal and persist across sessions
@@ -270,9 +293,9 @@ export default function LobbyPage() {
     try {
       const stored = typeof window !== 'undefined' ? localStorage.getItem('wallet_hidden') : null
       if (stored === '1' || stored === '0') setWalletHidden(stored === '1')
-    } catch {}
+    } catch { }
     const onVis = (e: any) => {
-      try { setWalletHidden(Boolean(e?.detail?.hidden)) } catch {}
+      try { setWalletHidden(Boolean(e?.detail?.hidden)) } catch { }
     }
     if (typeof window !== 'undefined') window.addEventListener('wallet_visibility', onVis)
     return () => {
@@ -381,7 +404,7 @@ export default function LobbyPage() {
     const handleContactShare = async (contact: any) => {
       try {
         console.log('📱 Contact shared:', contact)
-        
+
         // If user exists and has phone number, refresh user data
         if (user && contact?.phone_number) {
           // Update user in database
@@ -389,7 +412,7 @@ export default function LobbyPage() {
             .from('users')
             .update({ phone: contact.phone_number })
             .eq('id', user.id)
-          
+
           if (!error) {
             console.log('✅ Phone number saved:', contact.phone_number)
             // Refresh user data to show updated phone
@@ -398,7 +421,7 @@ export default function LobbyPage() {
               .select('*')
               .eq('id', user.id)
               .single()
-            
+
             if (updatedUser) {
               // Update localStorage to trigger auth refresh
               localStorage.setItem('user_id', updatedUser.id)
@@ -434,9 +457,9 @@ export default function LobbyPage() {
         .order('stake', { ascending: true })
 
       if (error) throw error
-      
+
       // Remove duplicates by ID and enhance with waiting players info
-      const uniqueRooms = (data || []).filter((room: any, index: any, self: any) => 
+      const uniqueRooms = (data || []).filter((room: any, index: any, self: any) =>
         index === self.findIndex((r: any) => r.id === room.id)
       )
 
@@ -454,11 +477,11 @@ export default function LobbyPage() {
               .limit(1)
 
             const waitingPlayers = (activeGames?.[0]?.players?.length || 0) + (activeGames?.[0]?.bots?.length || 0)
-            
+
             // Calculate dynamic NET prize pool based on waiting players (after commission)
             const netMultiplier = 1 - commissionRate
             const basePrizePool = room.stake * room.max_players * netMultiplier
-            const dynamicPrizePool = waitingPlayers > 0 
+            const dynamicPrizePool = waitingPlayers > 0
               ? room.stake * waitingPlayers * netMultiplier
               : 0 // Show 0 when no players waiting
 
@@ -480,7 +503,7 @@ export default function LobbyPage() {
           }
         })
       )
-      
+
       setRooms(enhancedRooms)
     } catch (error) {
       console.error('Error fetching rooms:', error)
@@ -492,14 +515,14 @@ export default function LobbyPage() {
   // Handle real-time room updates
   const handleRoomUpdate = async (payload: any) => {
     const { eventType, new: newRoom, old: oldRoom } = payload
-    
+
     setIsUpdating(true)
-    
+
     if (eventType === 'UPDATE' && newRoom) {
       // Update specific room in state
-      setRooms(prevRooms => 
-        prevRooms.map(room => 
-          room.id === newRoom.id 
+      setRooms(prevRooms =>
+        prevRooms.map(room =>
+          room.id === newRoom.id
             ? { ...room, ...newRoom, game_level: newRoom.game_level || newRoom.default_level || 'medium' }
             : room
         )
@@ -518,14 +541,14 @@ export default function LobbyPage() {
       // Remove room
       setRooms(prevRooms => prevRooms.filter(room => room.id !== oldRoom.id))
     }
-    
+
     setTimeout(() => setIsUpdating(false), 1000)
   }
 
   // Handle real-time game updates (affects waiting players)
   const handleGameUpdate = async (payload: any) => {
     const { eventType, new: newGame, old: oldGame } = payload
-    
+
     // Only update if it's a game status change that affects waiting players
     if (newGame?.room_id && ['waiting', 'countdown', 'active', 'finished'].includes(newGame.status)) {
       await updateRoomWaitingPlayers(newGame.room_id)
@@ -548,13 +571,13 @@ export default function LobbyPage() {
       const waitingPlayers = (activeGames?.[0]?.players?.length || 0) + (activeGames?.[0]?.bots?.length || 0)
 
       // Update the specific room in state
-      setRooms(prevRooms => 
+      setRooms(prevRooms =>
         prevRooms.map(room => {
           if (room.id === roomId) {
-            const dynamicPrizePool = waitingPlayers > 0 
+            const dynamicPrizePool = waitingPlayers > 0
               ? room.stake * waitingPlayers * (1 - commissionRate)
               : 0
-            
+
             return {
               ...room,
               waiting_players: waitingPlayers,
@@ -754,8 +777,8 @@ export default function LobbyPage() {
                         onClick={() => {
                           const next = !walletHidden
                           setWalletHidden(next)
-                          try { localStorage.setItem('wallet_hidden', next ? '1' : '0') } catch {}
-                          try { window.dispatchEvent(new CustomEvent('wallet_visibility', { detail: { hidden: next } })) } catch {}
+                          try { localStorage.setItem('wallet_hidden', next ? '1' : '0') } catch { }
+                          try { window.dispatchEvent(new CustomEvent('wallet_visibility', { detail: { hidden: next } })) } catch { }
                         }}
                         className="inline-flex items-center justify-center w-4 h-4 rounded-full hover:bg-slate-800"
                         aria-label={walletHidden ? 'Show balance' : 'Hide balance'}
@@ -815,13 +838,13 @@ export default function LobbyPage() {
             onViewDetails={(id) => {
               try {
                 router.push(`/tournaments/${id}`)
-              } catch {}
+              } catch { }
             }}
             onPlayNow={() => {
               if (rooms && rooms.length > 0) {
                 try {
                   router.push(`/game/${rooms[0].id}`)
-                } catch {}
+                } catch { }
               }
             }}
           />
@@ -901,16 +924,15 @@ export default function LobbyPage() {
               ]
               const roomStyle = roomColors[index % roomColors.length]
               const IconComponent = roomStyle.icon
-              
+
               return (
                 <div key={room.id} className={`group relative overflow-hidden rounded-2xl transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-400 ring-opacity-60' : ''}`}>
                   {/* Background Gradient */}
-                  <div className={`absolute inset-0 bg-gradient-to-br ${
-                    index % 4 === 0 ? 'from-emerald-500 to-emerald-600' :
-                    index % 4 === 1 ? 'from-blue-500 to-blue-600' :
-                    index % 4 === 2 ? 'from-indigo-500 to-indigo-600' :
-                    'from-orange-500 to-orange-600'
-                  } opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${index % 4 === 0 ? 'from-emerald-500 to-emerald-600' :
+                      index % 4 === 1 ? 'from-blue-500 to-blue-600' :
+                        index % 4 === 2 ? 'from-indigo-500 to-indigo-600' :
+                          'from-orange-500 to-orange-600'
+                    } opacity-0 group-hover:opacity-10 transition-opacity duration-300`}></div>
 
                   {/* Card Content */}
                   <div className="relative bg-slate-900 rounded-2xl p-5 sm:p-6 shadow-lg hover:shadow-xl transition-all duration-300 border border-slate-800 hover:border-slate-700">
@@ -925,12 +947,11 @@ export default function LobbyPage() {
                             style={{ width: '100%', height: '100%' }}
                           />
                         ) : (
-                          <IconComponent className={`w-6 h-6 flex-shrink-0 ${
-                            index % 4 === 0 ? 'text-emerald-500' :
-                            index % 4 === 1 ? 'text-blue-500' :
-                            index % 4 === 2 ? 'text-indigo-500' :
-                            'text-orange-500'
-                          }`} />
+                          <IconComponent className={`w-6 h-6 flex-shrink-0 ${index % 4 === 0 ? 'text-emerald-500' :
+                              index % 4 === 1 ? 'text-blue-500' :
+                                index % 4 === 2 ? 'text-indigo-500' :
+                                  'text-orange-500'
+                            }`} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -939,81 +960,80 @@ export default function LobbyPage() {
                       </div>
                     </div>
 
-                  {/* Stats Grid - Simple Handcrafted */}
-                  <div className="grid grid-cols-3 gap-3 mb-5">
-                    <div className="text-center">
-                      <div className="text-xs text-slate-400 font-semibold mb-1">ENTRY</div>
-                      <div className="text-lg font-bold text-slate-50">{formatCurrency(room.stake)}</div>
+                    {/* Stats Grid - Simple Handcrafted */}
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                      <div className="text-center">
+                        <div className="text-xs text-slate-400 font-semibold mb-1">ENTRY</div>
+                        <div className="text-lg font-bold text-slate-50">{formatCurrency(room.stake)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-slate-400 font-semibold mb-1">DERASH</div>
+                        <div className="text-lg font-bold text-emerald-400">{formatCurrency(room.prize_pool)}</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-slate-400 font-semibold mb-1">WAITING</div>
+                        <div className="text-lg font-bold text-slate-50">{room.waiting_players}</div>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-xs text-slate-400 font-semibold mb-1">DERASH</div>
-                      <div className="text-lg font-bold text-emerald-400">{formatCurrency(room.prize_pool)}</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-xs text-slate-400 font-semibold mb-1">WAITING</div>
-                      <div className="text-lg font-bold text-slate-50">{room.waiting_players}</div>
-                    </div>
-                  </div>
 
-                  {/* Players Status */}
-                  <div className="flex items-center gap-2 mb-5 text-sm text-slate-300">
-                    <LuUsers className="w-4 h-4" />
-                    <span>
-                      {room.waiting_players > 0 
-                        ? `${room.waiting_players} player${room.waiting_players > 1 ? 's' : ''} waiting` 
-                        : 'Ready to play'
-                      }
-                    </span>
-                  </div>
+                    {/* Players Status */}
+                    <div className="flex items-center gap-2 mb-5 text-sm text-slate-300">
+                      <LuUsers className="w-4 h-4" />
+                      <span>
+                        {room.waiting_players > 0
+                          ? `${room.waiting_players} player${room.waiting_players > 1 ? 's' : ''} waiting`
+                          : 'Ready to play'
+                        }
+                      </span>
+                    </div>
 
-                  {authLoading ? (
-                    <button 
-                      disabled
-                      className="w-full bg-slate-300 text-slate-500 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-not-allowed text-sm sm:text-base"
-                    >
-                      <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
-                      <span>Loading...</span>
-                    </button>
-                  ) : isAuthenticated ? (
-                    user?.status === 'inactive' ? (
+                    {authLoading ? (
                       <button
                         disabled
-                        className="w-full bg-slate-300 text-slate-600 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm sm:text-base cursor-not-allowed"
+                        className="w-full bg-slate-300 text-slate-500 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-not-allowed text-sm sm:text-base"
                       >
-                        <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Account Suspended</span>
+                        <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin"></div>
+                        <span>Loading...</span>
                       </button>
-                    ) : hasInsufficientBalance ? (
-                      <button 
-                        onClick={() => handleInsufficientBalance(room.stake)}
-                        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"
-                      >
-                        <LuCoins className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Add Balance</span>
-                      </button>
-                    ) : (
-                      <Link href={`/game/${room.id}`}>
-                        <button 
-                          className={`w-full bg-gradient-to-r ${
-                            index % 4 === 0 ? 'from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' :
-                            index % 4 === 1 ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' :
-                            index % 4 === 2 ? 'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700' :
-                            'from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
-                          } text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
+                    ) : isAuthenticated ? (
+                      user?.status === 'inactive' ? (
+                        <button
+                          disabled
+                          className="w-full bg-slate-300 text-slate-600 py-3 sm:py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 text-sm sm:text-base cursor-not-allowed"
                         >
-                          <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
-                          <span>Join Game</span>
+                          <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>Account Suspended</span>
+                        </button>
+                      ) : hasInsufficientBalance ? (
+                        <button
+                          onClick={() => handleInsufficientBalance(room.stake)}
+                          className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl"
+                        >
+                          <LuCoins className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>Add Balance</span>
+                        </button>
+                      ) : (
+                        <Link href={`/game/${room.id}`}>
+                          <button
+                            className={`w-full bg-gradient-to-r ${index % 4 === 0 ? 'from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700' :
+                                index % 4 === 1 ? 'from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' :
+                                  index % 4 === 2 ? 'from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700' :
+                                    'from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
+                              } text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl`}
+                          >
+                            <LuPlay className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span>Join Game</span>
+                          </button>
+                        </Link>
+                      )
+                    ) : (
+                      <Link href="/login">
+                        <button className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl">
+                          <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span>Connect to Play</span>
                         </button>
                       </Link>
-                    )
-                  ) : (
-                    <Link href="/login">
-                      <button className="w-full bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white py-3 sm:py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm sm:text-base shadow-lg hover:shadow-xl">
-                        <LuLock className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span>Connect to Play</span>
-                      </button>
-                    </Link>
-                  )}
+                    )}
                   </div>
                 </div>
               )
@@ -1038,8 +1058,8 @@ export default function LobbyPage() {
         onOpenDeposit={() => setShowDepositModal(true)}
         onOpenWithdraw={() => setShowWithdrawModal(true)}
       />
-      <DepositModal 
-        open={showDepositModal} 
+      <DepositModal
+        open={showDepositModal}
         onClose={() => {
           setShowDepositModal(false)
           if (showWalletModal) setShowWalletModal(false)
@@ -1047,8 +1067,8 @@ export default function LobbyPage() {
         onBack={showWalletModal ? () => setShowDepositModal(false) : undefined}
         isSheet={showWalletModal}
       />
-      <WithdrawModal 
-        open={showWithdrawModal} 
+      <WithdrawModal
+        open={showWithdrawModal}
         onClose={() => {
           setShowWithdrawModal(false)
           if (showWalletModal) setShowWalletModal(false)
