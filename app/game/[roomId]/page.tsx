@@ -26,17 +26,17 @@ export default function GamePage() {
   const devWaiting = devModeParam === 'waiting'
   const roomId = params?.roomId as string
   const { user, isAuthenticated, loading: authLoading } = useAuth()
-  const { 
-    connected, 
-    gameState, 
-    waitingRoomState, 
-    isInWaitingRoom, 
+  const {
+    connected,
+    gameState,
+    waitingRoomState,
+    isInWaitingRoom,
     isSpectator,
-    joinGame, 
-    leaveGame, 
-    markNumber, 
-    claimBingo, 
-    joinWaitingRoom, 
+    joinGame,
+    leaveGame,
+    markNumber,
+    claimBingo,
+    joinWaitingRoom,
     spectateGame,
     leaveWaitingRoom
   } = useSocket()
@@ -62,7 +62,7 @@ export default function GamePage() {
   const [commissionRate, setCommissionRate] = useState<number>(0.1)
   // Bot profile cache for display (id -> { name, avatar })
   const [botProfiles, setBotProfiles] = useState<Record<string, { name: string; avatar?: string | null }>>({})
-  
+
   // Enhanced waiting room states
   const [inviteToastVisible, setInviteToastVisible] = useState(false)
   const [prizePoolAnimation, setPrizePoolAnimation] = useState(false)
@@ -156,7 +156,7 @@ export default function GamePage() {
         setShowSoundPrompt(true)
         console.warn('Audio play blocked or failed:', e?.message || e)
       })
-    } catch {}
+    } catch { }
   }
 
   const enableSoundAndReplay = () => {
@@ -169,7 +169,7 @@ export default function GamePage() {
       } else if (gameState?.latest_number) {
         playCallAudio(gameState.latest_number.letter, gameState.latest_number.number)
       }
-    } catch {}
+    } catch { }
   }
 
   // Load persisted sound preference
@@ -177,7 +177,7 @@ export default function GamePage() {
     try {
       const stored = typeof window !== 'undefined' ? localStorage.getItem('bingo_sound_enabled') : null
       if (stored != null) setSoundEnabled(stored === 'true')
-    } catch {}
+    } catch { }
   }, [])
 
   // Resolve bot names when bot IDs change
@@ -199,7 +199,7 @@ export default function GamePage() {
             return next
           })
         }
-      } catch {}
+      } catch { }
     }
     loadBotProfiles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,7 +207,7 @@ export default function GamePage() {
 
   // Persist sound preference
   useEffect(() => {
-    try { if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundEnabled)) } catch {}
+    try { if (typeof window !== 'undefined') localStorage.setItem('bingo_sound_enabled', String(soundEnabled)) } catch { }
   }, [soundEnabled])
 
   // Listen for preference changes made on other pages (no refresh)
@@ -221,7 +221,7 @@ export default function GamePage() {
       try {
         const enabled = (ev as CustomEvent)?.detail?.enabled
         if (typeof enabled === 'boolean') setSoundEnabled(enabled)
-      } catch {}
+      } catch { }
     }
     window.addEventListener('storage', onStorage)
     window.addEventListener('bingo_sound_pref_changed', onCustom as EventListener)
@@ -247,7 +247,7 @@ export default function GamePage() {
         // Autoplay might be blocked; show prompt
         setShowSoundPrompt(true)
       })
-    } catch {}
+    } catch { }
   }
 
   // If autoplay is blocked, enable on first user interaction
@@ -348,7 +348,7 @@ export default function GamePage() {
                 if (data?.winner_pattern && !fallbackWinnerPattern) setFallbackWinnerPattern(data.winner_pattern as string)
                 if (data?.winner_pattern) return // success
               }
-            } catch {}
+            } catch { }
             await new Promise(res => setTimeout(res, 500))
           }
 
@@ -366,7 +366,7 @@ export default function GamePage() {
             if ((data?.winner_card && data?.winner_pattern)) break
             await new Promise(res => setTimeout(res, 700))
           }
-        } catch {}
+        } catch { }
       }
     }
     fetchWinnerInfo()
@@ -380,12 +380,12 @@ export default function GamePage() {
         const n = parseInt(stored)
         if (!isNaN(n)) setLuckyNumber(n)
       }
-    } catch {}
+    } catch { }
   }, [])
 
   useEffect(() => {
     if (luckyNumber != null) {
-      try { localStorage.setItem('bingo_lucky_number', String(luckyNumber)) } catch {}
+      try { localStorage.setItem('bingo_lucky_number', String(luckyNumber)) } catch { }
     }
   }, [luckyNumber])
 
@@ -398,7 +398,7 @@ export default function GamePage() {
         .select('*')
         .eq('id', roomId)
         .maybeSingle()
-      
+
       // If not found, try case-insensitive search
       if (!room && roomId) {
         const { data: roomsIlike } = await supabase
@@ -453,7 +453,7 @@ export default function GamePage() {
 
     const joinSpecificRoom = async () => {
       console.log('🎯 Joining specific room:', roomId)
-      
+
       try {
         // Get room data first
         const room = await fetchRoomData()
@@ -473,17 +473,17 @@ export default function GamePage() {
 
         // Call the game join API directly for this specific room
         console.log(`🎮 Joining room ${room.name} with stake ${room.stake} ETB`)
-        
+
         // Test if API routes are working on Railway
         const apiBaseUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
-        
+
         // Remove test API calls - they're working now
 
         console.log('🔥 About to call API with:', { roomId, userId: user.id })
         const response = await fetch(`${apiBaseUrl}/api/game/join`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             roomId: roomId,
             userId: user.id
           })
@@ -499,7 +499,7 @@ export default function GamePage() {
             setLoading(false)
             return
           }
-          
+
           result = await response.json()
           console.log('📡 API Response:', { status: response.status, ok: response.ok, result })
         } catch (parseError) {
@@ -513,7 +513,7 @@ export default function GamePage() {
           setLoading(false)
           return
         }
-        
+
         if (response.ok && result.gameId) {
           console.log('✅ Game joined successfully:', result.gameId)
           setGameId(result.gameId)
@@ -542,7 +542,7 @@ export default function GamePage() {
           console.error('❌ Full error details:', result)
           setLoading(false)
         }
-        
+
       } catch (error) {
         console.error('❌ Error joining room:', error)
         setLoading(false)
@@ -575,6 +575,92 @@ export default function GamePage() {
     }
   }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState, gameId])
 
+  // Client-side timer for game status transitions
+  // This replaces the broken serverless setTimeout approach
+  const [waitingCountdown, setWaitingCountdown] = useState<number | null>(null)
+  const [gameCountdown, setGameCountdown] = useState<number | null>(null)
+  const transitionInProgressRef = useRef(false)
+
+  useEffect(() => {
+    if (!gameId) return
+
+    const status = waitingRoomState?.status || gameState?.status
+
+    // Handle waiting_for_players → countdown transition (30s wait)
+    if (status === 'waiting_for_players' && waitingCountdown === null) {
+      console.log('⏳ Starting 30s waiting period countdown')
+      setWaitingCountdown(30)
+
+      const interval = setInterval(() => {
+        setWaitingCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval)
+            // Transition to countdown
+            if (!transitionInProgressRef.current) {
+              transitionInProgressRef.current = true
+              fetch('/api/game/transition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId, action: 'start_countdown' })
+              }).then(r => r.json()).then(res => {
+                console.log('✅ Transitioned to countdown:', res)
+                transitionInProgressRef.current = false
+              }).catch(e => {
+                console.error('❌ Failed to transition to countdown:', e)
+                transitionInProgressRef.current = false
+              })
+            }
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    }
+
+    // Handle countdown → active transition (10s countdown)
+    if (status === 'countdown' && gameCountdown === null) {
+      console.log('🔥 Starting 10s game countdown')
+      setGameCountdown(10)
+      setWaitingCountdown(null) // Clear waiting countdown
+
+      const interval = setInterval(() => {
+        setGameCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            clearInterval(interval)
+            // Transition to active
+            if (!transitionInProgressRef.current) {
+              transitionInProgressRef.current = true
+              fetch('/api/game/transition', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId, action: 'start_game' })
+              }).then(r => r.json()).then(res => {
+                console.log('🎮 Game started:', res)
+                transitionInProgressRef.current = false
+              }).catch(e => {
+                console.error('❌ Failed to start game:', e)
+                transitionInProgressRef.current = false
+              })
+            }
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+
+      return () => clearInterval(interval)
+    }
+
+    // Reset countdowns if status changes unexpectedly
+    if (status === 'active' || status === 'finished') {
+      setWaitingCountdown(null)
+      setGameCountdown(null)
+    }
+  }, [gameId, waitingRoomState?.status, gameState?.status, waitingCountdown, gameCountdown])
+
+
   // (Preview card removed) We will show a 10x10 picker grid in waiting room instead
 
   // Prize pool animation effect
@@ -590,7 +676,7 @@ export default function GamePage() {
   useEffect(() => {
     if (isSpectator && gameState?.status === 'finished') {
       console.log('🏁 Game finished, spectator will be redirected to waiting room')
-      
+
       // Wait 3 seconds then redirect to waiting room
       const redirectTimer = setTimeout(() => {
         console.log('🔄 Redirecting spectator to waiting room')
@@ -663,7 +749,7 @@ export default function GamePage() {
   const [stakeSource, setStakeSource] = useState<string | null>(null)
   const [stakeMainAmount, setStakeMainAmount] = useState<number | null>(null)
   const [stakeBonusAmount, setStakeBonusAmount] = useState<number | null>(null)
-  
+
   useEffect(() => {
     if (!gameState || !user || !gameId || !roomData) return
     // Do not deduct for spectators
@@ -768,17 +854,17 @@ export default function GamePage() {
     if (!user) return
     // Spectators cannot interact with the board
     if (isSpectator) return
-    
+
     // Safety check for markedCells
     if (!markedCells.length || !markedCells[row]) return
-    
+
     const num = bingoCard[row][col]
     if (num === 0) return // Free space (always marked)
     if (!gameState?.called_numbers.includes(num)) return // Not called yet
     if (markedCells[row][col]) return // Already marked - don't allow unmarking
-    
+
     console.log(`🎯 Marking cell [${row},${col}] with number ${num}`)
-    
+
     // Mark the cell (no unmarking allowed)
     const newMarked = markedCells.map(r => [...r])
     newMarked[row][col] = true
@@ -797,11 +883,11 @@ export default function GamePage() {
     }
     // Prevent multiple simultaneous claims
     if (claimingBingo) return
-    
+
     if (!gameState || gameState.status !== 'active') {
       setBingoError('Game is not active')
       setTimeout(() => setBingoError(null), 3000)
-      
+
       // Refresh game state to check if game ended
       if (gameId && user) {
         const { data: freshGame } = await supabase
@@ -809,15 +895,15 @@ export default function GamePage() {
           .select('*')
           .eq('id', gameId)
           .single()
-        
+
         if (freshGame && freshGame.status === 'finished' && freshGame.winner_id) {
           // Game already finished - manually trigger win/lose dialog
           const gross = freshGame.prize_pool
-          const net = typeof freshGame.net_prize === 'number' 
-            ? freshGame.net_prize 
+          const net = typeof freshGame.net_prize === 'number'
+            ? freshGame.net_prize
             : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
           setWinAmount(net)
-          
+
           const winnerStr = String(freshGame.winner_id)
           const uid = String(user.id)
           const uname = user.username ? String(user.username) : ''
@@ -830,7 +916,7 @@ export default function GamePage() {
           } else {
             console.log('😢 You lost')
             setShowLoseDialog(true)
-            
+
             // Fetch winner name
             supabase
               .from('users')
@@ -840,7 +926,7 @@ export default function GamePage() {
               .then(({ data }: any) => {
                 if (data) setWinnerName(data.username)
               })
-            
+
             // Auto-redirect after 8 seconds
             setTimeout(() => {
               router.push(`/game/${roomId}`)
@@ -850,7 +936,7 @@ export default function GamePage() {
       }
       return
     }
-    
+
     if (!gameId || !user) return
 
     // Check if markedCells is properly initialized
@@ -871,33 +957,33 @@ export default function GamePage() {
     console.log('🎉 Claiming BINGO!')
     setClaimingBingo(true)
     const result = await claimBingo(gameId, user.id, bingoCard, markedCells)
-    
+
     // Handle claim result
     if (!result.success) {
       console.log('❌ Claim failed:', result.error)
-      
+
       // Show error to user
       setBingoError(result.error || 'Failed to claim BINGO')
-      
+
       // Refresh game state to check current status
       const { data: freshGame } = await supabase
         .from('games')
         .select('*')
         .eq('id', gameId)
         .single()
-      
+
       if (freshGame && freshGame.status === 'finished' && freshGame.winner_id) {
         console.log('🔄 Game already finished. Winner:', freshGame.winner_id)
-        
+
         // Clear error and show game result
         setBingoError(null)
-        
+
         const gross = freshGame.prize_pool
-        const net = typeof freshGame.net_prize === 'number' 
-          ? freshGame.net_prize 
+        const net = typeof freshGame.net_prize === 'number'
+          ? freshGame.net_prize
           : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
         setWinAmount(net)
-        
+
         const winnerStr = String(freshGame.winner_id)
         const uid = String(user.id)
         const uname = user.username ? String(user.username) : ''
@@ -916,7 +1002,7 @@ export default function GamePage() {
           // Someone else won
           console.log('😢 Another player won')
           setShowLoseDialog(true)
-          
+
           // Fetch winner name
           supabase
             .from('users')
@@ -926,7 +1012,7 @@ export default function GamePage() {
             .then(({ data }: any) => {
               if (data) setWinnerName(data.username)
             })
-          
+
           // Auto-redirect after 8 seconds
           setTimeout(() => {
             router.push(`/game/${roomId}`)
@@ -947,23 +1033,23 @@ export default function GamePage() {
           .select('*')
           .eq('id', gameId)
           .single()
-        
+
         if (updatedGame && updatedGame.status === 'finished' && updatedGame.winner_id) {
           console.log('🎯 Game finished! Winner:', updatedGame.winner_id)
-          
-          const gross = updatedGame.prize_pool
-          const net = typeof updatedGame.net_prize === 'number' 
-          ? updatedGame.net_prize 
-          : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
-        setWinAmount(net)
-        
-        const winnerStr = String(updatedGame.winner_id)
-        const uid = String(user.id)
-        const uname = user.username ? String(user.username) : ''
-        const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
-        const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
 
-        if (isSelfWinner) {
+          const gross = updatedGame.prize_pool
+          const net = typeof updatedGame.net_prize === 'number'
+            ? updatedGame.net_prize
+            : Math.round((gross || 0) * (1 - commissionRate) * 100) / 100
+          setWinAmount(net)
+
+          const winnerStr = String(updatedGame.winner_id)
+          const uid = String(user.id)
+          const uname = user.username ? String(user.username) : ''
+          const tgidStr = user.telegram_id ? String(user.telegram_id) : ''
+          const isSelfWinner = !!winnerStr && (winnerStr === uid || winnerStr === uname || winnerStr === tgidStr)
+
+          if (isSelfWinner) {
             // Current user won
             console.log('🎉 You won!')
             if (!bingoAudioPlayedRef.current) {
@@ -975,7 +1061,7 @@ export default function GamePage() {
             // Current user lost
             console.log('😢 You lost. Winner:', updatedGame.winner_id)
             setShowLoseDialog(true)
-            
+
             // Fetch winner name
             supabase
               .from('users')
@@ -1045,10 +1131,10 @@ export default function GamePage() {
             .then(({ data }: any) => {
               if (data?.username) setWinnerName(data.username)
             })
-            .catch(() => {})
+            .catch(() => { })
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [gameState, user, commissionRate, winnerName])
 
   // No auto-redirect - removed to let user choose
@@ -1088,7 +1174,7 @@ export default function GamePage() {
   const generateInviteLink = () => {
     // Generate Telegram bot mini app link that opens the game room directly
     const inviteUrl = `https://t.me/BingoXOfficialBot?startapp=room_${roomId}`
-    
+
     // Copy the Telegram bot mini app link (for sharing in Telegram)
     navigator.clipboard.writeText(inviteUrl).then(() => {
       setInviteToastVisible(true)
@@ -1110,7 +1196,7 @@ export default function GamePage() {
       const firstName = user?.first_name?.trim()
       const displayName = user?.display_name?.trim()
       const username = user?.username?.replace('@', '').trim()
-      
+
       return firstName || displayName || username || 'You'
     } else {
       // For other players, generate a friendly name
@@ -1178,14 +1264,14 @@ export default function GamePage() {
   // Dev preview mock game state (only used when devMode is set and no live gameState yet)
   const devMockGameState: any = (isDevEnv && (devSpectator || devActive) && !gameState)
     ? {
-        status: 'active',
-        players: ['dev-player-1', 'dev-player-2'],
-        bots: [],
-        called_numbers: Array.from({ length: 25 }, (_, i) => i + 1),
-        latest_number: { letter: 'O', number: 64 },
-        prize_pool: 170,
-        net_prize: 136,
-      }
+      status: 'active',
+      players: ['dev-player-1', 'dev-player-2'],
+      bots: [],
+      called_numbers: Array.from({ length: 25 }, (_, i) => i + 1),
+      latest_number: { letter: 'O', number: 64 },
+      prize_pool: 170,
+      net_prize: 136,
+    }
     : null
 
   const viewGameState = (devMockGameState || gameState) as typeof gameState
@@ -1206,7 +1292,7 @@ export default function GamePage() {
 
   // Financial summary for header
   const totalBalance = user ? user.balance + (user.bonus_balance || 0) : 0
-  
+
   // Debug logging
   console.log('🎮 Game render state:', {
     gameStatus,
@@ -1235,7 +1321,7 @@ export default function GamePage() {
         className="bg-slate-950 border-b border-slate-800 safe-top"
       >
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <button 
+          <button
             onClick={async () => {
               if (gameStatus === 'active' || gameStatus === 'countdown') {
                 setShowLeaveDialog(true)
@@ -1256,7 +1342,7 @@ export default function GamePage() {
                     console.error('Error leaving game:', error)
                   }
                 }
-                
+
                 if (isInWaitingRoom) {
                   leaveWaitingRoom()
                   // Also call the leave API to properly clean up the game from DB
@@ -1277,7 +1363,7 @@ export default function GamePage() {
                 }
                 router.push('/lobby')
               }
-            }} 
+            }}
             className="text-slate-200 text-2xl hover:text-slate-400 transition-colors"
           >
             ×
@@ -1315,7 +1401,7 @@ export default function GamePage() {
                       try {
                         audio.pause()
                         audio.currentTime = 0
-                      } catch {}
+                      } catch { }
                     })
                     console.log('🔇 All audio stopped immediately')
                   } else {
@@ -1360,7 +1446,7 @@ export default function GamePage() {
         {/* Enhanced Waiting Room System - Not for spectators */}
         {!viewIsSpectator && (gameStatus === 'waiting' || gameStatus === 'countdown' || isInWaitingRoom || (gameId && !gameState)) && (
           <div className="space-y-3 animate-in fade-in duration-500">
-            
+
             {/* Invite Toast */}
             {inviteToastVisible && (
               <div className="fixed top-4 left-4 right-4 z-50 animate-in slide-in-from-top">
@@ -1385,25 +1471,25 @@ export default function GamePage() {
                   <div className="text-white/80 text-xs">/ {roomData?.max_players || 8}</div>
                 </div>
               </div>
-              
+
               {/* Progress Bar */}
               <div className="w-full bg-white/20 rounded-full h-1.5 overflow-hidden">
-                <div 
+                <div
                   className="bg-white h-full rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${Math.min(100, ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) / (roomData?.max_players || 8) * 100)}%` }}
                 />
               </div>
-              
+
               {/* Status Line */}
               <div className="mt-1.5 flex items-center justify-between text-xs">
                 <span className="text-white/80">
-                  {((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) === (roomData?.max_players || 8) 
-                    ? 'Room Full' 
+                  {((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) === (roomData?.max_players || 8)
+                    ? 'Room Full'
                     : ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) >= (roomData?.max_players || 8) * 0.75
-                    ? 'Almost Full'
-                    : ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) >= (roomData?.max_players || 8) * 0.5
-                    ? 'Filling Up'
-                    : 'Waiting'}
+                      ? 'Almost Full'
+                      : ((gameState?.players?.length || 0) + (gameState?.bots?.length || 0)) >= (roomData?.max_players || 8) * 0.5
+                        ? 'Filling Up'
+                        : 'Waiting'}
                 </span>
                 {gameState?.countdown_time && gameState.countdown_time <= 10 && (
                   <span className="font-bold animate-pulse">Starts in {gameState.countdown_time}s</span>
@@ -1441,28 +1527,26 @@ export default function GamePage() {
 
                         // Then bots (display with their names, no bot label)
                         const startIndex = allPlayers.length
-                        ;(gameState.bots || []).forEach((botId: string, i: number) => {
-                          const name = botProfiles[botId]?.name || `Player ${startIndex + i + 1}`
-                          allPlayers.push({
-                            username: name,
-                            isCurrentUser: false,
-                            playerNumber: startIndex + i + 1,
-                            isBot: true
+                          ; (gameState.bots || []).forEach((botId: string, i: number) => {
+                            const name = botProfiles[botId]?.name || `Player ${startIndex + i + 1}`
+                            allPlayers.push({
+                              username: name,
+                              isCurrentUser: false,
+                              playerNumber: startIndex + i + 1,
+                              isBot: true
+                            })
                           })
-                        })
 
                         return allPlayers.map((player, index) => (
-                          <div 
-                            key={index} 
-                            className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
-                              player.isCurrentUser 
-                                ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/60' 
+                          <div
+                            key={index}
+                            className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${player.isCurrentUser
+                                ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/60'
                                 : 'bg-slate-800 text-slate-100 border border-slate-600'
-                            }`}
+                              }`}
                           >
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${
-                              player.isCurrentUser ? 'bg-emerald-500' : 'bg-indigo-500'
-                            }`}>
+                            <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${player.isCurrentUser ? 'bg-emerald-500' : 'bg-indigo-500'
+                              }`}>
                               {getRandomEmoji(player.username)}
                             </div>
                             <span>{player.username}</span>
@@ -1488,7 +1572,7 @@ export default function GamePage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Waiting Status */}
                   {gameStatus === 'countdown' && gameState?.countdown_time && gameState.countdown_time <= 10 ? (
                     <div className="bg-slate-900 border border-orange-500/50 rounded-lg p-2 text-center">
@@ -1511,7 +1595,7 @@ export default function GamePage() {
                     </div>
                   )}
                 </div>
-                
+
                 {/* Prize */}
                 <div>
                   <div className="flex items-center gap-2 text-xs font-medium text-slate-200 mb-1">
@@ -1545,11 +1629,10 @@ export default function GamePage() {
                         <button
                           key={n}
                           onClick={() => setLuckyNumber(n)}
-                          className={`h-6 text-xs font-bold rounded border transition-all ${
-                            luckyNumber === n
+                          className={`h-6 text-xs font-bold rounded border transition-all ${luckyNumber === n
                               ? 'bg-emerald-500 text-white border-emerald-600'
                               : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
-                          }`}
+                            }`}
                         >
                           {n}
                         </button>
@@ -1561,16 +1644,16 @@ export default function GamePage() {
                 {/* No modal; picking is done directly on the 10x10 card above */}
               </div>
             </div>
-            
+
             {/* Action Buttons */}
             <div className="grid grid-cols-2 gap-2">
-              <button 
+              <button
                 onClick={generateInviteLink}
                 className="bg-purple-600 text-white py-2 rounded-lg font-semibold text-sm hover:bg-purple-700 transition-colors"
               >
                 Invite Friend
               </button>
-              <button 
+              <button
                 onClick={async () => {
                   if (gameId && user?.id) {
                     try {
@@ -1702,10 +1785,9 @@ export default function GamePage() {
                         className={`
                           h-6 flex items-center justify-center text-xs font-bold
                           border rounded
-                          ${
-                            isCalled
-                              ? 'bg-blue-500 text-white border-blue-400/70'
-                              : 'bg-slate-800 text-slate-300 border-slate-700'
+                          ${isCalled
+                            ? 'bg-blue-500 text-white border-blue-400/70'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
                           }
                         `}
                       >
@@ -1773,12 +1855,12 @@ export default function GamePage() {
                   <div className="flex gap-1">
                     {[...calledNumbers].reverse().slice(0, 3).map((num) => {
                       const letter = num <= 15 ? 'B' : num <= 30 ? 'I' : num <= 45 ? 'N' : num <= 60 ? 'G' : 'O'
-                      const colorClass = 
+                      const colorClass =
                         letter === 'B' ? 'bg-red-500' :
-                        letter === 'I' ? 'bg-blue-500' :
-                        letter === 'N' ? 'bg-emerald-500' :
-                        letter === 'G' ? 'bg-amber-500' :
-                        'bg-purple-500'
+                          letter === 'I' ? 'bg-blue-500' :
+                            letter === 'N' ? 'bg-emerald-500' :
+                              letter === 'G' ? 'bg-amber-500' :
+                                'bg-purple-500'
                       return (
                         <div key={num} className={`${colorClass} text-white px-2 py-1 rounded text-xs font-bold shadow-sm`}>
                           {letter}{num}
@@ -1801,7 +1883,7 @@ export default function GamePage() {
                   { letter: 'G', color: 'text-teal-400' },
                   { letter: 'O', color: 'text-cyan-400' }
                 ].map(({ letter, color }) => (
-                  <div key={letter} className={`${color} text-center font-black text-2xl py-2 drop-shadow-lg`} style={{textShadow: '2px 2px 0px rgba(0,0,0,0.35)'}}>
+                  <div key={letter} className={`${color} text-center font-black text-2xl py-2 drop-shadow-lg`} style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.35)' }}>
                     {letter}
                   </div>
                 ))}
@@ -1818,33 +1900,33 @@ export default function GamePage() {
                 ) : (
                   bingoCard.map((row, ri) =>
                     row.map((num, ci) => {
-                    const isMarked = markedCells[ri] && markedCells[ri][ci]
-                    const isCalled = calledNumbers.includes(num) && num !== 0
-                    const isMarkedVisual = isMarked || (viewIsSpectator && isCalled)
-                    const isFree = num === 0
+                      const isMarked = markedCells[ri] && markedCells[ri][ci]
+                      const isCalled = calledNumbers.includes(num) && num !== 0
+                      const isMarkedVisual = isMarked || (viewIsSpectator && isCalled)
+                      const isFree = num === 0
 
-                    return (
-                      <button
-                        key={`${ri}-${ci}`}
-                        onClick={() => handleCellClick(ri, ci)}
-                        disabled={viewIsSpectator || (!isCalled && !isFree)}
-                        className={`
+                      return (
+                        <button
+                          key={`${ri}-${ci}`}
+                          onClick={() => handleCellClick(ri, ci)}
+                          disabled={viewIsSpectator || (!isCalled && !isFree)}
+                          className={`
                           aspect-square flex items-center justify-center font-bold text-base
                           transition-all duration-150 rounded-lg
                           ${isMarkedVisual
-                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-lg cursor-default active:shadow-md active:translate-y-0.5 border border-indigo-400/80'
-                            : isCalled
-                            ? 'bg-slate-900 text-slate-50 hover:bg-slate-800 cursor-pointer active:shadow-sm active:translate-y-0.5 shadow-md border border-slate-600'
-                            : isFree
-                            ? 'bg-gradient-to-b from-indigo-500 to-indigo-700 text-white font-black text-xl shadow-md cursor-default border border-indigo-500'
-                            : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60 border border-slate-700'
-                          }
+                              ? 'bg-gradient-to-b from-indigo-500 to-indigo-600 text-white shadow-lg cursor-default active:shadow-md active:translate-y-0.5 border border-indigo-400/80'
+                              : isCalled
+                                ? 'bg-slate-900 text-slate-50 hover:bg-slate-800 cursor-pointer active:shadow-sm active:translate-y-0.5 shadow-md border border-slate-600'
+                                : isFree
+                                  ? 'bg-gradient-to-b from-indigo-500 to-indigo-700 text-white font-black text-xl shadow-md cursor-default border border-indigo-500'
+                                  : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60 border border-slate-700'
+                            }
                         `}
-                      >
-                        {isFree ? '★' : num}
-                      </button>
-                    )
-                  })
+                        >
+                          {isFree ? '★' : num}
+                        </button>
+                      )
+                    })
                   )
                 )}
               </div>
@@ -1862,11 +1944,10 @@ export default function GamePage() {
               <button
                 onClick={handleBingoClick}
                 disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
-                className={`w-full max-w-sm mx-auto py-3 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2 mt-3 ${
-                  markedCells.length && checkBingoWin(markedCells) && !claimingBingo
+                className={`w-full max-w-sm mx-auto py-3 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2 mt-3 ${markedCells.length && checkBingoWin(markedCells) && !claimingBingo
                     ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95 shadow-lg'
                     : 'bg-slate-600 text-slate-400 cursor-not-allowed opacity-50'
-                }`}
+                  }`}
               >
                 {claimingBingo ? (
                   <>
@@ -1899,7 +1980,7 @@ export default function GamePage() {
               <p className="text-lg mb-6 text-slate-300">
                 You've hit the BINGO!
               </p>
-              
+
               <div className="bg-emerald-950/40 border-2 border-emerald-500/60 rounded-xl p-6 mb-6">
                 <p className="text-sm text-emerald-200 mb-2">You won:</p>
                 <p className="text-4xl font-bold text-emerald-300">{formatCurrency(winAmount)}</p>
@@ -1925,9 +2006,8 @@ export default function GamePage() {
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 max-w-sm w-full shadow-2xl my-auto">
               {/* Header based on user type */}
               <div className="flex justify-center mb-3">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-                  isSpectator ? 'bg-emerald-900/60' : 'bg-red-900/70'
-                }`}>
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center ${isSpectator ? 'bg-emerald-900/60' : 'bg-red-900/70'
+                  }`}>
                   {isSpectator ? (
                     <Trophy className="w-10 h-10 text-emerald-300" />
                   ) : (
@@ -1939,7 +2019,7 @@ export default function GamePage() {
               <h2 className="text-2xl font-bold text-center mb-2 text-slate-50">
                 {isSpectator ? 'Game Ended' : 'You Lost This Round'}
               </h2>
-              
+
               {!isSpectator && (
                 <p className="text-center text-slate-400 mb-2 text-sm">
                   Stake lost: <span className="font-bold text-red-400">{formatCurrency(stake)}</span>
@@ -1978,7 +2058,7 @@ export default function GamePage() {
                         )}
                       </div>
                       <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-500/60 pb-0.5">
-                        {['B','I','N','G','O'].map((h) => (
+                        {['B', 'I', 'N', 'G', 'O'].map((h) => (
                           <div key={h} className="text-center font-black text-[11px] text-slate-100">{h}</div>
                         ))}
                       </div>
@@ -1990,15 +2070,13 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`win-${ri}-${ci}`}
-                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${
-                                  ci === 4 ? 'border-r-0' : ''
-                                } ${ri === 4 ? 'border-b-0' : ''} ${
-                                  isWinCell
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${ci === 4 ? 'border-r-0' : ''
+                                  } ${ri === 4 ? 'border-b-0' : ''} ${isWinCell
                                     ? 'bg-emerald-500 text-white'
                                     : isFree
-                                    ? 'bg-slate-800 text-slate-200'
-                                    : 'bg-slate-900 text-slate-200'
-                                }`}
+                                      ? 'bg-slate-800 text-slate-200'
+                                      : 'bg-slate-900 text-slate-200'
+                                  }`}
                               >
                                 {isFree ? '★' : num}
                               </div>
@@ -2020,7 +2098,7 @@ export default function GamePage() {
                         <span className="text-[10px] text-slate-400">({displayPattern})</span>
                       </div>
                       <div className="grid grid-cols-5 gap-0 mb-1 border-b border-amber-500/60 pb-0.5">
-                        {['B','I','N','G','O'].map((h) => (
+                        {['B', 'I', 'N', 'G', 'O'].map((h) => (
                           <div key={h} className="text-center font-black text-[11px] text-slate-100">{h}</div>
                         ))}
                       </div>
@@ -2032,15 +2110,13 @@ export default function GamePage() {
                             return (
                               <div
                                 key={`mask-${ri}-${ci}`}
-                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${
-                                  ci === 4 ? 'border-r-0' : ''
-                                } ${ri === 4 ? 'border-b-0' : ''} ${
-                                  isWinCell
+                                className={`h-7 flex items-center justify-center text-[11px] font-bold border-r border-b border-slate-700 ${ci === 4 ? 'border-r-0' : ''
+                                  } ${ri === 4 ? 'border-b-0' : ''} ${isWinCell
                                     ? 'bg-emerald-500 text-white'
                                     : isCenter
-                                    ? 'bg-slate-800 text-slate-200'
-                                    : 'bg-slate-900 text-slate-500'
-                                }`}
+                                      ? 'bg-slate-800 text-slate-200'
+                                      : 'bg-slate-900 text-slate-500'
+                                  }`}
                               >
                                 {isCenter ? '★' : ''}
                               </div>
@@ -2061,7 +2137,7 @@ export default function GamePage() {
               {/* Action Buttons */}
               <div className="space-y-2">
                 {!isSpectator && (
-                  <button 
+                  <button
                     onClick={() => router.push(`/game/${roomId}`)}
                     className="w-full bg-amber-500 text-white py-2.5 rounded-lg font-bold text-sm hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
                   >
@@ -2069,8 +2145,8 @@ export default function GamePage() {
                     Play Again
                   </button>
                 )}
-                
-                <button 
+
+                <button
                   onClick={() => {
                     if (isSpectator) {
                       // Spectator joins next game in same room (valid route)
@@ -2080,11 +2156,10 @@ export default function GamePage() {
                       router.push('/lobby')
                     }
                   }}
-                  className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${
-                    isSpectator 
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                  className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${isSpectator
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
                       : 'bg-slate-700 hover:bg-slate-800 text-white'
-                  }`}
+                    }`}
                 >
                   <ArrowLeft className="w-4 h-4" />
                   {isSpectator ? 'Join Next Game' : 'Go to Lobby'}
@@ -2102,21 +2177,21 @@ export default function GamePage() {
               <p className="text-center text-slate-300 mb-8">
                 {isSpectator
                   ? 'Are you sure you want to leave?'
-                  : gameState?.status === 'waiting' 
-                  ? 'Are you sure you want to leave?' 
-                  : `Are you sure you want to leave the current game? You will lose your stake of ${formatCurrency(stake)}.`}
+                  : gameState?.status === 'waiting'
+                    ? 'Are you sure you want to leave?'
+                    : `Are you sure you want to leave the current game? You will lose your stake of ${formatCurrency(stake)}.`}
               </p>
-              
+
               <div className="space-y-3">
-                <button 
+                <button
                   onClick={async () => {
                     if (gameId && user) {
                       try {
                         await fetch('/api/game/leave', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ 
-                            gameId, 
+                          body: JSON.stringify({
+                            gameId,
                             userId: user.id,
                             gameStatus: gameState?.status,
                             stakeDeducted: stakeDeducted
@@ -2132,8 +2207,8 @@ export default function GamePage() {
                 >
                   Leave Game
                 </button>
-                
-                <button 
+
+                <button
                   onClick={() => setShowLeaveDialog(false)}
                   className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-colors"
                 >
@@ -2153,15 +2228,15 @@ export default function GamePage() {
                   <XCircle className="w-8 h-8 text-red-300" />
                 </div>
               </div>
-              
+
               <h2 className="text-2xl font-bold text-center mb-4 text-slate-50">Connection Failed</h2>
-              
+
               <p className="text-center text-slate-300 mb-6">
                 {connectionErrorMessage}
               </p>
-              
+
               <div className="space-y-3">
-                <button 
+                <button
                   onClick={() => {
                     setShowConnectionError(false)
                     setLoading(true)
@@ -2172,8 +2247,8 @@ export default function GamePage() {
                 >
                   Try Again
                 </button>
-                
-                <button 
+
+                <button
                   onClick={() => {
                     setShowConnectionError(false)
                     router.push('/lobby')

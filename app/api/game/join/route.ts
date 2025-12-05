@@ -181,40 +181,20 @@ export async function POST(request: NextRequest) {
       }
 
       // Waiting period logic (only human players, no bots)
+      // NOTE: Timer logic moved to client-side (game page) to avoid serverless timeout issues
       const participants = updatedGame.players?.length || 0
       if (participants >= 2 && (updatedGame.status === 'waiting' || updatedGame.status === 'waiting_for_players')) {
-        const { error: updateError } = await supabase
+        await supabase
           .from('games')
-          .update({ 
+          .update({
             status: 'waiting_for_players',
             countdown_time: 30,
             waiting_started_at: new Date().toISOString()
           })
           .eq('id', actualGame.id)
-        if (!updateError) {
-          try {
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
-            const response = await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                gameId: actualGame.id,
-                waitingTime: 30,
-                countdownTime: 10
-              })
-            })
-            if (response.ok) {
-              const result = await response.json()
-              console.log('✅ Waiting period started successfully:', result)
-            } else {
-              const errorText = await response.text()
-              console.error('❌ Waiting period API failed:', response.status, response.statusText, errorText)
-            }
-          } catch (error) {
-            console.error('❌ Error calling waiting period API:', error)
-          }
-        }
+        console.log('✅ Set game to waiting_for_players, client will handle countdown')
       }
+
 
       // Refresh
       const { data: finalGameState } = await supabase
@@ -235,28 +215,15 @@ export async function POST(request: NextRequest) {
     if (actualGame.players.length >= 2 && actualGame.status === 'waiting') {
       await supabase
         .from('games')
-        .update({ 
+        .update({
           status: 'waiting_for_players',
           countdown_time: 30,
           waiting_started_at: new Date().toISOString()
         })
         .eq('id', actualGame.id)
-      try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.RAILWAY_STATIC_URL || 'https://BingoXbot-production.up.railway.app'
-        await fetch(`${baseUrl}/api/socket/start-waiting-period`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            gameId: actualGame.id,
-            waitingTime: 30,
-            countdownTime: 10
-          })
-        })
-        console.log('✅ Started waiting period for stuck game')
-      } catch (error) {
-        console.error('❌ Error starting waiting period for stuck game:', error)
-      }
+      console.log('✅ Set stuck game to waiting_for_players, client will handle countdown')
     }
+
 
     return NextResponse.json({
       success: true,
