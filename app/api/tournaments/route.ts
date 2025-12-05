@@ -23,7 +23,11 @@ export async function GET(_req: NextRequest) {
 
     if (error) {
       console.error('🏆 [API] Error loading tournaments:', error)
-      return NextResponse.json({ tournaments: [] })
+      return NextResponse.json({ tournaments: [] }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        }
+      })
     }
 
     console.log('🏆 [API] Found tournaments:', tournaments?.length || 0)
@@ -40,7 +44,11 @@ export async function GET(_req: NextRequest) {
 
     if (!tournaments || tournaments.length === 0) {
       console.log('🏆 [API] No tournaments found, returning empty array')
-      return NextResponse.json({ tournaments: [] })
+      return NextResponse.json({ tournaments: [] }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        }
+      })
     }
 
     const enriched: any[] = []
@@ -168,7 +176,11 @@ export async function GET(_req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ tournaments: enriched })
+    return NextResponse.json({ tournaments: enriched }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      }
+    })
   } catch (error) {
     console.error('Error in GET /api/tournaments:', error)
     return NextResponse.json(
