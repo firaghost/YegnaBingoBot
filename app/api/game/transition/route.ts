@@ -6,8 +6,10 @@ const supabase = supabaseAdmin
 export const dynamic = 'force-dynamic'
 
 /**
+ * @deprecated This API is deprecated. The tick API now handles all game state transitions.
+ * This endpoint is kept for backward compatibility only.
+ * 
  * API to transition game status - called by client when timer ends
- * This replaces the broken setTimeout-based approach
  */
 export async function POST(request: NextRequest) {
     try {

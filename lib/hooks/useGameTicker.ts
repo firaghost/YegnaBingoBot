@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from 'react'
  * any player can take over after 5 seconds of inactivity
  */
 export function useGameTicker(
-  gameId: string | null, 
+  gameId: string | null,
   gameStatus: string | null,
   userId: string | null,
   players: string[],
@@ -24,9 +24,10 @@ export function useGameTicker(
   useEffect(() => {
     if (!gameId || !userId) return
     if (!gameStatus) return
-    
-    // Only tick for countdown and active games
-    if (gameStatus !== 'countdown' && gameStatus !== 'active') {
+
+    // Only tick for waiting_for_players, countdown, and active games
+    // CRITICAL: waiting_for_players also needs ticking for the 30s countdown
+    if (!['waiting_for_players', 'countdown', 'active'].includes(gameStatus || '')) {
       if (tickerRef.current) {
         clearInterval(tickerRef.current)
         tickerRef.current = null
@@ -39,15 +40,16 @@ export function useGameTicker(
     // CRITICAL: Only the first player in the list should run the ticker
     // This prevents duplicate number calls
     const isGameMaster = players.length > 0 && players[0] === userId
-    
+
     // FALLBACK: If not game master, check if we should take over
-    // This happens if countdown is stuck (no progress for 5+ seconds)
+    // This happens if countdown/waiting is stuck (no progress for 5+ seconds)
     let shouldTick = isGameMaster
-    
-    if (!isGameMaster && gameStatus === 'countdown' && countdownTime !== undefined) {
+
+    // Check for stuck state during waiting_for_players or countdown
+    if (!isGameMaster && ['waiting_for_players', 'countdown'].includes(gameStatus || '') && countdownTime !== undefined) {
       // Check if countdown value has changed
       const currentTime = Date.now()
-      
+
       if (lastCountdownValueRef.current !== countdownTime) {
         // Countdown changed, reset timer
         lastCountdownValueRef.current = countdownTime
@@ -55,10 +57,10 @@ export function useGameTicker(
       } else {
         // Countdown hasn't changed
         const stuckDuration = currentTime - lastCountdownChangeRef.current
-        
+
         // If stuck for more than 5 seconds, take over as fallback master
         if (stuckDuration > 5000 && !isFallbackMaster) {
-          console.warn(`⚠️ Countdown stuck at ${countdownTime} for ${Math.round(stuckDuration/1000)}s, taking over as fallback game master`)
+          console.warn(`⚠️ Game stuck at ${countdownTime}s (${gameStatus}) for ${Math.round(stuckDuration / 1000)}s, taking over as fallback game master`)
           setIsFallbackMaster(true)
           shouldTick = true
         } else if (isFallbackMaster) {
@@ -67,14 +69,14 @@ export function useGameTicker(
         }
       }
     } else {
-      // Reset stuck tracking if we're game master or not in countdown
+      // Reset stuck tracking if we're game master or not in countdown/waiting
       lastCountdownValueRef.current = countdownTime ?? null
       lastCountdownChangeRef.current = Date.now()
       if (isFallbackMaster && isGameMaster) {
         setIsFallbackMaster(false)
       }
     }
-    
+
     if (!shouldTick) {
       console.log('🎮 Not game master, skipping ticker')
       return
@@ -85,15 +87,15 @@ export function useGameTicker(
       console.log('⚠️ Ticker already running, skipping duplicate')
       return
     }
-    
+
     // Clear any existing ticker before starting new one
     if (tickerRef.current) {
       clearInterval(tickerRef.current)
       tickerRef.current = null
     }
-    
+
     isTickingRef.current = true
-    
+
     if (isFallbackMaster) {
       console.log('🔄 Fallback game master - taking over ticker')
     } else {
@@ -116,10 +118,10 @@ export function useGameTicker(
 
         const result = await response.json()
         console.log('✅ Tick result:', result)
-        
+
         // Reset stuck timer on successful tick
         lastCountdownChangeRef.current = Date.now()
-        
+
         if (result.action === 'end' || result.action === 'none') {
           // Game ended, stop ticking
           console.log('🛑 Stopping ticker - game ended')
@@ -137,10 +139,10 @@ export function useGameTicker(
 
     // Tick interval based on game status
     const interval = gameStatus === 'countdown' ? 1000 : 3000 // 1s for countdown, 3s for active
-    
+
     // Initial tick
     tick()
-    
+
     // Set up interval
     tickerRef.current = setInterval(tick, interval)
 

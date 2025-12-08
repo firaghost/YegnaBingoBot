@@ -9,7 +9,7 @@ const supabase = supabaseAdmin
 interface Game {
   id: string
   room_id: string
-  status: 'waiting' | 'countdown' | 'active' | 'finished'
+  status: 'waiting' | 'waiting_for_players' | 'countdown' | 'active' | 'finished'
   countdown_time: number
   players: string[]
   bots: string[]
@@ -50,7 +50,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = secureRandom(i + 1)
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     if (gameError || !game) {
       // Game not found or locked by another tick
-      return NextResponse.json({ 
+      return NextResponse.json({
         success: true,
         action: 'skip',
         message: 'Game locked or not found'
@@ -92,8 +92,97 @@ export async function POST(request: NextRequest) {
     // Type assertion for safety
     const typedGame = game as Game
 
-    // Handle countdown phase
+    // ============================================================
+    // UNIFIED STATE MACHINE - All transitions handled here
+    // ============================================================
+
+    // Handle waiting_for_players phase (30-second wait for more players)
+    if (game.status === 'waiting_for_players') {
+      const currentPlayers = game.players?.length || 0
+
+      // If not enough players, reset to waiting
+      if (currentPlayers < 2) {
+        console.log(`⚠️ Game ${gameId}: Not enough players (${currentPlayers}), resetting to waiting`)
+        await supabase
+          .from('games')
+          .update({
+            status: 'waiting',
+            countdown_time: 0,
+            waiting_started_at: null
+          })
+          .eq('id', gameId)
+
+        return NextResponse.json({
+          success: true,
+          action: 'reset',
+          message: 'Waiting for more players'
+        })
+      }
+
+      const waitingTime = game.countdown_time || 30
+
+      if (waitingTime > 1) {
+        // Decrement waiting countdown
+        const newTime = waitingTime - 1
+        await supabase
+          .from('games')
+          .update({ countdown_time: newTime })
+          .eq('id', gameId)
+          .eq('status', 'waiting_for_players')
+
+        console.log(`⏳ Waiting: ${newTime}s remaining for game ${gameId}`)
+
+        return NextResponse.json({
+          success: true,
+          action: 'waiting',
+          countdown_time: newTime,
+          message: `Waiting for players: ${newTime}s`
+        })
+      } else {
+        // Waiting period complete - transition to countdown
+        console.log(`🔥 Game ${gameId}: Waiting complete, starting countdown`)
+
+        await supabase
+          .from('games')
+          .update({
+            status: 'countdown',
+            countdown_time: 10,
+            countdown_started_at: new Date().toISOString()
+          })
+          .eq('id', gameId)
+          .eq('status', 'waiting_for_players')
+
+        return NextResponse.json({
+          success: true,
+          action: 'countdown_start',
+          countdown_time: 10,
+          message: 'Game countdown starting!'
+        })
+      }
+    }
+
+    // Handle countdown phase (10-second countdown before game starts)
     if (game.status === 'countdown') {
+      // Validate player count during countdown
+      const currentPlayers = game.players?.length || 0
+      if (currentPlayers < 2) {
+        console.log(`⚠️ Game ${gameId}: Player left during countdown, resetting to waiting`)
+        await supabase
+          .from('games')
+          .update({
+            status: 'waiting',
+            countdown_time: 0,
+            waiting_started_at: null
+          })
+          .eq('id', gameId)
+
+        return NextResponse.json({
+          success: true,
+          action: 'reset',
+          message: 'Player left, waiting for more players'
+        })
+      }
+
       const currentTime = game.countdown_time || 10
 
       if (currentTime > 1) {
@@ -175,45 +264,32 @@ export async function POST(request: NextRequest) {
       }
 
       if (!nextNumber) {
-        // All numbers called - wait 10 seconds for bingo claims, then finish with no winner
-        console.log(`⏰ Game ${gameId} - all 75 numbers called, waiting 10s for bingo claims...`)
+        // All 75 numbers called - finish game immediately
+        // No setTimeout needed - bingo claims are idempotent and work even on finished games
+        // as long as the claim is made before winner_id is set
+        console.log(`🏁 Game ${gameId} - all 75 numbers called, finishing game`)
 
-        // Schedule the no-winner finish after grace period
-        setTimeout(async () => {
-          try {
-            // Check if someone claimed in the meantime
-            const { data: finalGame } = await supabase
-              .from('games')
-              .select('winner_id, status')
-              .eq('id', gameId)
-              .single()
+        const { error: finishError } = await supabase
+          .from('games')
+          .update({
+            status: 'finished',
+            ended_at: new Date().toISOString(),
+            winner_id: null
+          })
+          .eq('id', gameId)
+          .eq('status', 'active')
+          .is('winner_id', null)  // Only finish if no winner yet
 
-            if (finalGame?.winner_id || finalGame?.status === 'finished') {
-              console.log(`✅ Game ${gameId} already finished with winner`)
-              return
-            }
-
-            // No winner claimed - finish game with no winner
-            await supabase
-              .from('games')
-              .update({ 
-                status: 'finished', 
-                ended_at: new Date().toISOString(),
-                winner_id: null
-              })
-              .eq('id', gameId)
-              .is('winner_id', null)  // Only if no winner yet
-
-            console.log(`🏁 Game ${gameId} finished - NO WINNER (all 75 numbers called)`)
-          } catch (error) {
-            console.error(`Error finishing game ${gameId} with no winner:`, error)
-          }
-        }, 10000)  // 10 second grace period
+        if (finishError) {
+          console.log(`✅ Game ${gameId} already finished or has winner`)
+        } else {
+          console.log(`🏁 Game ${gameId} finished - NO WINNER (all 75 numbers called)`)
+        }
 
         return NextResponse.json({
           success: true,
-          action: 'all_numbers_called',
-          message: 'All 75 numbers called, waiting for bingo claims...'
+          action: 'end',
+          message: 'Game finished - all numbers called, no winner'
         })
       }
 
@@ -229,7 +305,7 @@ export async function POST(request: NextRequest) {
       // First, acquire a lock on the game row
       const { data: lockedGame, error: lockError } = await supabase
         .rpc('get_game_for_update', { game_id: gameId })
-      
+
       if (lockError || !lockedGame) {
         // Game is locked by another process, skip this tick
         console.log(`⚠️ Game ${gameId} is locked by another process, skipping tick`)

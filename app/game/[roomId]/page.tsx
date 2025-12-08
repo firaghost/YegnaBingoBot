@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSocket } from '@/lib/hooks/useSocket'
+import { useGameTicker } from '@/lib/hooks/useGameTicker'
 import { supabase } from '@/lib/supabase'
 import { generateBingoCard, checkBingoWin, formatCurrency } from '@/lib/utils'
 import { getGameConfig, getConfig } from '@/lib/admin-config'
@@ -76,6 +77,17 @@ export default function GamePage() {
   const pendingAudioRef = useRef<{ letter: string; number: number } | null>(null)
   const bingoAudioPlayedRef = useRef<boolean>(false)
   const [walletHidden, setWalletHidden] = useState(true)
+
+  // CRITICAL: This hook handles number calling during active games
+  // Only the first player (game master) calls the tick API to prevent duplicates
+  // Has fallback mechanism if game master disconnects
+  useGameTicker(
+    gameId,
+    gameState?.status || waitingRoomState?.status || null,
+    user?.id || null,
+    gameState?.players || waitingRoomState?.players || [],
+    gameState?.countdown_time ?? waitingRoomState?.countdown_time
+  )
 
   // Bases for asset loading (prod may host frontend and socket on different domains)
   const SOCKET_BASE = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app').replace(/\/$/, '')
@@ -575,90 +587,14 @@ export default function GamePage() {
     }
   }, [isInWaitingRoom, waitingRoomState, isSpectator, gameState?.status, connected, gameState, gameId])
 
-  // Client-side timer for game status transitions
-  // This replaces the broken serverless setTimeout approach
-  const [waitingCountdown, setWaitingCountdown] = useState<number | null>(null)
-  const [gameCountdown, setGameCountdown] = useState<number | null>(null)
-  const transitionInProgressRef = useRef(false)
+  // Server-driven countdown display
+  // The tick API now handles ALL state transitions via useGameTicker
+  // We just display the countdown_time from the game state
+  // This eliminates race conditions from multiple clients triggering transitions
 
-  useEffect(() => {
-    if (!gameId) return
-
-    const status = waitingRoomState?.status || gameState?.status
-
-    // Handle waiting_for_players → countdown transition (30s wait)
-    if (status === 'waiting_for_players' && waitingCountdown === null) {
-      console.log('⏳ Starting 30s waiting period countdown')
-      setWaitingCountdown(30)
-
-      const interval = setInterval(() => {
-        setWaitingCountdown(prev => {
-          if (prev === null || prev <= 1) {
-            clearInterval(interval)
-            // Transition to countdown
-            if (!transitionInProgressRef.current) {
-              transitionInProgressRef.current = true
-              fetch('/api/game/transition', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId, action: 'start_countdown' })
-              }).then(r => r.json()).then(res => {
-                console.log('✅ Transitioned to countdown:', res)
-                transitionInProgressRef.current = false
-              }).catch(e => {
-                console.error('❌ Failed to transition to countdown:', e)
-                transitionInProgressRef.current = false
-              })
-            }
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-
-      return () => clearInterval(interval)
-    }
-
-    // Handle countdown → active transition (10s countdown)
-    if (status === 'countdown' && gameCountdown === null) {
-      console.log('🔥 Starting 10s game countdown')
-      setGameCountdown(10)
-      setWaitingCountdown(null) // Clear waiting countdown
-
-      const interval = setInterval(() => {
-        setGameCountdown(prev => {
-          if (prev === null || prev <= 1) {
-            clearInterval(interval)
-            // Transition to active
-            if (!transitionInProgressRef.current) {
-              transitionInProgressRef.current = true
-              fetch('/api/game/transition', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId, action: 'start_game' })
-              }).then(r => r.json()).then(res => {
-                console.log('🎮 Game started:', res)
-                transitionInProgressRef.current = false
-              }).catch(e => {
-                console.error('❌ Failed to start game:', e)
-                transitionInProgressRef.current = false
-              })
-            }
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-
-      return () => clearInterval(interval)
-    }
-
-    // Reset countdowns if status changes unexpectedly
-    if (status === 'active' || status === 'finished') {
-      setWaitingCountdown(null)
-      setGameCountdown(null)
-    }
-  }, [gameId, waitingRoomState?.status, gameState?.status, waitingCountdown, gameCountdown])
+  // Get countdown from server state (used for UI display only)
+  const serverCountdown = waitingRoomState?.countdown_time ?? gameState?.countdown_time ?? null
+  const currentStatus = waitingRoomState?.status || gameState?.status
 
 
   // (Preview card removed) We will show a 10x10 picker grid in waiting room instead
@@ -1541,8 +1477,8 @@ export default function GamePage() {
                           <div
                             key={index}
                             className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${player.isCurrentUser
-                                ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/60'
-                                : 'bg-slate-800 text-slate-100 border border-slate-600'
+                              ? 'bg-emerald-900/60 text-emerald-200 border border-emerald-500/60'
+                              : 'bg-slate-800 text-slate-100 border border-slate-600'
                               }`}
                           >
                             <div className={`w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${player.isCurrentUser ? 'bg-emerald-500' : 'bg-indigo-500'
@@ -1630,8 +1566,8 @@ export default function GamePage() {
                           key={n}
                           onClick={() => setLuckyNumber(n)}
                           className={`h-6 text-xs font-bold rounded border transition-all ${luckyNumber === n
-                              ? 'bg-emerald-500 text-white border-emerald-600'
-                              : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                            ? 'bg-emerald-500 text-white border-emerald-600'
+                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
                             }`}
                         >
                           {n}
@@ -1945,8 +1881,8 @@ export default function GamePage() {
                 onClick={handleBingoClick}
                 disabled={!markedCells.length || !checkBingoWin(markedCells) || claimingBingo}
                 className={`w-full max-w-sm mx-auto py-3 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2 mt-3 ${markedCells.length && checkBingoWin(markedCells) && !claimingBingo
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95 shadow-lg'
-                    : 'bg-slate-600 text-slate-400 cursor-not-allowed opacity-50'
+                  ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-xl hover:scale-105 active:scale-95 shadow-lg'
+                  : 'bg-slate-600 text-slate-400 cursor-not-allowed opacity-50'
                   }`}
               >
                 {claimingBingo ? (
@@ -2157,8 +2093,8 @@ export default function GamePage() {
                     }
                   }}
                   className={`w-full py-2.5 rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2 ${isSpectator
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-slate-700 hover:bg-slate-800 text-white'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-slate-700 hover:bg-slate-800 text-white'
                     }`}
                 >
                   <ArrowLeft className="w-4 h-4" />
