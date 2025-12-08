@@ -98,7 +98,32 @@ export async function POST(request: NextRequest) {
 
     // Handle waiting_for_players phase (30-second wait for more players)
     if (game.status === 'waiting_for_players') {
-      const currentPlayers = game.players?.length || 0
+      // CRITICAL: Re-fetch FRESH state to avoid race condition with leave API
+      const { data: freshGame, error: freshError } = await supabase
+        .from('games')
+        .select('status, players, countdown_time')
+        .eq('id', gameId)
+        .single()
+
+      if (freshError || !freshGame) {
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Game not found on refresh'
+        })
+      }
+
+      // Check if status changed (leave API might have reset to waiting)
+      if (freshGame.status !== 'waiting_for_players') {
+        console.log(`⚠️ Game ${gameId}: Status changed to ${freshGame.status}, stopping tick`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: `Game status is now ${freshGame.status}`
+        })
+      }
+
+      const currentPlayers = freshGame.players?.length || 0
 
       // If not enough players, reset to waiting
       if (currentPlayers < 2) {
@@ -111,6 +136,7 @@ export async function POST(request: NextRequest) {
             waiting_started_at: null
           })
           .eq('id', gameId)
+          .eq('status', 'waiting_for_players') // Only if still in waiting_for_players
 
         return NextResponse.json({
           success: true,
@@ -119,16 +145,28 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      const waitingTime = game.countdown_time || 30
+      const waitingTime = freshGame.countdown_time || 30
 
       if (waitingTime > 1) {
-        // Decrement waiting countdown
+        // Decrement waiting countdown - ONLY if still has 2+ players
         const newTime = waitingTime - 1
-        await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('games')
           .update({ countdown_time: newTime })
           .eq('id', gameId)
           .eq('status', 'waiting_for_players')
+          .select('id')
+          .single()
+
+        // Check if update actually happened (game might have been reset)
+        if (updateError || !updateResult) {
+          console.log(`⚠️ Game ${gameId}: Update skipped - status likely changed`)
+          return NextResponse.json({
+            success: true,
+            action: 'skip',
+            message: 'Game state changed during tick'
+          })
+        }
 
         console.log(`⏳ Waiting: ${newTime}s remaining for game ${gameId}`)
 
@@ -142,7 +180,7 @@ export async function POST(request: NextRequest) {
         // Waiting period complete - transition to countdown
         console.log(`🔥 Game ${gameId}: Waiting complete, starting countdown`)
 
-        await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('games')
           .update({
             status: 'countdown',
@@ -151,6 +189,17 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', gameId)
           .eq('status', 'waiting_for_players')
+          .select('id')
+          .single()
+
+        if (updateError || !updateResult) {
+          console.log(`⚠️ Game ${gameId}: Transition skipped - status likely changed`)
+          return NextResponse.json({
+            success: true,
+            action: 'skip',
+            message: 'Game state changed during tick'
+          })
+        }
 
         return NextResponse.json({
           success: true,
@@ -163,10 +212,35 @@ export async function POST(request: NextRequest) {
 
     // Handle countdown phase (10-second countdown before game starts)
     if (game.status === 'countdown') {
+      // CRITICAL: Re-fetch FRESH state to avoid race condition with leave API
+      const { data: freshGame, error: freshError } = await supabase
+        .from('games')
+        .select('status, players, countdown_time')
+        .eq('id', gameId)
+        .single()
+
+      if (freshError || !freshGame) {
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: 'Game not found on refresh'
+        })
+      }
+
+      // Check if status changed (leave API might have reset to waiting)
+      if (freshGame.status !== 'countdown') {
+        console.log(`⚠️ Game ${gameId}: Status changed to ${freshGame.status}, stopping countdown tick`)
+        return NextResponse.json({
+          success: true,
+          action: 'skip',
+          message: `Game status is now ${freshGame.status}`
+        })
+      }
+
       // Validate player count during countdown
-      const currentPlayers = game.players?.length || 0
+      const currentPlayers = freshGame.players?.length || 0
       if (currentPlayers < 2) {
-        console.log(`⚠️ Game ${gameId}: Player left during countdown, resetting to waiting`)
+        console.log(`⚠️ Game ${gameId}: Player left during countdown (${currentPlayers} remain), resetting to waiting`)
         await supabase
           .from('games')
           .update({
@@ -175,6 +249,7 @@ export async function POST(request: NextRequest) {
             waiting_started_at: null
           })
           .eq('id', gameId)
+          .eq('status', 'countdown') // Only if still in countdown
 
         return NextResponse.json({
           success: true,
@@ -183,16 +258,28 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      const currentTime = game.countdown_time || 10
+      const currentTime = freshGame.countdown_time || 10
 
       if (currentTime > 1) {
         // Decrement countdown (but not below 1)
         const newTime = currentTime - 1
-        await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('games')
           .update({ countdown_time: newTime })
           .eq('id', gameId)
           .eq('status', 'countdown')
+          .select('id')
+          .single()
+
+        // Check if update actually happened
+        if (updateError || !updateResult) {
+          console.log(`⚠️ Game ${gameId}: Countdown update skipped - status likely changed`)
+          return NextResponse.json({
+            success: true,
+            action: 'skip',
+            message: 'Game state changed during countdown tick'
+          })
+        }
 
         console.log(`⏰ Countdown: ${newTime}s for game ${gameId}`)
 
@@ -211,7 +298,7 @@ export async function POST(request: NextRequest) {
           .update(numberSequence.join(','))
           .digest('hex')
 
-        const { error: updateError } = await supabase
+        const { data: updateResult, error: updateError } = await supabase
           .from('games')
           .update({
             status: 'active',
@@ -222,10 +309,16 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', gameId)
           .eq('status', 'countdown')
+          .select('id')
+          .single()
 
-        if (updateError) {
-          console.error('Error starting game:', updateError)
-          throw updateError
+        if (updateError || !updateResult) {
+          console.log(`⚠️ Game ${gameId}: Start game skipped - status likely changed`)
+          return NextResponse.json({
+            success: true,
+            action: 'skip',
+            message: 'Game state changed during start'
+          })
         }
 
         console.log(`✅ Game ${gameId} started with hash: ${sequenceHash.substring(0, 16)}...`)
