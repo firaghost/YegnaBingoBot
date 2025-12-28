@@ -1,7 +1,7 @@
 import { Server as SocketServer } from 'socket.io'
-import { supabaseAdmin } from './supabase'
-import { waitingRoomManager } from './waiting-room-manager'
-import { gameStateManager } from './game-state-manager'
+import { supabaseAdmin } from './supabase.js'
+import { waitingRoomManager } from './waiting-room-manager.js'
+import { gameStateManager } from './game-state-manager.js'
 
 /**
  * RoomLifecycleManager

@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { supabase } from './supabase.js'
 
 // Cache for configuration values to avoid repeated DB calls
 const configCache = new Map<string, { value: any; timestamp: number }>()

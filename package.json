@@ -13,8 +13,10 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:waiting-room\" \"npm run bot\"",
     "dev:complete": "concurrently \"npm run dev\" \"npm run dev:game-server\" \"npm run bot\"",
     "build": "next build",
+    "build:server": "npx tsc -p tsconfig.server.json",
     "start": "next start",
     "start:socket": "NODE_ENV=production tsx server/railway-production-server.ts",
+    "start:cpanel": "NODE_ENV=production node app.js",
     "start:waiting-room": "NODE_ENV=production tsx server/waiting-room-app.ts",
     "start:game-server": "NODE_ENV=production tsx server/integrated-game-server.ts",
     "test:waiting-room": "tsx test/waiting-room-test.ts",
@@ -64,6 +66,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.0",

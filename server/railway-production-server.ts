@@ -11,14 +11,14 @@ declare global {
   var io: SocketServer | undefined
 }
 
-import WaitingRoomSocketServer from './waiting-room-server'
-import InGameSocketServer from './ingame-socket-server'
-import { assignBotIfNeeded, autofillBotsForGame } from './bot-service'
-import { BotEngine } from './bot-engine'
-import { waitingRoomManager } from '../lib/waiting-room-manager'
-import { gameStateManager } from '../lib/game-state-manager'
-import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
-import { gameStateCache } from './game-state-cache'
+import WaitingRoomSocketServer from './waiting-room-server.js'
+import InGameSocketServer from './ingame-socket-server.js'
+import { assignBotIfNeeded, autofillBotsForGame } from './bot-service.js'
+import { BotEngine } from './bot-engine.js'
+import { waitingRoomManager } from '../lib/waiting-room-manager.js'
+import { gameStateManager } from '../lib/game-state-manager.js'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager.js'
+import { gameStateCache } from './game-state-cache.js'
 
 const app = express()
 // Enable gzip compression for faster responses
@@ -29,7 +29,7 @@ const httpServer = createServer(app)
 let botEngineInstance: BotEngine | null = null
 async function getBotEngine(): Promise<BotEngine> {
   if (!botEngineInstance) {
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     botEngineInstance = new BotEngine(supabaseAdmin)
   }
   return botEngineInstance
@@ -95,7 +95,7 @@ async function startNumberCalling(gameId: string) {
     }
 
     // Get level settings for this game
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     const { data: room } = await supabaseAdmin
       .from('rooms')
       .select('game_level, default_level')
@@ -166,7 +166,7 @@ async function startNumberCalling(gameId: string) {
 
         // Use secure fair number calling function with fallback
         try {
-          const { supabaseAdmin } = await import('../lib/supabase')
+          const { supabaseAdmin } = await import('../lib/supabase.js')
           const { data: numberResult, error: numberError } = await supabaseAdmin
             .rpc('call_next_number', {
               p_game_id: gameId
@@ -266,7 +266,7 @@ function stopNumberCalling(gameId: string) {
     // Force sync cache to database before cleanup
     gameStateCache.forceSyncToDatabase(gameId).then(() => {
       console.log(`✅ Final cache sync completed for game ${gameId}`)
-    }).catch(err => {
+    }).catch((err: unknown) => {
       console.error(`❌ Final cache sync failed for game ${gameId}:`, err)
     })
     
@@ -283,7 +283,7 @@ async function cleanupFinishedGames() {
       return // No active games, skip cleanup
     }
 
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     const supabase = supabaseAdmin
 
     // Only get finished games that have active intervals
@@ -407,7 +407,7 @@ app.post('/api/game/join', async (req, res) => {
     }
 
     // Import the game join logic
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     const supabase = supabaseAdmin
 
     // Get room data to use correct stake and settings
@@ -1051,7 +1051,6 @@ app.post('/api/game/join', async (req, res) => {
                   clearInterval(countdownInterval)
                   activeCountdowns.delete(activeGame.id) // Remove from active countdowns
                   console.log(`🎮 Starting game ${activeGame.id}`)
-
                   await supabase
                     .from('games')
                     .update({
@@ -1293,7 +1292,7 @@ app.post('/api/socket/start-waiting-period', async (req, res) => {
 
     console.log(`⏳ Starting waiting period for game ${gameId}: ${waitingTime}s waiting + ${countdownTime}s countdown`)
 
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     const supabase = supabaseAdmin
 
     // Start the 30-second waiting period
@@ -1386,7 +1385,7 @@ app.post('/api/game/start-calling', async (req, res) => {
       return res.status(400).json({ error: 'Missing gameId' })
     }
 
-    const { supabaseAdmin } = await import('../lib/supabase')
+    const { supabaseAdmin } = await import('../lib/supabase.js')
     const supabase = supabaseAdmin
 
     // Check if game exists and is active
@@ -1648,7 +1647,7 @@ io.on('connection', (socket) => {
         console.log(`⚠️ All players left game ${gId}, stopping game...`)
 
         try {
-          const { supabaseAdmin } = await import('../lib/supabase')
+          const { supabaseAdmin } = await import('../lib/supabase.js')
 
           await supabaseAdmin
             .from('games')
@@ -1813,7 +1812,7 @@ app.get('/api/rooms/waiting', async (req, res) => {
 // Get active games
 app.get('/api/games/active', async (req, res) => {
   try {
-    const activeGames = Array.from(gameStateManager.getActiveGames().entries()).map(([roomId, game]) => ({
+    const activeGames = (Array.from(gameStateManager.getActiveGames().entries()) as Array<[string, any]>).map(([roomId, game]) => ({
       roomId,
       status: game.status,
       gameLevel: game.game_level,

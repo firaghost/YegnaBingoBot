@@ -143,7 +143,7 @@ class GameStateCache {
    */
   async loadFromDatabase(gameId: string): Promise<CachedGameState | null> {
     try {
-      const { supabaseAdmin } = await import('../lib/supabase')
+      const { supabaseAdmin } = await import('../lib/supabase.js')
       const { data: game, error } = await supabaseAdmin
         .from('games')
         .select('*')
@@ -184,7 +184,7 @@ class GameStateCache {
     console.log(`📦 Syncing ${updates.length} game(s) to database...`)
     
     try {
-      const { supabaseAdmin } = await import('../lib/supabase')
+      const { supabaseAdmin } = await import('../lib/supabase.js')
       
       // Batch update all games
       for (const [gameId, changes] of updates) {
@@ -251,7 +251,7 @@ class GameStateCache {
     if (!pending) return true
     
     try {
-      const { supabaseAdmin } = await import('../lib/supabase')
+      const { supabaseAdmin } = await import('../lib/supabase.js')
       
       // Remove internal cache fields
       const { updated_at, _cache_updated_at, _needs_db_sync, ...dbChanges } = pending as any

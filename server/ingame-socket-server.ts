@@ -1,8 +1,8 @@
 import { Server as SocketServer } from 'socket.io'
 import { Server as HttpServer } from 'http'
-import { gameStateManager, GameState, BingoClaim } from '../lib/game-state-manager'
-import { supabaseAdmin } from '../lib/supabase'
-import { roomLifecycleManager } from '../lib/room-lifecycle-manager'
+import { gameStateManager, GameState, BingoClaim } from '../lib/game-state-manager.js'
+import { supabaseAdmin } from '../lib/supabase.js'
+import { roomLifecycleManager } from '../lib/room-lifecycle-manager.js'
 
 // Socket event types for in-game functionality
 interface InGameServerToClientEvents {

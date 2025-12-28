@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
-import { generateBingoCard } from '../lib/utils'
+import { generateBingoCard } from '../lib/utils.js'
 
 const BOTS_ENABLED = process.env.ENABLE_BOTS === 'true'
 

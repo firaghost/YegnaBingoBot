@@ -1,4 +1,4 @@
-import { supabaseAdmin } from './supabase'
+import { supabaseAdmin } from './supabase.js'
 import { v4 as uuidv4 } from 'uuid'
 
 // Types for in-game state management
