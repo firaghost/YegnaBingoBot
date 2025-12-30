@@ -115,18 +115,18 @@
 
 /* Safe-area helpers */
 .safe-area {
-  padding-top: calc(var(--sat) + 24px);
+  padding-top: var(--sat);
   padding-bottom: var(--sab);
   padding-left: var(--sal);
   padding-right: var(--sar);
 }
-.safe-top { padding-top: calc(var(--sat) + 24px); }
+.safe-top { padding-top: var(--sat); }
 .safe-bottom { padding-bottom: var(--sab); }
 
 /* In Telegram full-screen, give a bit more breathing room */
-html.tg-webapp .safe-area { padding-top: calc(var(--sat) + 36px); }
-html.tg-webapp .safe-top { padding-top: calc(var(--sat) + 36px); }
+html.tg-webapp .safe-area { padding-top: var(--sat); }
+html.tg-webapp .safe-top { padding-top: var(--sat); }
 
 /* Explicit top spacer controlled by layout */
 .tg-top-spacer { height: 0; }
-html.tg-webapp .tg-top-spacer { height: calc(var(--sat) + 56px); }
+html.tg-webapp .tg-top-spacer { height: 0; }

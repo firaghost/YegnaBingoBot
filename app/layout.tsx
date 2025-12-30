@@ -22,7 +22,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const SUPABASE = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  const SOCKET = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app')
+  const SOCKET = (process.env.NEXT_PUBLIC_SOCKET_URL || '')
   return (
     <html lang="en">
       <head>
