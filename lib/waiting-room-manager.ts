@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { getGameConfig } from './admin-config.js'
+import { getGameConfig } from './admin-config.server.js'
 import { v4 as uuidv4 } from 'uuid'
 
 // Types for waiting room system

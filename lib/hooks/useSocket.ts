@@ -41,7 +41,9 @@ export function useSocket() {
 
   // Connect to Socket.IO server on Railway
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app'
+    const socketUrl =
+      process.env.NEXT_PUBLIC_SOCKET_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : '')
     console.log('🔌 Connecting to Socket.IO:', socketUrl)
     
     const socket = io(socketUrl, {

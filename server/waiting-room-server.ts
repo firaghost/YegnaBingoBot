@@ -1,7 +1,7 @@
 import { Server as SocketServer } from 'socket.io'
 import { Server as HttpServer } from 'http'
 import { waitingRoomManager, WaitingRoom, Player } from '../lib/waiting-room-manager.js'
-import { getGameConfig } from '../lib/admin-config.js'
+import { getGameConfig } from '../lib/admin-config.server.js'
 import { supabaseAdmin } from '../lib/supabase.js'
 import { roomLifecycleManager } from '../lib/room-lifecycle-manager.js'
 

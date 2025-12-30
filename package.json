@@ -14,7 +14,7 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:waiting-room\" \"npm run bot\"",
     "dev:complete": "concurrently \"npm run dev\" \"npm run dev:game-server\" \"npm run bot\"",
     "build": "next build",
-    "build:server": "npx tsc -p tsconfig.server.json",
+    "build:server": "tsc -p tsconfig.server.json",
     "start": "next start",
     "start:socket": "NODE_ENV=production tsx server/railway-production-server.ts",
     "start:cpanel": "NODE_ENV=production node app.js",
@@ -79,7 +79,7 @@
     "@types/uuid": "^9.0.8",
     "concurrently": "^8.2.2",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^14.2.33",
+    "eslint-config-next": "^16.1.1",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.3.0"
