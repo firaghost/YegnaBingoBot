@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency } from '@/lib/utils'
 import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
+import { AdminShell } from '@/app/mgmt-portal-x7k9p2/components/AdminShell'
 
 interface UserResult {
   id: string
@@ -64,6 +65,12 @@ export default function AdminBroadcast() {
         .from('users')
         .select('*', { count: 'exact', head: true })
         .not('telegram_id', 'is', null)
+
+      if (targetAll) {
+        const { count } = await query
+        setEstimatedRecipients(count || 0)
+        return
+      }
 
       if (activeOnly) {
         const yesterday = new Date()
@@ -230,20 +237,25 @@ export default function AdminBroadcast() {
 
       const formattedMessage = composeMessageWithLinks()
 
+      const effectiveTargetUserIds = selectedUsers.length > 0 ? selectedUsers.map((user) => user.id) : null
+      const effectiveFilters = targetAll && !effectiveTargetUserIds
+        ? null
+        : {
+            activeOnly,
+            minBalance: minBalance ? parseInt(minBalance) : null,
+            minGames: minGames ? parseInt(minGames) : null,
+            newUsersSinceDays: newUsersSinceDays ? parseInt(newUsersSinceDays) : null,
+            dormantDays: dormantDays ? parseInt(dormantDays) : null,
+          }
+
       const response = await fetch('/api/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title,
           message: formattedMessage,
-          filters: {
-            activeOnly,
-            minBalance: minBalance ? parseInt(minBalance) : null,
-            minGames: minGames ? parseInt(minGames) : null,
-            newUsersSinceDays: newUsersSinceDays ? parseInt(newUsersSinceDays) : null,
-            dormantDays: dormantDays ? parseInt(dormantDays) : null,
-          },
-          targetUserIds: selectedUsers.length > 0 ? selectedUsers.map((user) => user.id) : null,
+          filters: effectiveFilters,
+          targetUserIds: effectiveTargetUserIds,
           imageUrl: finalImageUrl || null,
         }),
       })
@@ -297,45 +309,42 @@ export default function AdminBroadcast() {
 
   const handleImageUpload = useCallback(async (file: File) => {
     try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const fileName = `broadcast-${Date.now()}.${fileExt}`
-      const filePath = `${bucketName === 'broadcasts' ? '' : 'broadcasts/'}${fileName}`.replace(/^\//, '')
-
-      const storageClient = supabase.storage.from(bucketName)
-      const { error: uploadError } = await storageClient.upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true
-      })
-
-      if (uploadError) {
-        console.error('Upload failed:', uploadError)
-
-        if (uploadError.message?.toLowerCase().includes('bucket not found')) {
-          showNotification('error', `Upload bucket "${bucketName}" is missing. Please create this bucket in Supabase Storage and retry.`)
-        } else {
-          showNotification('error', 'Failed to upload image. Please try again.')
-        }
-
+      setImageUploading(true)
+      const adminId = localStorage.getItem('admin_id')
+      if (!adminId) {
+        showNotification('error', 'Admin session missing. Please log in again.')
         return ''
       }
 
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucketName)
-        .getPublicUrl(filePath)
+      const form = new FormData()
+      form.append('file', file)
+      form.append('bucket', bucketName)
+
+      const res = await fetch('/api/admin/broadcast-upload', {
+        method: 'POST',
+        headers: { 'x-admin-id': adminId },
+        body: form,
+      })
+
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json?.error || 'Failed to upload image')
+
+      const publicUrl = String(json?.url || '')
+      if (!publicUrl) throw new Error('Upload succeeded but no URL returned')
 
       setImageUrl(publicUrl)
       return publicUrl
-    } catch (error) {
+    } catch (error: any) {
       console.error('Unexpected upload error:', error)
-      showNotification('error', 'Failed to upload image. Please try again.')
+      showNotification('error', error?.message || 'Failed to upload image. Please try again.')
       return ''
     } finally {
       setImageUploading(false)
     }
-  }, [showNotification])
+  }, [bucketName])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+    <AdminShell title="Broadcast">
       <AdminConfirmModal
         open={confirmOpen}
         title={confirmConfig.title}
@@ -353,71 +362,120 @@ export default function AdminBroadcast() {
       {notification && (
         <div className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base ${
           notification.type === 'success'
-            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            ? 'bg-[#d4af35]/15 text-[#d4af35] border border-[#d4af35]/30'
             : 'bg-red-500/20 text-red-300 border border-red-500/30'
         }`}>
           {notification.message}
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link href="/mgmt-portal-x7k9p2" className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110">
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">Broadcast Messages</h1>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">Send announcements to your users via Telegram.</p>
-            </div>
+      <div className="max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8">
+        {/* Breadcrumbs */}
+        <div className="flex gap-2 items-center text-sm mb-6">
+          <Link className="text-[#A0A0A0] hover:text-white transition-colors" href="/mgmt-portal-x7k9p2">
+            Dashboard
+          </Link>
+          <span className="text-[#555]">/</span>
+          <span className="text-white font-medium">Broadcasts</span>
+        </div>
+
+        {/* Page Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-white text-3xl font-bold leading-tight mb-2">New Broadcast</h1>
+            <p className="text-[#A0A0A0] text-base">Create and schedule announcements for your players.</p>
           </div>
-          <div className="hidden sm:flex flex-col items-end text-right text-xs text-slate-400">
-            <span className="font-semibold text-slate-200">Estimated recipients</span>
-            <span className="text-lg font-bold text-emerald-400">{estimatedRecipients.toLocaleString()}</span>
+          <div className="flex gap-3 items-center">
+            <div className="hidden sm:flex flex-col items-end text-right text-xs text-[#A0A0A0]">
+              <span className="font-semibold text-white">Estimated recipients</span>
+              <span className="text-lg font-bold text-[#d4af35]">{estimatedRecipients.toLocaleString()}</span>
+            </div>
+            <button
+              type="button"
+              className="px-4 py-2 bg-[#252525] hover:bg-[#333] border border-[#333] rounded-lg text-white text-sm font-semibold transition-colors"
+              onClick={fetchPreviousBroadcasts}
+            >
+              View Logs
+            </button>
           </div>
         </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 xl:gap-8">
-          {/* Compose Section */}
-          <div className="xl:col-span-2 space-y-6">
-            {/* Compose Card */}
-            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-white mb-6">Compose Message</h2>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+          {/* LEFT COLUMN: Compose Form */}
+          <div className="xl:col-span-7 flex flex-col gap-6">
+            <div className="bg-[#252525] p-6 rounded-xl border border-[#333333] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center gap-2 mb-6 border-b border-[#333333] pb-4">
+                <span className="text-[#d4af35] text-lg font-bold">✎</span>
+                <h3 className="text-lg font-bold text-white">Compose Message</h3>
+              </div>
               
               <div className="space-y-6">
                 {/* Title */}
                 <div>
-                  <label className="block text-slate-300 text-sm font-medium mb-2">Title</label>
+                  <label className="block text-[#A0A0A0] text-sm font-medium mb-2">Broadcast Title</label>
                   <input
                     type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Announcement title"
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                    placeholder="e.g. Weekend Mega Tournament!"
+                    className="w-full bg-[#1C1C1C] border border-[#333333] text-white px-3 sm:px-4 py-3 rounded-lg focus:outline-none focus:border-[#d4af35] focus:ring-1 focus:ring-[#d4af35] transition-colors text-sm"
                   />
                 </div>
 
-                {/* Message */}
-                <div>
-                  <label className="block text-slate-300 text-sm font-medium mb-2">Message</label>
-                  <textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Your broadcast message..."
-                    rows={5}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-3 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors resize-none text-sm"
-                  />
-                  <p className="text-xs text-slate-500 mt-2">{message.length} characters</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[#A0A0A0] text-sm font-medium">Target Audience</label>
+                    <div className="relative">
+                      <select
+                        className="bg-[#1C1C1C] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] block w-full p-3 appearance-none cursor-pointer"
+                        value={targetAll ? 'all' : 'filtered'}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          if (v === 'all') {
+                            setTargetAll(true)
+                            setSelectedUsers([])
+                          } else {
+                            setTargetAll(false)
+                          }
+                        }}
+                      >
+                        <option value="all">All Players</option>
+                        <option value="filtered">Use Filters / Selected Users</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#A0A0A0]">▾</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[#A0A0A0] text-sm font-medium">Schedule Delivery</label>
+                    <div className="flex items-center gap-3 bg-[#1C1C1C] border border-[#333333] rounded-lg p-2.5 px-4 h-[46px]">
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input className="sr-only peer" type="checkbox" value="" />
+                        <div className="relative w-9 h-5 bg-[#333333] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d4af35]"></div>
+                        <span className="ms-3 text-sm font-medium text-[#A0A0A0]">Send Later</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Body */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[#A0A0A0] text-sm font-medium">Message Content</label>
+                  <div className="relative">
+                    <textarea
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder="Type your announcement here..."
+                      rows={6}
+                      className="bg-[#1C1C1C] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] block w-full p-3 placeholder-[#555] transition-all resize-none"
+                    ></textarea>
+                    <div className="absolute bottom-2 right-2 text-xs text-[#555]">{Math.min(500, message.length)}/500</div>
+                  </div>
                 </div>
 
                 {/* Image Upload */}
                 <div>
-                  <label className="block text-slate-300 text-sm font-medium mb-2">Broadcast Image (optional)</label>
+                  <label className="block text-[#A0A0A0] text-sm font-medium mb-2">Broadcast Image (optional)</label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-3">
                       <input
@@ -444,25 +502,25 @@ export default function AdminBroadcast() {
                           setImageFile(file)
                           await handleImageUpload(file)
                         }}
-                        className="w-full text-sm text-slate-300 bg-slate-700/50 border border-slate-600 rounded-lg file:mr-3 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:bg-emerald-500 file:text-white hover:file:bg-emerald-600"
+                        className="w-full text-sm text-[#A0A0A0] bg-[#1C1C1C] border border-[#333333] rounded-lg file:mr-3 file:py-2 file:px-4 file:rounded-l-lg file:border-0 file:bg-[#d4af35] file:text-black hover:file:bg-[#bfa030]"
                       />
                       <div className="relative">
-                        <label className="block text-slate-300 text-xs font-medium mb-2">Or paste image URL</label>
+                        <label className="block text-[#A0A0A0] text-xs font-medium mb-2">Or paste image URL</label>
                         <input
                           type="url"
                           value={imageUrl}
                           onChange={(e) => setImageUrl(e.target.value)}
                           placeholder="https://example.com/image.jpg"
-                          className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                          className="w-full bg-[#1C1C1C] border border-[#333333] text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-[#d4af35] focus:ring-1 focus:ring-[#d4af35] transition-colors text-sm"
                         />
                       </div>
-                      <p className="text-xs text-slate-500">If you select an image, it will be uploaded and attached to the broadcast. Otherwise, the URL will be used directly.</p>
+                      <p className="text-xs text-[#A0A0A0]">If you select an image, it will be uploaded and attached to the broadcast. Otherwise, the URL will be used directly.</p>
                     </div>
-                    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 flex items-center justify-center min-h-[140px]">
+                    <div className="bg-[#1C1C1C] border border-[#333333] rounded-lg p-3 flex items-center justify-center min-h-[140px]">
                       {imageUrl ? (
                         <img src={imageUrl} alt="Broadcast preview" className="max-h-32 object-cover rounded" />
                       ) : (
-                        <span className="text-slate-500 text-sm">Image preview will appear here</span>
+                        <span className="text-[#A0A0A0] text-sm">Image preview will appear here</span>
                       )}
                     </div>
                     {imageUrl && (
@@ -471,7 +529,7 @@ export default function AdminBroadcast() {
                           setImageFile(null)
                           setImageUrl('')
                         }}
-                        className="sm:col-span-2 w-full bg-slate-700/50 text-slate-300 py-2 rounded-lg border border-slate-600 text-sm hover:bg-slate-700 transition-colors"
+                        className="sm:col-span-2 w-full bg-[#1C1C1C] text-[#A0A0A0] py-2 rounded-lg border border-[#333333] text-sm hover:bg-white/5 hover:text-white transition-colors"
                         type="button"
                       >
                         Remove image
@@ -479,34 +537,34 @@ export default function AdminBroadcast() {
                     )}
                   </div>
                   {imageUploading && (
-                    <p className="text-xs text-emerald-400 mt-2">Uploading image...</p>
+                    <p className="text-xs text-[#d4af35] mt-2">Uploading image...</p>
                   )}
                 </div>
 
                 {/* Filters Section */}
-                <div className="pt-6 border-t border-slate-700">
+                <div className="pt-6 border-t border-[#333333]">
                   <h3 className="text-base sm:text-lg font-semibold text-white mb-4">Target Audience</h3>
 
                   <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
-                    <span className="text-slate-500 mr-1">Quick segments:</span>
+                    <span className="text-[#A0A0A0] mr-1">Quick segments:</span>
                     <button
                       type="button"
                       onClick={() => applySegment('newcomers')}
-                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                      className="px-3 py-1 rounded-full border border-[#333333] bg-[#1C1C1C] text-white hover:border-[#d4af35]/60 hover:text-[#d4af35]"
                     >
                       Newcomers (7d)
                     </button>
                     <button
                       type="button"
                       onClick={() => applySegment('highRollers')}
-                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                      className="px-3 py-1 rounded-full border border-[#333333] bg-[#1C1C1C] text-white hover:border-[#d4af35]/60 hover:text-[#d4af35]"
                     >
                       High rollers
                     </button>
                     <button
                       type="button"
                       onClick={() => applySegment('dormant')}
-                      className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                      className="px-3 py-1 rounded-full border border-[#333333] bg-[#1C1C1C] text-white hover:border-[#d4af35]/60 hover:text-[#d4af35]"
                     >
                       Dormant users
                     </button>
@@ -514,14 +572,14 @@ export default function AdminBroadcast() {
 
                   <div className="space-y-3 sm:space-y-4">
                     {/* Direct User Search */}
-                    <div className="bg-slate-700/30 rounded-lg border border-slate-700 p-4 space-y-3">
+                    <div className="bg-[#1C1C1C] rounded-lg border border-[#333333] p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-slate-300 font-medium text-sm">Send to Specific Users</p>
-                          <p className="text-xs text-slate-500 mt-1">Search by username, phone, or Telegram ID</p>
+                          <p className="text-white font-medium text-sm">Send to Specific Users</p>
+                          <p className="text-xs text-[#A0A0A0] mt-1">Search by username, phone, or Telegram ID</p>
                         </div>
                         {selectedUsers.length > 0 && (
-                          <span className="px-2 py-1 text-xs rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          <span className="px-2 py-1 text-xs rounded-full bg-[#d4af35]/10 text-[#d4af35] border border-[#d4af35]/30">
                             {selectedUsers.length} selected
                           </span>
                         )}
@@ -532,15 +590,15 @@ export default function AdminBroadcast() {
                         value={searchTerm}
                         onChange={e => searchUsers(e.target.value)}
                         placeholder="Search users..."
-                        className="w-full bg-slate-800/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/50 text-sm"
+                        className="w-full bg-black/20 border border-[#333333] text-white px-3 py-2 rounded-lg focus:outline-none focus:border-[#d4af35] focus:ring-1 focus:ring-[#d4af35] text-sm"
                       />
 
                       {searchTerm && (
-                        <div className="bg-slate-800/50 border border-slate-700 rounded-lg max-h-52 overflow-y-auto divide-y divide-slate-700">
+                        <div className="bg-black/20 border border-[#333333] rounded-lg max-h-52 overflow-y-auto divide-y divide-[#333333]">
                           {isSearching ? (
-                            <div className="p-3 text-xs text-slate-400">Searching...</div>
+                            <div className="p-3 text-xs text-[#A0A0A0]">Searching...</div>
                           ) : userResults.length === 0 ? (
-                            <div className="p-3 text-xs text-slate-400">No users found</div>
+                            <div className="p-3 text-xs text-[#A0A0A0]">No users found</div>
                           ) : (
                             userResults.map((user: UserResult) => {
                               const isSelected = selectedUsers.some(u => u.id === user.id)
@@ -550,12 +608,12 @@ export default function AdminBroadcast() {
                                   onClick={() => toggleUserSelection(user)}
                                   type="button"
                                   className={`w-full text-left px-3 py-2 text-xs sm:text-sm flex items-center justify-between transition-colors ${
-                                    isSelected ? 'bg-emerald-500/10 text-emerald-300' : 'text-slate-200 hover:bg-slate-700/50'
+                                    isSelected ? 'bg-[#d4af35]/10 text-[#d4af35]' : 'text-white hover:bg-white/5'
                                   }`}
                                 >
                                   <div>
                                     <p className="font-medium">{user.username || 'Unnamed user'}</p>
-                                    <p className="text-[11px] text-slate-400">
+                                    <p className="text-[11px] text-[#A0A0A0]">
                                       TG: {user.telegram_id || 'n/a'} · Phone: {user.phone || 'n/a'} · Balance: {formatCurrency(user.balance || 0)}
                                     </p>
                                   </div>
@@ -570,11 +628,11 @@ export default function AdminBroadcast() {
                       )}
 
                       {selectedUsers.length > 0 && (
-                        <div className="pt-2 border-t border-slate-700 text-xs text-slate-300 space-y-1">
-                          <p className="text-slate-400">Selected recipients:</p>
+                        <div className="pt-2 border-t border-[#333333] text-xs text-white space-y-1">
+                          <p className="text-[#A0A0A0]">Selected recipients:</p>
                           <div className="flex flex-wrap gap-2">
                             {selectedUsers.map(user => (
-                              <span key={user.id} className="px-2 py-1 bg-slate-800 border border-slate-600 rounded-full">
+                              <span key={user.id} className="px-2 py-1 bg-black/20 border border-[#333333] rounded-full">
                                 {user.username || user.telegram_id || 'User'}
                               </span>
                             ))}
@@ -582,7 +640,7 @@ export default function AdminBroadcast() {
                           <button
                             onClick={() => setSelectedUsers([])}
                             type="button"
-                            className="mt-2 text-emerald-300 hover:text-emerald-200"
+                            className="mt-2 text-[#d4af35] hover:text-white"
                           >
                             Clear selection
                           </button>
@@ -591,15 +649,15 @@ export default function AdminBroadcast() {
                     </div>
 
                     {/* Target All Toggle */}
-                    <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-700/30 rounded-lg border border-slate-700">
+                    <div className="flex items-center justify-between p-3 sm:p-4 bg-[#1C1C1C] rounded-lg border border-[#333333]">
                       <div>
-                        <p className="text-slate-300 font-medium text-sm">Send to All Users</p>
-                        <p className="text-xs text-slate-500 mt-1">Include all users with Telegram connected</p>
+                        <p className="text-white font-medium text-sm">Send to All Users</p>
+                        <p className="text-xs text-[#A0A0A0] mt-1">Include all users with Telegram connected</p>
                       </div>
                       <button
                         onClick={() => setTargetAll(!targetAll)}
                         className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                          targetAll ? 'bg-emerald-600' : 'bg-slate-600'
+                          targetAll ? 'bg-[#d4af35]' : 'bg-[#333333]'
                         }`}
                       >
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -609,15 +667,15 @@ export default function AdminBroadcast() {
                     </div>
 
                     {/* Active Only */}
-                    <div className="flex items-center justify-between p-3 sm:p-4 bg-slate-700/30 rounded-lg border border-slate-700">
+                    <div className="flex items-center justify-between p-3 sm:p-4 bg-[#1C1C1C] rounded-lg border border-[#333333]">
                       <div>
-                        <p className="text-slate-300 font-medium text-sm">Active Users Only</p>
-                        <p className="text-xs text-slate-500 mt-1">Last active in the past 24 hours</p>
+                        <p className="text-white font-medium text-sm">Active Users Only</p>
+                        <p className="text-xs text-[#A0A0A0] mt-1">Last active in the past 24 hours</p>
                       </div>
                       <button
                         onClick={() => setActiveOnly(!activeOnly)}
                         className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                          activeOnly ? 'bg-emerald-600' : 'bg-slate-600'
+                          activeOnly ? 'bg-[#d4af35]' : 'bg-[#333333]'
                         }`}
                       >
                         <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
@@ -628,171 +686,135 @@ export default function AdminBroadcast() {
 
                     {/* Min Balance */}
                     <div>
-                      <label className="block text-slate-300 text-sm font-medium mb-2">Minimum Balance (ETB)</label>
+                      <label className="block text-[#A0A0A0] text-sm font-medium mb-2">Minimum Balance (ETB)</label>
                       <input
                         type="number"
                         value={minBalance}
                         onChange={(e) => setMinBalance(e.target.value)}
                         placeholder="Leave empty for no limit"
-                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                        className="w-full bg-[#1C1C1C] border border-[#333333] text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-[#d4af35] focus:ring-1 focus:ring-[#d4af35] transition-colors text-sm"
                       />
                     </div>
 
                     {/* Min Games */}
                     <div>
-                      <label className="block text-slate-300 text-sm font-medium mb-2">Minimum Games Played</label>
+                      <label className="block text-[#A0A0A0] text-sm font-medium mb-2">Minimum Games Played</label>
                       <input
                         type="number"
                         value={minGames}
                         onChange={(e) => setMinGames(e.target.value)}
                         placeholder="Leave empty for no limit"
-                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
+                        className="w-full bg-[#1C1C1C] border border-[#333333] text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-[#d4af35] focus:ring-1 focus:ring-[#d4af35] transition-colors text-sm"
                       />
                     </div>
                   </div>
-                </div>
 
-                {/* Send Button */}
-                <div className="pt-6 border-t border-slate-700">
-                  <button
-                    onClick={handleSend}
-                    disabled={isSending || !title || !message}
-                    className={`w-full py-2.5 sm:py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-sm sm:text-base ${
-                      isSending || !title || !message
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    }`}
-                  >
-                    {isSending ? (
-                      <>
-                        <span className="animate-spin">⏳</span>
-                        <span className="hidden sm:inline">Sending to {estimatedRecipients} users...</span>
-                        <span className="sm:hidden">Sending...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>📢</span>
-                        <span>Send Broadcast</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center justify-end gap-3 mt-4 pt-4 border-t border-[#333333]">
+                    <button
+                      className="px-6 py-2.5 rounded-lg text-sm font-bold text-[#A0A0A0] hover:text-white hover:bg-[#333] transition-all"
+                      type="button"
+                      onClick={() => {
+                        showNotification('success', 'Draft saved (local only)')
+                      }}
+                    >
+                      Save Draft
+                    </button>
+                    <button
+                      onClick={handleSend}
+                      disabled={isSending || imageUploading}
+                      className="px-6 py-2.5 bg-[#d4af35] hover:bg-[#bfa030] disabled:opacity-60 text-black rounded-lg text-sm font-bold shadow-lg shadow-[#d4af35]/20 transition-all flex items-center gap-2"
+                      type="button"
+                    >
+                      {isSending ? 'Sending...' : 'Send Broadcast'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Recipients Card */}
-            <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 backdrop-blur-md rounded-lg border border-emerald-500/30 p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-slate-400 text-xs sm:text-sm">Estimated Recipients</p>
-                <span className="text-xl sm:text-2xl">👥</span>
-              </div>
-              <p className="text-3xl sm:text-4xl font-bold text-emerald-400">{estimatedRecipients.toLocaleString()}</p>
-              <p className="text-xs text-emerald-300 mt-2">Users will receive via Telegram</p>
-            </div>
-
-            {/* Filter Summary */}
-            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6">
-              <h3 className="text-sm font-semibold text-white mb-4">Active Filters</h3>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">All Users:</span>
-                  <span className={targetAll ? 'text-emerald-400' : 'text-slate-500'}>
-                    {targetAll ? '✓ Yes' : '✗ No'}
-                  </span>
+          {/* RIGHT COLUMN: History */}
+          <div className="xl:col-span-5 flex flex-col gap-6 min-h-0">
+            <div className="bg-[#252525] rounded-xl border border-[#333333] shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col min-h-0">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#333333]">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/50">⟲</span>
+                  <h3 className="text-lg font-bold text-white">Recent Activity</h3>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Active Only:</span>
-                  <span className={activeOnly ? 'text-emerald-400' : 'text-slate-500'}>
-                    {activeOnly ? '✓ Yes' : '✗ No'}
-                  </span>
-                </div>
-                {minBalance && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Min Balance:</span>
-                    <span className="text-emerald-400">{minBalance} ETB</span>
-                  </div>
-                )}
-                {minGames && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Min Games:</span>
-                    <span className="text-emerald-400">{minGames}</span>
-                  </div>
-                )}
-                {newUsersSinceDays && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">New Users:</span>
-                    <span className="text-emerald-400">Last {newUsersSinceDays} days</span>
-                  </div>
-                )}
-                {dormantDays && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Dormant:</span>
-                    <span className="text-emerald-400">≥ {dormantDays} days</span>
-                  </div>
-                )}
-                {selectedUsers.length > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Manually selected:</span>
-                    <span className="text-emerald-400">{selectedUsers.length}</span>
-                  </div>
+                <button className="text-xs font-bold text-[#d4af35] hover:text-white transition-colors" type="button">
+                  View All
+                </button>
+              </div>
+
+              <div className="px-6 pb-6 flex flex-col gap-4 overflow-y-auto min-h-0 max-h-[520px] xl:max-h-[calc(100vh-300px)] pr-2">
+                {loading ? (
+                  <div className="text-sm text-[#A0A0A0] py-10 text-center">Loading…</div>
+                ) : previousBroadcasts.length === 0 ? (
+                  <div className="text-sm text-[#A0A0A0] py-10 text-center">No broadcasts yet.</div>
+                ) : (
+                  previousBroadcasts.map((b) => (
+                    <div
+                      key={b.id}
+                      className="group flex flex-col bg-[#1C1C1C] hover:bg-[#222] border border-[#333333] hover:border-[#444] rounded-lg p-4 transition-all"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        {(() => {
+                          const total = Number(b?.recipients || 0)
+                          const sent = Number(b?.sent || 0)
+                          const failed = Number(b?.failed || 0)
+                          const status = total > 0 && failed >= total ? 'failed' : failed > 0 ? 'partial' : 'sent'
+                          const badgeClass =
+                            status === 'failed'
+                              ? 'bg-red-500/10 text-red-300 border border-red-500/30'
+                              : status === 'partial'
+                                ? 'bg-[#F39C12]/10 text-[#F39C12] border border-[#F39C12]/30'
+                                : 'bg-[#0bda1d]/10 text-[#0bda1d] border border-[#0bda1d]/30'
+                          const dotClass = status === 'failed' ? 'bg-red-400' : status === 'partial' ? 'bg-[#F39C12]' : 'bg-[#0bda1d]'
+                          const label = status === 'failed' ? 'Failed' : status === 'partial' ? 'Partial' : 'Sent'
+
+                          const createdAt = b?.created_at ? new Date(b.created_at).getTime() : NaN
+                          const ageMin = Number.isFinite(createdAt) ? Math.floor((Date.now() - createdAt) / 60000) : null
+                          const timeText =
+                            ageMin == null
+                              ? '—'
+                              : ageMin < 1
+                                ? 'Just now'
+                                : ageMin < 60
+                                  ? `${ageMin}m ago`
+                                  : `${Math.floor(ageMin / 60)}h ago`
+
+                          return (
+                            <>
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass}`}>
+                                <span className={`size-1.5 rounded-full ${dotClass}`} />
+                                {label}
+                              </span>
+                              <span className="text-xs text-[#666] whitespace-nowrap" title={b.created_at ? new Date(b.created_at).toLocaleString() : '—'}>
+                                {timeText}
+                              </span>
+                            </>
+                          )
+                        })()}
+                      </div>
+                      <h4 className="text-white font-semibold text-sm mb-1 line-clamp-1">{b.title || 'Untitled'}</h4>
+                      <p className="text-[#A0A0A0] text-xs mb-3 line-clamp-2">{String(b.message || '')}</p>
+                      <div className="flex items-center justify-between text-xs text-[#666] border-t border-[#333333] pt-3 mt-1">
+                        <div className="flex items-center gap-4">
+                          <span className="flex items-center gap-1">Audience: {b?.filters?.targetUserIds ? 'Selected' : 'All'}</span>
+                          <span className="flex items-center gap-1">Sent: {Number(b?.sent || 0)}/{Number(b?.recipients || 0)}</span>
+                        </div>
+                        <button className="opacity-0 group-hover:opacity-100 transition-opacity text-[#A0A0A0] hover:text-white" type="button">
+                          …
+                        </button>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Previous Broadcasts */}
-        <div className="mt-12">
-          <h2 className="text-xl sm:text-2xl font-bold text-white mb-6">Recent Broadcasts</h2>
-          <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
-            {loading ? (
-              <div className="p-8 sm:p-12 text-center text-slate-400">
-                <div className="w-8 h-8 border-4 border-slate-600 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
-                Loading broadcasts...
-              </div>
-            ) : previousBroadcasts.length === 0 ? (
-              <div className="p-8 sm:p-12 text-center text-slate-400">
-                No broadcasts sent yet
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-700/50 border-b border-slate-700">
-                    <tr>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Title</th>
-                      <th className="hidden sm:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Recipients</th>
-                      <th className="hidden md:table-cell px-6 py-4 text-left text-sm font-semibold text-slate-300">Status</th>
-                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs sm:text-sm font-semibold text-slate-300">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/50">
-                    {previousBroadcasts.map((broadcast: any) => (
-                      <tr key={broadcast.id} className="hover:bg-slate-700/30 transition-colors">
-                        <td className="px-3 sm:px-6 py-3 sm:py-4">
-                          <p className="font-medium text-white text-xs sm:text-sm">{broadcast.title}</p>
-                          <p className="text-xs text-slate-500 mt-1 line-clamp-1 hidden sm:block">{broadcast.message}</p>
-                        </td>
-                        <td className="hidden sm:table-cell px-6 py-4 text-slate-300 text-sm">{broadcast.recipients ?? 0}</td>
-                        <td className="hidden md:table-cell px-6 py-4">
-                          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                            ✓ Sent
-                          </span>
-                        </td>
-                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-slate-400 text-xs sm:text-sm">
-                          {new Date(broadcast.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       </div>
-    </div>
+    </AdminShell>
   )
 }

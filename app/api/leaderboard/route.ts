@@ -1,8 +1,17 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 
 export async function GET(request: Request) {
   try {
+    const enabled = Boolean(await getConfig('global_leaderboard'))
+    if (!enabled) {
+      return NextResponse.json(
+        { error: 'Leaderboard disabled' },
+        { status: 404 }
+      )
+    }
+
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '10')
     const period = searchParams.get('period') || 'weekly'
@@ -63,6 +72,14 @@ export async function GET(request: Request) {
 // POST endpoint for admin operations
 export async function POST(request: Request) {
   try {
+    const enabled = Boolean(await getConfig('global_leaderboard'))
+    if (!enabled) {
+      return NextResponse.json(
+        { error: 'Leaderboard disabled' },
+        { status: 404 }
+      )
+    }
+
     const { action, period, adminKey } = await request.json()
 
     // Simple admin key check (implement proper auth in production)

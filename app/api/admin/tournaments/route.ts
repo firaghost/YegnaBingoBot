@@ -169,6 +169,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data })
     }
 
+    if (action === 'delete') {
+      const { id } = body || {}
+      if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+
+      const { error } = await supabase
+        .from('tournaments')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      await auditLog(req, admin.id, 'tournament_delete', { id })
+      return NextResponse.json({ success: true })
+    }
+
     if (action === 'preview_finalize') {
       const { id } = body || {}
       if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })

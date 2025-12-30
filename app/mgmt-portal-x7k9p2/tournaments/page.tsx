@@ -1,9 +1,23 @@
 "use client"
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import { formatCurrency } from '@/lib/utils'
+import { AdminShell } from '@/app/mgmt-portal-x7k9p2/components/AdminShell'
+import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
+import {
+  Bell,
+  CalendarClock,
+  ChevronDown,
+  Crown,
+  Edit3,
+  Filter,
+  MoreVertical,
+  Plus,
+  Search,
+  SortAsc,
+  Trash2,
+} from 'lucide-react'
 
 interface AdminTournamentRow {
   id: string
@@ -37,6 +51,8 @@ export default function AdminTournamentsPage() {
   const { admin, loading: adminLoading } = useAdminAuth()
   const [loading, setLoading] = useState(false)
   const [tournaments, setTournaments] = useState<AdminTournamentRow[]>([])
+  const [tab, setTab] = useState<'all' | 'live' | 'upcoming' | 'ended'>('all')
+  const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<AdminTournamentRow | null>(null)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -46,6 +62,16 @@ export default function AdminTournamentsPage() {
   const [extraAward, setExtraAward] = useState<{ userId: string; metric: string; rank: number; amount: string } | null>(null)
   const [awardingExtra, setAwardingExtra] = useState(false)
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    cancelLabel?: string
+    variant?: 'default' | 'destructive'
+    onConfirm?: () => void
+  }>({ title: '', message: '' })
 
   useEffect(() => {
     if (adminLoading) return
@@ -57,6 +83,67 @@ export default function AdminTournamentsPage() {
     setNotification({ type, message })
     setTimeout(() => setNotification(null), 4000)
   }
+
+  const handleDelete = (row: AdminTournamentRow) => {
+    if (!admin) return
+    setConfirmConfig({
+      title: 'Delete tournament',
+      message: `Delete "${row.settings?.display_name || row.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+      onConfirm: () => {
+        void (async () => {
+          try {
+            const res = await fetch('/api/admin/tournaments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-admin-id': admin.id },
+              body: JSON.stringify({ action: 'delete', id: row.id }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Failed to delete tournament')
+            showNotification('success', 'Tournament deleted')
+            fetchTournaments()
+          } catch (e: any) {
+            console.error('Error deleting tournament:', e)
+            showNotification('error', e.message || 'Failed to delete tournament')
+          }
+        })()
+      },
+    })
+    setConfirmOpen(true)
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    let list = tournaments
+    if (tab !== 'all') list = list.filter((t) => t.status === tab)
+    if (q) {
+      list = list.filter((t) => {
+        const name = String(t.settings?.display_name || t.name || '').toLowerCase()
+        const type = String(t.type || '').toLowerCase()
+        return name.includes(q) || type.includes(q)
+      })
+    }
+    return list
+  }, [tournaments, tab, search])
+
+  const stats = useMemo(() => {
+    const active = tournaments.filter((t) => t.status === 'live' && t.is_enabled).length
+    const upcoming = tournaments.filter((t) => t.status === 'upcoming' && t.is_enabled).length
+    const playersJoined = tournaments.reduce((sum, t) => sum + Number(t.metrics_summary?.participants || 0), 0)
+    const totalPrize = tournaments.reduce((sum, t) => {
+      const cfg = (t.prize_config || {}) as any
+      const deposits = Array.isArray(cfg?.deposits?.positions)
+        ? cfg.deposits.positions.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)
+        : 0
+      const plays = Array.isArray(cfg?.plays?.positions)
+        ? cfg.plays.positions.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)
+        : 0
+      return sum + deposits + plays
+    }, 0)
+    return { active, upcoming, playersJoined, totalPrize }
+  }, [tournaments])
 
   const fetchTournaments = async () => {
     if (!admin) return
@@ -268,7 +355,7 @@ export default function AdminTournamentsPage() {
 
   if (adminLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-[#1C1C1C] flex items-center justify-center text-[#A0A0A0]">
         Loading admin session…
       </div>
     )
@@ -276,182 +363,368 @@ export default function AdminTournamentsPage() {
 
   if (!admin) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8 text-center">
+      <div className="min-h-screen bg-[#1C1C1C] flex items-center justify-center">
+        <div className="bg-[#252525] border border-[#333333] rounded-xl p-8 text-center">
           <h1 className="text-2xl font-bold text-white mb-2">Admin Login Required</h1>
-          <p className="text-slate-400">Please sign in to manage tournaments.</p>
+          <p className="text-[#A0A0A0]">Please sign in to manage tournaments.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/mgmt-portal-x7k9p2" className="text-slate-400 hover:text-white transition-colors">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Tournament Management</h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Configure tournaments, start/end events, and automate prize payouts.
-              </p>
+    <AdminShell title="Tournaments">
+      <div className="max-w-7xl mx-auto flex flex-col gap-8">
+        <AdminConfirmModal
+          open={confirmOpen}
+          title={confirmConfig.title}
+          message={confirmConfig.message}
+          confirmLabel={confirmConfig.confirmLabel}
+          cancelLabel={confirmConfig.cancelLabel}
+          variant={confirmConfig.variant}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            confirmConfig.onConfirm?.()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+
+        {/* Notification */}
+        {notification && (
+          <div
+            className={
+              'fixed top-4 right-4 z-50 rounded-lg border px-5 py-3 text-sm font-semibold ' +
+              (notification.type === 'success'
+                ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/30'
+                : 'bg-red-500/15 text-red-200 border-red-500/30')
+            }
+          >
+            {notification.message}
+          </div>
+        )}
+
+        {/* Header */}
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-bold text-white tracking-tight">Tournaments Management</h1>
+            <p className="text-sm text-[#A0A0A0]">Create, configure and monitor competitive events</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="relative hidden sm:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A0A0A0]" />
+              <input
+                className="h-10 w-64 rounded-lg border border-[#333333] bg-[#252525] pl-10 pr-4 text-sm text-white placeholder-[#A0A0A0] focus:border-[#D4AF37] focus:outline-none focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                placeholder="Search tournaments..."
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className="relative rounded-full bg-[#252525] p-2 text-[#A0A0A0] hover:text-white border border-[#333333] hover:border-white/20 transition-all"
+              title="Refresh"
+              onClick={fetchTournaments}
+            >
+              <Bell className="w-5 h-5" />
+              <span className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-red-500 border-2 border-[#1C1C1C]" />
+            </button>
+            <button
+              type="button"
+              className="cursor-pointer flex items-center gap-2 rounded-lg bg-[#D4AF37] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#C5A028] transition-colors shadow-lg shadow-[#D4AF37]/20"
+              onClick={() => handleEdit(undefined)}
+            >
+              <Plus className="w-4 h-4" />
+              Create Tournament
+            </button>
+          </div>
+        </header>
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-xl border border-[#333333] bg-[#252525] p-5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[#A0A0A0] uppercase tracking-wider">Active Events</p>
+              <Crown className="w-5 h-5 text-[#D4AF37]" />
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white">{stats.active}</span>
+              <span className="text-sm font-medium text-green-500">+0 today</span>
             </div>
           </div>
-          <button
-            onClick={fetchTournaments}
-            className="bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-300 px-3 sm:px-4 py-2 rounded-lg font-semibold transition-colors border border-cyan-500/40 text-xs sm:text-sm flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            Refresh
-          </button>
-        </div>
-      </header>
-
-      {/* Notification */}
-      {notification && (
-        <div
-          className={`fixed top-4 right-4 px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top ${
-            notification.type === 'success'
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-          }`}
-        >
-          {notification.message}
-        </div>
-      )}
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        {/* Actions Row */}
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-start sm:items-center">
-          <button
-            onClick={() => handleEdit(undefined)}
-            className="bg-emerald-600/80 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg"
-          >
-            <span className="text-lg leading-none">+</span>
-            <span>New Tournament</span>
-          </button>
-          <p className="text-xs text-slate-400 max-w-xl">
-            Only <span className="font-semibold text-emerald-300">Live</span> and <span className="font-semibold text-slate-100">enabled</span> tournaments
-            are visible in the player lobby. Use finalize to automatically credit prizes to winners.
-          </p>
+          <div className="rounded-xl border border-[#333333] bg-[#252525] p-5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[#A0A0A0] uppercase tracking-wider">Total Prize Pool</p>
+              <Crown className="w-5 h-5 text-[#D4AF37]" />
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white">{formatCurrency(stats.totalPrize)} ETB</span>
+              <span className="text-sm font-medium text-green-500">+0%</span>
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#333333] bg-[#252525] p-5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[#A0A0A0] uppercase tracking-wider">Players Joined</p>
+              <Crown className="w-5 h-5 text-[#D4AF37]" />
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white">{stats.playersJoined.toLocaleString()}</span>
+              <span className="text-sm font-medium text-[#A0A0A0]">Across all events</span>
+            </div>
+          </div>
+          <div className="rounded-xl border border-[#333333] bg-[#252525] p-5 shadow-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-[#A0A0A0] uppercase tracking-wider">Upcoming</p>
+              <CalendarClock className="w-5 h-5 text-[#D4AF37]" />
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-white">{stats.upcoming}</span>
+              <span className="text-sm font-medium text-[#A0A0A0]">Next 7 days</span>
+            </div>
+          </div>
         </div>
 
-        {/* Tournaments list */}
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/60 p-3 sm:p-4 space-y-3">
+        {/* Filters & Grid */}
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2 p-1 bg-[#252525] border border-[#333333] rounded-lg w-fit">
+              <button
+                type="button"
+                onClick={() => setTab('all')}
+                className={
+                  'px-4 py-1.5 rounded text-sm font-medium transition-colors ' +
+                  (tab === 'all' ? 'bg-[#D4AF37] text-black shadow-sm' : 'text-[#A0A0A0] hover:text-white')
+                }
+              >
+                All Events
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('live')}
+                className={
+                  'px-4 py-1.5 rounded text-sm font-medium transition-colors ' +
+                  (tab === 'live' ? 'bg-[#D4AF37] text-black shadow-sm' : 'text-[#A0A0A0] hover:text-white')
+                }
+              >
+                Live
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('upcoming')}
+                className={
+                  'px-4 py-1.5 rounded text-sm font-medium transition-colors ' +
+                  (tab === 'upcoming' ? 'bg-[#D4AF37] text-black shadow-sm' : 'text-[#A0A0A0] hover:text-white')
+                }
+              >
+                Upcoming
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('ended')}
+                className={
+                  'px-4 py-1.5 rounded text-sm font-medium transition-colors ' +
+                  (tab === 'ended' ? 'bg-[#D4AF37] text-black shadow-sm' : 'text-[#A0A0A0] hover:text-white')
+                }
+              >
+                Ended
+              </button>
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[#A0A0A0] bg-[#252525] border border-[#333333] rounded-lg hover:text-white hover:border-white/30 transition-colors">
+                <Filter className="w-4 h-4" />
+                Filter
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              <button className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-[#A0A0A0] bg-[#252525] border border-[#333333] rounded-lg hover:text-white hover:border-white/30 transition-colors">
+                <SortAsc className="w-4 h-4" />
+                Sort
+                <ChevronDown className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
           {loading ? (
-            <div className="py-10 text-center text-slate-400 text-sm">Loading tournaments…</div>
-          ) : tournaments.length === 0 ? (
-            <div className="py-10 text-center text-slate-400 text-sm">No tournaments configured yet.</div>
+            <div className="rounded-xl border border-[#333333] bg-[#252525] p-10 text-center text-[#A0A0A0]">Loading tournaments...</div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-xl border border-[#333333] bg-[#252525] p-10 text-center text-[#A0A0A0]">No tournaments found.</div>
           ) : (
-            tournaments.map((t) => {
-              const metrics = t.metrics_summary || { total_deposits: 0, total_plays: 0, participants: 0 }
-              const isLive = t.status === 'live' && t.is_enabled
-              const isUpcoming = t.status === 'upcoming'
-              const isEnded = t.status === 'ended'
-              return (
-                <div
-                  key={t.id}
-                  className={`rounded-lg border px-3 py-3 sm:px-4 sm:py-4 flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-start sm:items-center ${
-                    isLive
-                      ? 'border-emerald-500/40 bg-emerald-900/10'
-                      : isUpcoming
-                      ? 'border-amber-500/30 bg-amber-900/5'
-                      : isEnded
-                      ? 'border-slate-600/40 bg-slate-900/40'
-                      : 'border-slate-700/50 bg-slate-900/40'
-                  }`}
-                >
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="font-semibold text-sm sm:text-base text-white truncate max-w-xs sm:max-w-md">
-                        {t.settings?.display_name || t.name}
-                      </h2>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-slate-600/60 text-slate-200 uppercase tracking-[0.12em]">
-                        {t.type}
-                      </span>
-                      {isLive && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                          Live
-                        </span>
-                      )}
-                      {isUpcoming && !isLive && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/40">
-                          Upcoming
-                        </span>
-                      )}
-                      {isEnded && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-700/40 text-slate-200 border border-slate-500/40">
-                          Ended
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-400 flex flex-wrap gap-2">
-                      <span>
-                        Start: {new Date(t.start_at).toLocaleString()}
-                      </span>
-                      <span>•</span>
-                      <span>
-                        End: {new Date(t.end_at).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-3 text-[11px] text-slate-300">
-                      <span>Participants: {metrics.participants}</span>
-                      <span>|</span>
-                      <span>Total plays: {metrics.total_plays}</span>
-                      <span>|</span>
-                      <span>Total deposits: {formatCurrency(metrics.total_deposits)}</span>
-                    </div>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filtered.map((t) => {
+                const isLive = t.status === 'live' && t.is_enabled
+                const isUpcoming = t.status === 'upcoming'
+                const isEnded = t.status === 'ended' || t.status === 'cancelled'
+                const displayName = t.settings?.display_name || t.name
 
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
-                    <button
-                      onClick={() => handleEdit(t)}
-                      className="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleToggleLive(t, !isLive)}
-                      className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border ${
-                        isLive
-                          ? 'bg-slate-800 text-slate-200 border-slate-600 hover:bg-slate-700'
-                          : 'bg-emerald-600/80 text-white border-emerald-500/80 hover:bg-emerald-700'
-                      }`}
-                    >
-                      {isLive ? 'End Tournament' : 'Set Live'}
-                    </button>
-                    <button
-                      onClick={() => handlePreviewFinalize(t)}
-                      className="px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-cyan-600/80 text-white border border-cyan-500/80 hover:bg-cyan-700"
-                    >
-                      Preview Winners
-                    </button>
+                const startMs = new Date(t.start_at).getTime()
+                const endMs = new Date(t.end_at).getTime()
+                const durationMs = Math.max(1, endMs - startMs)
+                const remainingMs = Math.max(0, endMs - Date.now())
+                const remHours = Math.floor(remainingMs / 3600000)
+                const remMins = Math.floor((remainingMs % 3600000) / 60000)
+                const remSecs = Math.floor((remainingMs % 60000) / 1000)
+                const remainingText = `${String(remHours).padStart(2, '0')}h ${String(remMins).padStart(2, '0')}m ${String(remSecs).padStart(2, '0')}s`
+
+                const startsInMs = Math.max(0, startMs - Date.now())
+                const startsDays = Math.ceil(startsInMs / (24 * 3600000))
+
+                const prizeConfig = (t.prize_config || {}) as any
+                const prizePool =
+                  (Array.isArray(prizeConfig?.deposits?.positions)
+                    ? prizeConfig.deposits.positions.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)
+                    : 0) +
+                  (Array.isArray(prizeConfig?.plays?.positions)
+                    ? prizeConfig.plays.positions.reduce((s: number, p: any) => s + Number(p.amount || 0), 0)
+                    : 0)
+
+                const elapsedMs = Math.min(durationMs, Math.max(0, Date.now() - startMs))
+                const progressPct = Math.min(100, Math.max(0, (elapsedMs / durationMs) * 100))
+
+                return (
+                  <div
+                    key={t.id}
+                    className={
+                      'group relative flex flex-col overflow-hidden rounded-xl border border-[#333333] bg-[#252525] shadow-xl transition-colors duration-300 ' +
+                      (isLive ? 'hover:border-[#D4AF37]/50' : isUpcoming ? 'hover:border-white/30' : 'opacity-75 hover:opacity-100')
+                    }
+                  >
+                    <div className={'h-32 w-full bg-cover bg-center relative ' + (isEnded ? 'grayscale' : '')}>
+                      <div
+                        className={
+                          'absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 backdrop-blur-md border ' +
+                          (isLive ? 'border-green-500/30' : isUpcoming ? 'border-blue-500/30' : 'border-white/10')
+                        }
+                      >
+                        {isLive ? (
+                          <>
+                            <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                            <span className="text-xs font-bold text-green-400 uppercase tracking-wider">Live</span>
+                          </>
+                        ) : isUpcoming ? (
+                          <>
+                            <CalendarClock className="w-4 h-4 text-blue-400" />
+                            <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Upcoming</span>
+                          </>
+                        ) : (
+                          <span className="text-xs font-bold text-[#A0A0A0] uppercase tracking-wider">Ended</span>
+                        )}
+                      </div>
+
+                      <div className="absolute bottom-3 left-4">
+                        <div className="flex items-center gap-2 rounded bg-black/50 px-2 py-1 backdrop-blur-md">
+                          <Crown className="w-4 h-4 text-[#D4AF37]" />
+                          <span className="text-xs font-medium text-white">{t.type}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4 p-5 pt-2">
+                      <div className="flex justify-between items-start">
+                        <h3 className={
+                          'text-lg font-bold transition-colors ' +
+                          (isEnded ? 'text-[#A0A0A0] group-hover:text-white' : 'text-white group-hover:text-[#D4AF37]')
+                        }>
+                          {displayName}
+                        </h3>
+                        <button type="button" className="text-[#A0A0A0] hover:text-white" title="More">
+                          <MoreVertical className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs text-[#A0A0A0] uppercase tracking-wider font-semibold">Prize Pool</p>
+                        <p className={'text-2xl font-bold ' + (isUpcoming ? 'text-white' : isEnded ? 'text-[#A0A0A0]' : 'text-[#D4AF37]')}>
+                          {formatCurrency(prizePool)} ETB
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col gap-2 rounded-lg bg-black/20 p-3 border border-white/5">
+                        {isLive ? (
+                          <>
+                            <div className="flex justify-between text-xs text-[#A0A0A0]">
+                              <span>Time Remaining</span>
+                              <span className="font-mono text-white">{remainingText}</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-white/10">
+                              <div
+                                className="h-1.5 rounded-full bg-[#D4AF37]"
+                                style={{ width: `${Math.max(1, Math.min(100, progressPct))}%` }}
+                              />
+                            </div>
+                          </>
+                        ) : isUpcoming ? (
+                          <>
+                            <div className="flex justify-between text-xs text-[#A0A0A0]">
+                              <span>Starts In</span>
+                              <span className="font-mono text-white">{startsDays <= 1 ? 'Today' : `${startsDays} Days`}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-[#A0A0A0]">
+                              <span>Date</span>
+                              <span className="text-white">{new Date(t.start_at).toLocaleString()}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex justify-between text-xs text-[#A0A0A0]">
+                              <span>Winner</span>
+                              <span className="font-bold text-[#D4AF37]">{t.winners?.[0]?.user_id ? `#${String(t.winners[0].user_id).slice(0, 6)}` : '—'}</span>
+                            </div>
+                            <div className="flex justify-between text-xs text-[#A0A0A0]">
+                              <span>Ended</span>
+                              <span className="text-[#A0A0A0]">{new Date(t.end_at).toLocaleString()}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        {!isEnded ? (
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(t)}
+                            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-white/5 py-2 text-sm font-medium text-white hover:bg-white/10 transition-colors"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Edit
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewFinalize(t)}
+                            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-white/5 py-2 text-sm font-medium text-[#A0A0A0] hover:bg-white/10 hover:text-white transition-colors"
+                          >
+                            View Results
+                          </button>
+                        )}
+
+                        {!isEnded && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(t)}
+                            className="flex items-center justify-center rounded-lg bg-white/5 p-2 text-white hover:bg-red-500/20 hover:text-red-500 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )
-            })
+                )
+              })}
+            </div>
           )}
         </div>
 
         {/* Edit / Create Modal */}
         {selected && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center px-4 py-8">
-            <div className="bg-slate-900 rounded-2xl border border-slate-700/70 max-w-3xl w-full max-h-full overflow-y-auto p-5 sm:p-6 space-y-4">
+            <div className="bg-[#252525] rounded-2xl border border-[#333333] max-w-3xl w-full max-h-full overflow-y-auto p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div>
                   <h2 className="text-lg sm:text-xl font-bold text-white">
                     {creating ? 'Create Tournament' : 'Edit Tournament'}
                   </h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-[#A0A0A0] mt-1">
                     Configure schedule, prizes, and eligibility. Players only see Live + enabled tournaments.
                   </p>
                 </div>
@@ -460,7 +733,7 @@ export default function AdminTournamentsPage() {
                     setSelected(null)
                     setCreating(false)
                   }}
-                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+                  className="w-8 h-8 rounded-lg bg-[#1C1C1C] hover:bg-white/10 flex items-center justify-center text-[#A0A0A0] hover:text-white border border-[#333333]"
                 >
                   <span className="text-lg">×</span>
                 </button>
@@ -468,16 +741,16 @@ export default function AdminTournamentsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Name</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Tournament Name</label>
                   <input
                     type="text"
                     value={selected.name}
                     onChange={(e) => setSelected({ ...(selected as any), name: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/70"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#A0A0A0] focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Display Name (Lobby)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Display Name (Lobby)</label>
                   <input
                     type="text"
                     value={selected.settings?.display_name || ''}
@@ -487,15 +760,15 @@ export default function AdminTournamentsPage() {
                         settings: { ...(selected.settings || {}), display_name: e.target.value },
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/70"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#A0A0A0] focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Type</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Tournament Type</label>
                   <select
                     value={selected.type}
                     onChange={(e) => setSelected({ ...(selected as any), type: e.target.value })}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                   >
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
@@ -503,7 +776,7 @@ export default function AdminTournamentsPage() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Prize Copy (Lobby)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Prize Copy (Lobby)</label>
                   <input
                     type="text"
                     value={selected.settings?.prize_label || ''}
@@ -513,12 +786,12 @@ export default function AdminTournamentsPage() {
                         settings: { ...(selected.settings || {}), prize_label: e.target.value },
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/70"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#A0A0A0] focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                     placeholder="e.g. Top depositor 500 ETB, Most played 300 ETB"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Eligibility Copy (Lobby)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Eligibility Copy (Lobby)</label>
                   <input
                     type="text"
                     value={selected.settings?.eligibility_label || ''}
@@ -528,12 +801,12 @@ export default function AdminTournamentsPage() {
                         settings: { ...(selected.settings || {}), eligibility_label: e.target.value },
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/70"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white placeholder-[#A0A0A0] focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                     placeholder="e.g. Deposit 10 ETB & play 5 games to qualify"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Start At</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Start Date & Time</label>
                   <input
                     type="datetime-local"
                     value={selected.start_at.slice(0, 16)}
@@ -543,11 +816,11 @@ export default function AdminTournamentsPage() {
                         start_at: new Date(e.target.value).toISOString(),
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] [color-scheme:dark]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">End At</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">End Date & Time</label>
                   <input
                     type="datetime-local"
                     value={selected.end_at.slice(0, 16)}
@@ -557,25 +830,25 @@ export default function AdminTournamentsPage() {
                         end_at: new Date(e.target.value).toISOString(),
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] [color-scheme:dark]"
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Enabled</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Enable Tournament</label>
                   <button
                     type="button"
                     onClick={() => setSelected({ ...(selected as any), is_enabled: !selected.is_enabled })}
                     className={`w-full h-9 rounded-lg text-xs font-semibold border flex items-center justify-center gap-1 ${
                       selected.is_enabled
-                        ? 'bg-emerald-600/80 border-emerald-500/80 text-white'
-                        : 'bg-slate-800 border-slate-600 text-slate-300'
+                        ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
+                        : 'bg-[#1C1C1C] border-[#333333] text-[#A0A0A0]'
                     }`}
                   >
                     {selected.is_enabled ? 'Enabled' : 'Disabled'}
                   </button>
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-slate-300 text-xs font-medium">Prize Mode</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold">Prize Mode</label>
                   <select
                     value={selected.prize_mode}
                     onChange={(e) =>
@@ -584,10 +857,11 @@ export default function AdminTournamentsPage() {
                         prize_mode: e.target.value,
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                   >
                     <option value="fixed">Fixed Amounts</option>
                     <option value="percentage">% of Deposits</option>
+                    <option value="pool">Shared Pool</option>
                   </select>
                 </div>
               </div>
@@ -595,82 +869,115 @@ export default function AdminTournamentsPage() {
               {/* Simple prize + eligibility config (top1 only for now) */}
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 text-xs sm:text-sm">
                 <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-1">Top Depositor Prize (Rank 1)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold mb-1">Top Depositor Prize (Rank 1)</label>
                   <input
                     type="number"
                     value={selected.prize_config?.deposits?.positions?.[0]?.amount || ''}
                     onChange={(e) => {
-                      const amt = Number(e.target.value || 0)
-                      const pc = { ...(selected.prize_config || {}) }
-                      const dep = pc.deposits || { positions: [{ rank: 1, amount: 0 }] }
-                      if (!Array.isArray(dep.positions) || dep.positions.length === 0) {
-                        dep.positions = [{ rank: 1, amount: amt }]
-                      } else {
-                        dep.positions[0] = { rank: 1, amount: amt }
-                      }
+                      const amount = Number(e.target.value || 0)
+                      const pc = { ...(selected.prize_config || {}) } as any
+                      const dep = { ...(pc.deposits || {}) }
+                      const positions = Array.isArray(dep.positions) ? dep.positions.slice() : []
+                      positions[0] = { rank: 1, amount }
+                      dep.positions = positions
                       pc.deposits = dep
                       setSelected({ ...(selected as any), prize_config: pc })
                     }}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
+                    placeholder="500"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-1">Most Played Prize (Rank 1)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold mb-1">Most Played Prize (Rank 1)</label>
                   <input
                     type="number"
                     value={selected.prize_config?.plays?.positions?.[0]?.amount || ''}
                     onChange={(e) => {
-                      const amt = Number(e.target.value || 0)
-                      const pc = { ...(selected.prize_config || {}) }
-                      const plays = pc.plays || { positions: [{ rank: 1, amount: 0 }] }
-                      if (!Array.isArray(plays.positions) || plays.positions.length === 0) {
-                        plays.positions = [{ rank: 1, amount: amt }]
-                      } else {
-                        plays.positions[0] = { rank: 1, amount: amt }
-                      }
-                      pc.plays = plays
+                      const amount = Number(e.target.value || 0)
+                      const pc = { ...(selected.prize_config || {}) } as any
+                      const pl = { ...(pc.plays || {}) }
+                      const positions = Array.isArray(pl.positions) ? pl.positions.slice() : []
+                      positions[0] = { rank: 1, amount }
+                      pl.positions = positions
+                      pc.plays = pl
                       setSelected({ ...(selected as any), prize_config: pc })
                     }}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
+                    placeholder="300"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-1">Min Deposit (Eligibility)</label>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold mb-1">Min Deposit Total (Eligibility)</label>
                   <input
                     type="number"
                     value={selected.eligibility?.min_deposit_total ?? ''}
                     onChange={(e) =>
                       setSelected({
                         ...(selected as any),
-                        eligibility: {
-                          ...(selected.eligibility || {}),
-                          min_deposit_total: Number(e.target.value || 0),
-                        },
+                        eligibility: { ...(selected.eligibility || {}), min_deposit_total: Number(e.target.value || 0) },
                       })
                     }
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
+                    placeholder="10"
                   />
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-col sm:flex-row justify-end gap-3">
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
+                <div>
+                  <label className="block text-[#A0A0A0] text-xs font-semibold mb-1">Min Plays (Eligibility)</label>
+                  <input
+                    type="number"
+                    value={selected.eligibility?.min_plays ?? ''}
+                    onChange={(e) =>
+                      setSelected({
+                        ...(selected as any),
+                        eligibility: { ...(selected.eligibility || {}), min_plays: Number(e.target.value || 0) },
+                      })
+                    }
+                    className="w-full bg-black/20 border border-[#333333] rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
+                    placeholder="5"
+                  />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelected({
+                        ...(selected as any),
+                        eligibility: { ...(selected.eligibility || {}), require_deposit: !Boolean(selected.eligibility?.require_deposit) },
+                      })
+                    }
+                    className={
+                      'w-full h-11 rounded-xl border text-sm font-semibold transition-colors ' +
+                      (Boolean(selected.eligibility?.require_deposit)
+                        ? 'bg-[#D4AF37] border-[#D4AF37] text-black'
+                        : 'bg-black/20 border-[#333333] text-[#A0A0A0] hover:text-white')
+                    }
+                  >
+                    {Boolean(selected.eligibility?.require_deposit) ? 'Require Deposit: ON' : 'Require Deposit: OFF'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-end gap-2">
                 <button
-                  type="button"
                   onClick={() => {
                     setSelected(null)
                     setCreating(false)
                   }}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700"
+                  className="rounded-lg px-5 py-2.5 text-sm font-medium text-[#A0A0A0] hover:bg-white/5 hover:text-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
                   onClick={handleSave}
+                  className="rounded-lg bg-[#D4AF37] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#C5A028] shadow-lg shadow-[#D4AF37]/20 transition-all disabled:opacity-50"
                   disabled={saving}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 border border-emerald-500/80"
                 >
-                  {saving ? 'Saving…' : 'Save'}
+                  {saving ? 'Saving…' : creating ? 'Create Tournament' : 'Save Changes'}
                 </button>
               </div>
             </div>
@@ -680,11 +987,11 @@ export default function AdminTournamentsPage() {
         {/* Winners Drawer */}
         {winnersFor && (
           <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center px-4 py-6">
-            <div className="bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-700/70 max-w-lg w-full max-h-full overflow-y-auto p-5 space-y-4">
+            <div className="bg-[#252525] rounded-t-2xl sm:rounded-2xl border border-[#333333] max-w-lg w-full max-h-full overflow-y-auto p-5 space-y-4">
               <div className="flex items-center justify-between gap-3 mb-1">
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-white">Tournament Winners</h2>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-[#A0A0A0] mt-1">
                     {winnersFor.settings?.display_name || winnersFor.name}
                   </p>
                 </div>
@@ -693,15 +1000,15 @@ export default function AdminTournamentsPage() {
                     setWinnersFor(null)
                     setPreviewWinners(null)
                   }}
-                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300"
+                  className="w-8 h-8 rounded-lg bg-[#1C1C1C] hover:bg-white/10 flex items-center justify-center text-[#A0A0A0] hover:text-white border border-[#333333]"
                 >
                   <span className="text-lg">×</span>
                 </button>
               </div>
 
               {/* Existing winners (if any) */}
-              <div className="space-y-2 text-[11px] sm:text-xs text-slate-200">
-                <h3 className="font-semibold text-slate-100">Existing Winners</h3>
+              <div className="space-y-2 text-[11px] sm:text-xs text-white">
+                <h3 className="font-semibold text-white">Existing Winners</h3>
                 {Array.isArray(winnersFor.winners) && winnersFor.winners.length > 0 ? (
                   winnersFor.winners.map((w, idx) => (
                     <div key={idx} className="flex items-center justify-between gap-2">
@@ -709,22 +1016,22 @@ export default function AdminTournamentsPage() {
                         <span>
                           {w.metric === 'deposits' ? 'Top Depositor' : 'Most Played'} #{w.rank}
                         </span>
-                        <span className="text-[10px] text-slate-400">User: {w.user_id}</span>
+                        <span className="text-[10px] text-[#A0A0A0]">User: {w.user_id}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-emerald-300">{formatCurrency(w.prize_amount)}</span>
+                        <span className="font-semibold text-[#D4AF37]">{formatCurrency(w.prize_amount)} ETB</span>
                         {w.paid ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-[#0bda1d]/15 text-[#0bda1d] border border-[#0bda1d]/30">
                             Paid
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-200 border border-amber-500/40">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30">
                             Pending
                           </span>
                         )}
                         <button
                           type="button"
-                          className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-200 border border-slate-600 hover:bg-slate-700"
+                          className="px-2 py-0.5 rounded-full text-[10px] bg-[#1C1C1C] text-white border border-[#333333] hover:bg-white/10"
                           onClick={() =>
                             setExtraAward({
                               userId: w.user_id,
@@ -740,17 +1047,17 @@ export default function AdminTournamentsPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-[11px] text-slate-500">No winners recorded yet.</p>
+                  <p className="text-[11px] text-[#A0A0A0]">No winners recorded yet.</p>
                 )}
               </div>
 
               {extraAward && (
-                <div className="mt-3 pt-3 border-t border-slate-700 space-y-2 text-[11px] sm:text-xs text-slate-200">
+                <div className="mt-3 pt-3 border-t border-[#333333] space-y-2 text-[11px] sm:text-xs text-white">
                   <div className="flex items-center justify-between">
                     <span>
                       Extra prize for {extraAward.metric === 'deposits' ? 'Top Depositor' : 'Most Played'} #{extraAward.rank}
                     </span>
-                    <span className="text-[10px] text-slate-400 truncate max-w-[180px]">
+                    <span className="text-[10px] text-[#A0A0A0] truncate max-w-[180px]">
                       User: {extraAward.userId}
                     </span>
                   </div>
@@ -766,14 +1073,14 @@ export default function AdminTournamentsPage() {
                           amount: e.target.value,
                         })
                       }
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500/70"
+                      className="flex-1 bg-black/20 border border-[#333333] rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]"
                       placeholder="Extra prize amount (ETB)"
                     />
                     <button
                       type="button"
                       disabled={awardingExtra}
                       onClick={handleExtraAwardSubmit}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 border border-emerald-500/80"
+                      className="px-3 py-2 rounded-lg text-xs font-bold bg-[#D4AF37] text-black hover:bg-[#C5A028] disabled:opacity-60 border border-[#D4AF37]/60"
                     >
                       {awardingExtra ? 'Sending…' : 'Send'}
                     </button>
@@ -783,15 +1090,15 @@ export default function AdminTournamentsPage() {
 
               {/* Preview winners from current metrics */}
               {previewWinners && previewWinners.length > 0 && (
-                <div className="pt-3 border-t border-slate-700 space-y-2">
-                  <h3 className="text-[11px] sm:text-xs font-semibold text-slate-100">Preview (if finalized now)</h3>
-                  <div className="text-[11px] sm:text-xs text-slate-200 space-y-1">
+                <div className="pt-3 border-t border-[#333333] space-y-2">
+                  <h3 className="text-[11px] sm:text-xs font-semibold text-white">Preview (if finalized now)</h3>
+                  <div className="text-[11px] sm:text-xs text-white space-y-1">
                     {previewWinners.map((w: any, idx: number) => (
                       <div key={idx} className="flex items-center justify-between">
                         <span>
                           {w.metric === 'deposits' ? 'Top Depositor' : 'Most Played'} #{w.rank}
                         </span>
-                        <span className="font-semibold text-emerald-300">{formatCurrency(w.prize)}</span>
+                        <span className="font-semibold text-[#D4AF37]">{formatCurrency(w.prize)} ETB</span>
                       </div>
                     ))}
                   </div>
@@ -799,7 +1106,7 @@ export default function AdminTournamentsPage() {
                     type="button"
                     disabled={finalizing}
                     onClick={() => winnersFor && handleFinalize(winnersFor)}
-                    className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold bg-cyan-600 text-white hover:bg-cyan-700 disabled:opacity-60 border border-cyan-500/80 w-full"
+                    className="mt-2 rounded-lg bg-[#D4AF37] px-5 py-2.5 text-sm font-bold text-black hover:bg-[#C5A028] shadow-lg shadow-[#D4AF37]/20 transition-all disabled:opacity-60 w-full"
                   >
                     {finalizing ? 'Finalizing…' : 'Finalize & Pay Prizes'}
                   </button>
@@ -811,7 +1118,7 @@ export default function AdminTournamentsPage() {
                   type="button"
                   disabled={finalizing}
                   onClick={() => handlePreviewFinalize(winnersFor)}
-                  className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 text-slate-200 hover:bg-slate-700 border border-slate-600 w-full"
+                  className="mt-2 rounded-lg border border-[#333333] bg-[#1C1C1C] px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 w-full"
                 >
                   {finalizing ? 'Loading…' : 'Refresh Preview from Metrics'}
                 </button>
@@ -820,6 +1127,6 @@ export default function AdminTournamentsPage() {
           </div>
         )}
       </div>
-    </div>
+    </AdminShell>
   )
 }

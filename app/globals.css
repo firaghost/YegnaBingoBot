@@ -13,6 +13,7 @@
   }
   html, body {
     height: 100%;
+    overflow: hidden;
   }
   :root {
     /* Safe area insets for full-screen (Telegram, notches, etc.) */

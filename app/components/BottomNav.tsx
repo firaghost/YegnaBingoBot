@@ -2,10 +2,26 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { getConfig } from '@/lib/admin-config'
 import { LuGrid3X3, LuLink2, LuUser, LuTrophy, LuHistory, LuPlus } from 'react-icons/lu'
 
 export default function BottomNav() {
   const pathname = usePathname()
+
+  const [leaderboardEnabled, setLeaderboardEnabled] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const v = await getConfig('global_leaderboard')
+        setLeaderboardEnabled(Boolean(v))
+      } catch {
+        setLeaderboardEnabled(true)
+      }
+    }
+    void load()
+  }, [])
 
   const isLobby = pathname === '/lobby' || pathname === '/'
 
@@ -26,13 +42,17 @@ export default function BottomNav() {
       icon: LuGrid3X3,
       active: pathname === '/lobby' || pathname.startsWith('/game')
     },
-    {
-      id: 'leaderboard',
-      name: 'Leaderboard',
-      href: '/leaderboard',
-      icon: LuTrophy,
-      active: pathname === '/leaderboard'
-    },
+    ...(leaderboardEnabled === false
+      ? []
+      : [
+          {
+            id: 'leaderboard',
+            name: 'Leaderboard',
+            href: '/leaderboard',
+            icon: LuTrophy,
+            active: pathname === '/leaderboard'
+          }
+        ]),
     {
       id: 'history',
       name: 'History',

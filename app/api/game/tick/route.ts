@@ -15,6 +15,8 @@ interface Game {
   bots: string[]
   called_numbers: number[]
   latest_number: { letter: string; number: number } | null
+  is_paused?: boolean
+  paused_at?: string | null
   stake: number
   prize_pool: number
   winner_id: string | null
@@ -50,7 +52,7 @@ function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array]
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = secureRandom(i + 1)
-      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
   }
   return shuffled
 }
@@ -91,6 +93,15 @@ export async function POST(request: NextRequest) {
 
     // Type assertion for safety
     const typedGame = game as Game
+
+    // If paused, don't advance countdown or call numbers
+    if (typedGame.is_paused) {
+      return NextResponse.json({
+        success: true,
+        action: 'paused',
+        message: 'Game is paused'
+      })
+    }
 
     // ============================================================
     // UNIFIED STATE MACHINE - All transitions handled here
@@ -409,18 +420,15 @@ export async function POST(request: NextRequest) {
         })
       }
 
-      // Double-check that the number hasn't been called while we waited for the lock
-      const currentCalledNumbers = lockedGame.called_numbers || []
-      if (currentCalledNumbers.includes(nextNumber)) {
-        console.log(`⚠️ Number ${nextNumber} already called for game ${gameId} (detected after lock)`)
+      // Verify game is still active and has no winner
+      if (lockedGame.is_paused) {
         return NextResponse.json({
           success: true,
-          action: 'skip',
-          message: 'Number already called'
+          action: 'paused',
+          message: 'Game is paused'
         })
       }
 
-      // Verify game is still active and has no winner
       if (lockedGame.status !== 'active' || lockedGame.winner_id) {
         console.log(`⚠️ Game ${gameId} is no longer active or has a winner, skipping tick`)
         return NextResponse.json({

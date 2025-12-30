@@ -1,7 +1,8 @@
+
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import { formatCurrency } from '@/lib/utils'
 import { supabaseAdmin } from '@/lib/supabase'
 
@@ -9,7 +10,28 @@ import { getAllConfig } from '@/lib/admin-config'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import Link from 'next/link'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { Users, Gamepad2, CreditCard, TrendingDown, BarChart3, Home, Building2, Megaphone, Settings, Share2 } from 'lucide-react'
+import {
+  LayoutGrid,
+  Users,
+  Ban,
+  Gamepad2,
+  PlayCircle,
+  Trophy,
+  Megaphone,
+  Home,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Receipt,
+  Building2,
+  Tag,
+  Settings,
+  Bell,
+  Search,
+  Menu,
+  ChevronLeft,
+  ChevronRight,
+  Shield,
+} from 'lucide-react'
 
 type ChartGrouping = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
@@ -22,6 +44,8 @@ type ChartPoint = {
   referralEarnings: number
   games: number
 }
+
+type RevenueOverviewPoint = { label: string; value: number }
 
 const GROUPING_SETTINGS: Record<ChartGrouping, { label: string; bucketCount: number }> = {
   daily: { label: 'Daily', bucketCount: 1 },
@@ -169,8 +193,26 @@ function parseDateInput(value: string): Date | null {
 
 export default function ProfessionalDashboard() {
   const router = useRouter()
+  const pathname = usePathname()
   const { admin, isAuthenticated, loading: authLoading, logout } = useAdminAuth()
   const [loading, setLoading] = useState(false)
+
+  const hasHydratedCacheRef = useRef(false)
+
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+
+  const [systemHealth, setSystemHealth] = useState({
+    serverLoad: 0,
+    memoryUsage: 0,
+    activeConnections: 0,
+  })
+
+  const [liveAlerts, setLiveAlerts] = useState<
+    Array<{ id: string; type: 'danger' | 'info' | 'success'; title: string; message: string; timestamp: string }>
+  >([])
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -194,6 +236,89 @@ export default function ProfessionalDashboard() {
   const [rangeStart, setRangeStart] = useState<Date>(() => getDefaultRangeForGrouping('daily').start)
   const [rangeEnd, setRangeEnd] = useState<Date>(() => getDefaultRangeForGrouping('daily').end)
   const [pendingDeposits, setPendingDeposits] = useState(0)
+
+  const [recentTransactions, setRecentTransactions] = useState<any[]>([])
+
+  const [revenueRange, setRevenueRange] = useState<'7d' | '30d' | 'year'>('7d')
+  const [revenueOverview, setRevenueOverview] = useState<RevenueOverviewPoint[]>([])
+
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+
+  const timeAgo = (date: Date): string => {
+    const diffMs = Date.now() - date.getTime()
+    const sec = Math.max(0, Math.floor(diffMs / 1000))
+    if (sec < 60) return `${sec}s ago`
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min}m ago`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr}h ago`
+    const day = Math.floor(hr / 24)
+    return `${day}d ago`
+  }
+
+  const computeSystemHealth = (nextStats: typeof stats) => {
+    const load = clamp((nextStats.activeGames / 50) * 100, 0, 100)
+    const mem = clamp((nextStats.activeUsers / Math.max(1, nextStats.totalUsers)) * 100, 0, 100)
+    const conns = nextStats.activeUsers
+    setSystemHealth({
+      serverLoad: Math.round(load),
+      memoryUsage: Math.round(mem),
+      activeConnections: conns,
+    })
+  }
+
+  const computeLiveAlerts = (txs: any[], nextStats: typeof stats) => {
+    const alerts: Array<{ id: string; type: 'danger' | 'info' | 'success'; title: string; message: string; timestamp: string }> = []
+
+    const highRisk = txs.find((t) => {
+      const amt = Number(t?.amount || 0)
+      const status = String(t?.status || '').toLowerCase()
+      return status === 'pending' && amt >= 5000
+    })
+
+    if (highRisk) {
+      const userLabel = highRisk?.users?.username || highRisk?.users?.telegram_id || String(highRisk?.user_id || '').slice(0, 8) || 'Unknown'
+      alerts.push({
+        id: `risk_${highRisk.id}`,
+        type: 'danger',
+        title: 'High Risk Transaction Pending',
+        message: `User ${userLabel} has a pending ${highRisk.type} of ${formatCurrency(Number(highRisk.amount || 0))}.`,
+        timestamp: highRisk?.created_at ? timeAgo(new Date(highRisk.created_at)) : 'Just now',
+      })
+    }
+
+    if (nextStats.pendingWithdrawals > 0) {
+      alerts.push({
+        id: 'pending_withdrawals',
+        type: 'info',
+        title: 'Withdrawals Need Review',
+        message: `${nextStats.pendingWithdrawals} withdrawal(s) are pending approval.`,
+        timestamp: 'Now',
+      })
+    }
+
+    if (nextStats.activeGames > 0) {
+      alerts.push({
+        id: 'live_games',
+        type: 'success',
+        title: 'Live Games Running',
+        message: `${nextStats.activeGames} game(s) are currently active.`,
+        timestamp: 'Live',
+      })
+    }
+
+    if (alerts.length === 0) {
+      alerts.push({
+        id: 'all_good',
+        type: 'success',
+        title: 'All Systems Normal',
+        message: 'No critical alerts right now.',
+        timestamp: 'Now',
+      })
+    }
+
+    setLiveAlerts(alerts.slice(0, 6))
+  }
 
   const handleGroupingChange = (next: ChartGrouping) => {
     setGrouping(next)
@@ -228,7 +353,10 @@ export default function ProfessionalDashboard() {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      setLoading(true)
+      setLoading((prev) => {
+        if (hasHydratedCacheRef.current) return prev
+        return true
+      })
 
       const normalizedRangeStart = startOfDay(rangeStart)
       const normalizedRangeEnd = endOfDay(rangeEnd)
@@ -239,27 +367,58 @@ export default function ProfessionalDashboard() {
       const rangeStartIso = normalizedRangeStart.toISOString()
       const rangeEndIso = normalizedRangeEnd.toISOString()
 
-      const { count: totalUsers } = await supabaseAdmin
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-
       const sevenDaysAgo = new Date()
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      const { count: activeUsers } = await supabaseAdmin
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .gte('updated_at', sevenDaysAgo.toISOString())
 
-      const { count: totalGames } = await supabaseAdmin
-        .from('games')
-        .select('*', { count: 'exact', head: true })
+      const [
+        totalUsersRes,
+        activeUsersRes,
+        totalGamesRes,
+        activeGamesRes,
+        pendingDepositsRes,
+        pendingWithdrawalsRes,
+        totalTransactionsRes,
+        recentTxRes,
+        config,
+      ] = await Promise.all([
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+        supabaseAdmin.from('users').select('*', { count: 'exact', head: true }).gte('updated_at', sevenDaysAgo.toISOString()),
+        supabaseAdmin.from('games').select('*', { count: 'exact', head: true }),
+        supabaseAdmin.from('games').select('*', { count: 'exact', head: true }).in('status', ['waiting', 'countdown', 'active']),
+        supabaseAdmin.from('transactions').select('*', { count: 'exact', head: true }).eq('type', 'deposit').eq('status', 'pending'),
+        supabaseAdmin.from('withdrawals').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabaseAdmin.from('transactions').select('*', { count: 'exact', head: true }),
+        supabaseAdmin
+          .from('transactions')
+          .select(
+            `
+              id,
+              user_id,
+              type,
+              amount,
+              status,
+              created_at,
+              users (username, telegram_id)
+            `
+          )
+          .order('created_at', { ascending: false })
+          .limit(10),
+        getAllConfig(),
+      ])
 
-      const { count: activeGames } = await supabaseAdmin
-        .from('games')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['waiting', 'countdown', 'active'])
+      const totalUsers = totalUsersRes.count || 0
+      const activeUsers = activeUsersRes.count || 0
+      const totalGames = totalGamesRes.count || 0
+      const activeGames = activeGamesRes.count || 0
 
-      const config = await getAllConfig()
+      setPendingDeposits(pendingDepositsRes.count || 0)
+
+      const pendingWithdrawals = pendingWithdrawalsRes.count || 0
+      const totalTransactions = totalTransactionsRes.count || 0
+
+      if (recentTxRes.error) throw recentTxRes.error
+      setRecentTransactions(recentTxRes.data || [])
+
       const commissionRate = Number((config as any)?.gameCommissionRate) || 0.1
 
       const today = new Date().toDateString()
@@ -303,6 +462,38 @@ export default function ProfessionalDashboard() {
           todayRevenueReal += amt
         }
       })
+
+      // Revenue Overview: last 7 days bars (Mon..Sun labels) derived from deposits
+      // Keep it stable/pixel-perfect regardless of current chart grouping.
+      const now = new Date()
+      const start7 = new Date(now)
+      start7.setDate(start7.getDate() - 6)
+      start7.setHours(0, 0, 0, 0)
+
+      const dayKeys: string[] = []
+      const bars: Record<string, number> = {}
+      for (let i = 0; i < 7; i += 1) {
+        const d = new Date(start7)
+        d.setDate(start7.getDate() + i)
+        const key = d.toDateString()
+        dayKeys.push(key)
+        bars[key] = 0
+      }
+
+      depositTxsRes.data?.forEach((tx: any) => {
+        const dt = new Date(tx.created_at)
+        if (dt < start7) return
+        const key = dt.toDateString()
+        if (!(key in bars)) return
+        bars[key] += Number(tx?.amount || 0)
+      })
+
+      const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+      const computed = dayKeys.map((key, idx) => ({
+        label: labels[idx] || key,
+        value: bars[key] || 0,
+      }))
+      setRevenueOverview(computed)
 
       depositBonusTxsRes.data?.forEach((tx: any) => {
         const amt = Number(tx?.amount || 0)
@@ -366,24 +557,7 @@ export default function ProfessionalDashboard() {
         }
       }
 
-      const { count: pendingDepositsCount } = await supabaseAdmin
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-        .eq('type', 'deposit')
-        .eq('status', 'pending')
-      setPendingDeposits(pendingDepositsCount || 0)
-
-      const { count: pendingWithdrawals } = await supabaseAdmin
-        .from('withdrawals')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending')
-
-      const { count: totalTransactions } = await supabaseAdmin
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-
-
-      setStats({
+      const nextStats = {
         totalUsers: totalUsers || 0,
         activeUsers: activeUsers || 0,
         totalGames: totalGames || 0,
@@ -398,11 +572,19 @@ export default function ProfessionalDashboard() {
         todayCommission,
         totalReferrals,
         totalReferralEarnings,
-      })
+      }
+
+      setStats(nextStats)
+      computeSystemHealth(nextStats)
+      computeLiveAlerts(recentTxRes.data || [], nextStats)
+
+      const nowTs = Date.now()
+      setLastUpdatedAt(nowTs)
 
       const bucketDates = generateBucketDates(grouping, normalizedRangeStart, normalizedRangeEnd)
       const bucketKeyToIndex = new Map<string, number>()
-      const chartPoints: ChartPoint[] = bucketDates.map((date, idx) => {
+      let chartPoints: ChartPoint[] = []
+      chartPoints = bucketDates.map((date, idx) => {
         const aligned = alignDateToGrouping(date, grouping)
         const key = aligned.toISOString()
         bucketKeyToIndex.set(key, idx)
@@ -504,12 +686,52 @@ export default function ProfessionalDashboard() {
       }
 
       setChartData(chartPoints)
+
+      try {
+        localStorage.setItem(
+          'admin_dashboard_cache_v1',
+          JSON.stringify({
+            stats: nextStats,
+            chartData: chartPoints,
+            recentTransactions: recentTxRes.data || [],
+            pendingDeposits: pendingDepositsRes.count || 0,
+            grouping,
+            rangeStart: normalizedRangeStart.toISOString(),
+            rangeEnd: normalizedRangeEnd.toISOString(),
+            lastUpdatedAt: nowTs,
+          })
+        )
+      } catch {
+        // ignore cache write errors
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
     }
-  }, [grouping, rangeStart, rangeEnd])
+  }, [grouping, rangeEnd, rangeStart])
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated) return
+    try {
+      const raw = localStorage.getItem('admin_dashboard_cache_v1')
+      if (!raw) return
+      const cached = JSON.parse(raw)
+      hasHydratedCacheRef.current = true
+      if (cached?.stats) setStats(cached.stats)
+      if (Array.isArray(cached?.chartData)) setChartData(cached.chartData)
+      if (Array.isArray(cached?.recentTransactions)) setRecentTransactions(cached.recentTransactions)
+      if (typeof cached?.pendingDeposits === 'number') setPendingDeposits(cached.pendingDeposits)
+      if (typeof cached?.lastUpdatedAt === 'number') setLastUpdatedAt(cached.lastUpdatedAt)
+
+      if (cached?.stats) {
+        computeSystemHealth(cached.stats)
+        computeLiveAlerts(cached.recentTransactions || [], cached.stats)
+      }
+    } catch {
+      // ignore cache read errors
+    }
+  }, [authLoading, isAuthenticated])
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -537,6 +759,17 @@ export default function ProfessionalDashboard() {
     games: point.games,
   }))
 
+  const revenueBars = useMemo(() => chartDataFormatted.slice(-7), [chartDataFormatted])
+  const maxRevenue = useMemo(
+    () => revenueBars.reduce((m, p) => Math.max(m, Number(p.revenue || 0)), 0),
+    [revenueBars]
+  )
+
+  const revenueOverviewMax = useMemo(
+    () => revenueOverview.reduce((m, p) => Math.max(m, Number(p.value || 0)), 0),
+    [revenueOverview]
+  )
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-900">
@@ -556,356 +789,452 @@ export default function ProfessionalDashboard() {
   const hasAny = (...keys: string[]) => keys.some(k => hasPerm(k))
 
   const navItems = [
-    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
-    { href: '/mgmt-portal-x7k9p2/suspended-users', label: 'Suspended', icon: Users, badge: null, permsAny: ['users_view','users_manage'] },
-    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null, permsAny: ['games_view','games_manage'] },
-    { href: '/mgmt-portal-x7k9p2/tournaments', label: 'Tournaments', icon: Gamepad2, badge: null, permsAny: ['tournaments_view','tournaments_manage'] },
-    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: CreditCard, badge: pendingDeposits, permsAny: ['deposits_view','deposits_manage'] },
-    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: TrendingDown, badge: stats.pendingWithdrawals, permsAny: ['withdrawals_view','withdrawals_manage'] },
-    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: BarChart3, badge: null, permsAny: ['transactions_view'] },
-    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null, permsAny: ['rooms_view','rooms_manage'] },
-    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null, permsAny: ['banks_view','banks_manage'] },
+    { href: '/mgmt-portal-x7k9p2', label: 'Dashboard', icon: LayoutGrid, badge: null, permsAny: [] },
+    { href: '/mgmt-portal-x7k9p2/users', label: 'Users', icon: Users, badge: null, permsAny: ['users_view', 'users_manage'] },
+    { href: '/mgmt-portal-x7k9p2/suspended-users', label: 'Suspended', icon: Ban, badge: null, permsAny: ['users_view', 'users_manage'] },
+    { href: '/mgmt-portal-x7k9p2/live-monitor', label: 'Live Monitor', icon: PlayCircle, badge: null, permsAny: ['games_view', 'games_manage'] },
+    { href: '/mgmt-portal-x7k9p2/games', label: 'Games', icon: Gamepad2, badge: null, permsAny: ['games_view', 'games_manage'] },
+    { href: '/mgmt-portal-x7k9p2/tournaments', label: 'Tournaments', icon: Trophy, badge: null, permsAny: ['tournaments_view', 'tournaments_manage'] },
     { href: '/mgmt-portal-x7k9p2/broadcast', label: 'Broadcast', icon: Megaphone, badge: null, permsAny: ['broadcast_manage'] },
-    { href: '/mgmt-portal-x7k9p2/promos', label: 'Promos', icon: Share2, badge: null, permsAny: ['broadcast_manage'] },
-    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null, permsAny: ['settings_view','settings_manage'] },
+    { href: '/mgmt-portal-x7k9p2/rooms', label: 'Rooms', icon: Home, badge: null, permsAny: ['rooms_view', 'rooms_manage'] },
+    { href: '/mgmt-portal-x7k9p2/deposits', label: 'Deposits', icon: ArrowDownToLine, badge: pendingDeposits, permsAny: ['deposits_view', 'deposits_manage'] },
+    { href: '/mgmt-portal-x7k9p2/withdrawals', label: 'Withdrawals', icon: ArrowUpFromLine, badge: stats.pendingWithdrawals, permsAny: ['withdrawals_view', 'withdrawals_manage'] },
+    { href: '/mgmt-portal-x7k9p2/transactions', label: 'Transactions', icon: Receipt, badge: null, permsAny: ['transactions_view'] },
+    { href: '/mgmt-portal-x7k9p2/banks', label: 'Banks', icon: Building2, badge: null, permsAny: ['banks_view', 'banks_manage'] },
+    { href: '/mgmt-portal-x7k9p2/promos', label: 'Promos', icon: Tag, badge: null, permsAny: ['broadcast_manage'] },
+    { href: '/mgmt-portal-x7k9p2/settings', label: 'Settings', icon: Settings, badge: null, permsAny: ['settings_view', 'settings_manage'] },
   ] as const
 
-  const visibleNavItems = navItems.filter(item => admin?.role === 'super_admin' || item.permsAny.some(k => hasPerm(k)))
+  const visibleNavItems = navItems.filter(item =>
+    item.href === '/mgmt-portal-x7k9p2' || admin?.role === 'super_admin' || item.permsAny.some(k => hasPerm(k))
+  )
+
+  const groupedNav = {
+    main: visibleNavItems.filter((i) => ['Dashboard', 'Users', 'Suspended'].includes(i.label)),
+    operations: visibleNavItems.filter((i) => ['Live Monitor', 'Games', 'Tournaments', 'Broadcast', 'Rooms'].includes(i.label)),
+    finance: visibleNavItems.filter((i) => ['Deposits', 'Withdrawals', 'Transactions', 'Banks'].includes(i.label)),
+    system: visibleNavItems.filter((i) => ['Promos', 'Settings'].includes(i.label)),
+  }
+
+  const notificationCount = (pendingDeposits || 0) + (stats.pendingWithdrawals || 0)
+
+  const renderNavItem = (item: (typeof navItems)[number]) => {
+    const IconComponent = item.icon
+    const isActive =
+      item.href === '/mgmt-portal-x7k9p2'
+        ? pathname === item.href
+        : pathname === item.href || pathname.startsWith(item.href + '/')
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={
+          isActive
+            ? 'flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#d4af35]/10 text-[#d4af35] transition-colors'
+            : 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#b6b1a0] hover:bg-white/5 hover:text-white transition-colors'
+        }
+      >
+        <IconComponent className="w-5 h-5" />
+        {!sidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+        {!sidebarCollapsed && item.badge !== null && item.badge > 0 && (
+          <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded bg-white/5 border border-[#333333] text-white">
+            {item.badge}
+          </span>
+        )}
+        {sidebarCollapsed && item.badge !== null && item.badge > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-[#252525]">
+            {item.badge}
+          </span>
+        )}
+      </Link>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col lg:flex-row">
-      {/* Side Navigation */}
-      <aside className="w-full lg:w-64 bg-slate-800/50 backdrop-blur-md border-b lg:border-b-0 lg:border-r border-slate-700/50 sticky top-0 lg:h-screen overflow-y-auto lg:overflow-y-auto flex flex-col lg:flex-col">
-        <div className="p-6 border-b border-slate-700/50 hidden lg:block">
-          <h2 className="text-xl font-bold text-white">BingoX Admin</h2>
-          <p className="text-slate-400 text-xs mt-1">Management Portal</p>
-        </div>
-        {/* Profile Block */}
-        <div className="px-4 py-4 border-b border-slate-700/50 hidden lg:flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-bold">
-            {String(admin?.username || '?').charAt(0).toUpperCase()}
+    <div className="bg-[#1C1C1C] text-white font-sans overflow-hidden h-screen flex">
+      <aside
+        className={
+          (sidebarCollapsed ? 'w-20' : 'w-64') +
+          ' sidebar-transition h-full flex flex-col bg-[#252525] border-r border-[#333333] flex-shrink-0 z-20'
+        }
+      >
+        <div className="h-16 flex items-center gap-3 px-6 border-b border-[#333333]">
+          <div className="w-8 h-8 rounded-full bg-[#1C1C1C] border border-[#d4af35]/30 flex items-center justify-center">
+            <Shield className="w-4 h-4 text-[#d4af35]" />
           </div>
-          <div className="min-w-0">
-            <div className="text-white font-semibold truncate">{admin?.username || '—'}</div>
-            <div className="text-xs mt-1">
-              <span className={`px-2 py-0.5 rounded-full border ${admin?.role === 'super_admin' ? 'bg-violet-500/20 text-violet-300 border-violet-500/30' : admin?.role === 'admin' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' : 'bg-blue-500/20 text-blue-300 border-blue-500/30'}`}>
-                {admin?.role === 'super_admin' ? 'Super Admin' : (admin?.role || '').replace('_',' ').replace(/\b\w/g, c=>c.toUpperCase())}
-              </span>
-            </div>
-          </div>
+          {!sidebarCollapsed && <h1 className="text-white text-lg font-bold tracking-tight truncate">GamingAdmin</h1>}
         </div>
-        <nav className="p-2 lg:p-4 flex lg:flex-col gap-1 lg:gap-2 flex-wrap lg:flex-nowrap justify-center lg:justify-start items-center lg:items-stretch">
-          {visibleNavItems.map((item) => {
-            const IconComponent = item.icon
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center justify-center lg:justify-between px-2 lg:px-4 py-2 lg:py-3 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700/50 transition-colors group relative"
-              >
-                <div className="flex items-center gap-2 lg:gap-3">
-                  <IconComponent className="w-5 h-5 lg:w-6 lg:h-6" />
-                  <span className="font-medium text-sm lg:text-base hidden lg:inline">{item.label}</span>
+
+        <nav className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {groupedNav.main.length > 0 && (
+            <>
+              {!sidebarCollapsed && (
+                <div className="px-3 mb-2">
+                  <p className="text-xs font-semibold text-[#b6b1a0] uppercase tracking-wider">Main</p>
                 </div>
-                {item.badge !== null && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
+              )}
+              {groupedNav.main.map(renderNavItem)}
+            </>
+          )}
+
+          {groupedNav.operations.length > 0 && (
+            <>
+              {!sidebarCollapsed && (
+                <div className="px-3 mb-2 mt-4">
+                  <p className="text-xs font-semibold text-[#b6b1a0] uppercase tracking-wider">Operations</p>
+                </div>
+              )}
+              {groupedNav.operations.map(renderNavItem)}
+            </>
+          )}
+
+          {groupedNav.finance.length > 0 && (
+            <>
+              {!sidebarCollapsed && (
+                <div className="px-3 mb-2 mt-4">
+                  <p className="text-xs font-semibold text-[#b6b1a0] uppercase tracking-wider">Finance</p>
+                </div>
+              )}
+              {groupedNav.finance.map(renderNavItem)}
+            </>
+          )}
+
+          {groupedNav.system.length > 0 && (
+            <>
+              {!sidebarCollapsed && (
+                <div className="px-3 mb-2 mt-4">
+                  <p className="text-xs font-semibold text-[#b6b1a0] uppercase tracking-wider">System</p>
+                </div>
+              )}
+              {groupedNav.system.map(renderNavItem)}
+            </>
+          )}
         </nav>
-        <div className="p-4 border-t border-slate-700/50 bg-slate-800/50 w-full mt-auto">
+
+        <div className="p-4 border-t border-[#333333] space-y-2">
+          <button
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-[#b6b1a0] hover:text-white transition-all text-sm font-medium"
+            type="button"
+          >
+            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            {!sidebarCollapsed && <span>Collapse Sidebar</span>}
+          </button>
           <button
             onClick={logout}
-            className="w-full px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg border border-red-500/30 transition-colors text-sm font-medium"
+            className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-lg bg-white/5 hover:bg-white/10 text-[#b6b1a0] hover:text-white transition-all text-sm font-medium"
+            type="button"
           >
-            Logout
+            <Shield className="w-4 h-4" />
+            {!sidebarCollapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-          <div className="px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-              <p className="text-slate-400 text-sm mt-1">Welcome back, {admin?.username}</p>
+      <div className="flex-1 flex flex-col h-full relative overflow-hidden">
+        <header className="h-16 bg-[#252525] border-b border-[#333333] z-10 flex-shrink-0">
+          <div className="h-full max-w-7xl mx-auto flex items-center justify-between px-6 lg:px-10">
+            <div className="flex items-center gap-3">
+              <button className="lg:hidden p-2 -ml-2 text-[#b6b1a0] hover:text-white" type="button">
+                <Menu className="w-5 h-5" />
+              </button>
+              <h2 className="text-white text-lg font-bold tracking-tight">Dashboard Overview</h2>
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/10 border border-green-500/20">
+                <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-xs font-medium text-green-400">System Online</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden md:flex items-center relative">
+                <Search className="w-4 h-4 absolute left-3 text-[#b6b1a0]" />
+                <input
+                  className="h-10 pl-10 pr-4 w-72 bg-[#1C1C1C] border border-[#333333] rounded-lg text-sm text-white placeholder-[#b6b1a0] focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] transition-all outline-none"
+                  placeholder="Search users, games..."
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="h-6 w-px bg-[#333333] mx-1" />
+
+              <button
+                className="relative p-2 text-[#b6b1a0] hover:text-white transition-colors rounded-lg hover:bg-white/5"
+                type="button"
+              >
+                <Bell className="w-5 h-5" />
+                {notificationCount > 0 && (
+                  <span className="absolute top-2 right-2 size-2 bg-red-500 rounded-full border border-[#252525]" />
+                )}
+              </button>
+
+              <div className="flex items-center gap-3 pl-2 cursor-pointer group">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-medium text-white group-hover:text-[#d4af35] transition-colors">{admin?.username || 'Admin'}</p>
+                  <p className="text-xs text-[#b6b1a0]">{admin?.role === 'super_admin' ? 'Super Admin' : (admin?.role || 'Admin')}</p>
+                </div>
+                <div className="w-10 h-10 rounded-full ring-2 ring-[#333333] group-hover:ring-[#d4af35] transition-all flex items-center justify-center bg-[#1C1C1C] text-[#d4af35] font-bold">
+                  {String(admin?.username || '?').charAt(0).toUpperCase()}
+                </div>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Main Content */}
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 overflow-y-auto">
-        {/* KPI Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
-          {/* Total Users */}
-          <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 backdrop-blur-md rounded-lg p-6 border border-blue-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Total Users</span>
-              <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              </div>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#1C1C1C] p-6 lg:p-10 scroll-smooth [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="max-w-7xl mx-auto flex flex-col gap-8">
+            <div className="flex items-center gap-2 text-sm text-[#b6b1a0]">
+              <span className="hover:text-white transition-colors">Home</span>
+              <span className="text-[#333333]">/</span>
+              <span className="text-[#d4af35] font-medium">Dashboard</span>
             </div>
-            <div className="text-3xl font-bold text-white">{stats.totalUsers}</div>
-            <p className="text-blue-400 text-xs mt-2">Active: {stats.activeUsers}</p>
-          </div>
 
-          {/* Total Games */}
-          <div className="bg-gradient-to-br from-green-500/20 to-green-600/20 backdrop-blur-md rounded-lg p-6 border border-green-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Total Games</span>
-              <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+            <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-[#252525] rounded-xl p-6 border border-[#333333] shadow-sm hover:border-[#d4af35]/50 transition-all cursor-default group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 rounded-lg bg-[#d4af35]/10 text-[#d4af35] group-hover:bg-[#d4af35] group-hover:text-[#1C1C1C] transition-colors">
+                    <ArrowDownToLine className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium px-2 py-1 rounded bg-green-500/10 text-green-400">Today</span>
+                </div>
+                <p className="text-[#b6b1a0] text-sm font-medium mb-1">Total Deposits Today</p>
+                <h3 className="text-2xl font-bold text-white tracking-tight">{formatCurrency(stats.todayRevenueReal)}</h3>
               </div>
-            </div>
-            <div className="text-3xl font-bold text-white">{stats.totalGames}</div>
-            <p className="text-green-400 text-xs mt-2">Active: {stats.activeGames}</p>
-          </div>
 
-          {/* Revenue (Real vs Bonus) */}
-          <div className="bg-gradient-to-br from-purple-500/20 to-purple-600/20 backdrop-blur-md rounded-lg p-6 border border-purple-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Revenue (Real)</span>
-              <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              <div className="bg-[#252525] rounded-xl p-6 border border-[#333333] shadow-sm hover:border-[#d4af35]/50 transition-all cursor-default group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 rounded-lg bg-[#d4af35]/10 text-[#d4af35] group-hover:bg-[#d4af35] group-hover:text-[#1C1C1C] transition-colors">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium px-2 py-1 rounded bg-[#333333] text-[#b6b1a0]">All time</span>
+                </div>
+                <p className="text-[#b6b1a0] text-sm font-medium mb-1">Total Players</p>
+                <h3 className="text-2xl font-bold text-white tracking-tight">{stats.totalUsers}</h3>
               </div>
-            </div>
-            <div className="text-3xl font-bold text-white">{formatCurrency(stats.totalRevenueReal)}</div>
-            <p className="text-purple-400 text-xs mt-2">Today (Real): {formatCurrency(stats.todayRevenueReal)}</p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-slate-900/40 border border-slate-700/50 rounded-md p-2">
-                <div className="text-slate-400">Bonus Derived (All)</div>
-                <div className="text-slate-200 font-semibold">{formatCurrency(stats.totalRevenueBonus)}</div>
-              </div>
-              <div className="bg-slate-900/40 border border-slate-700/50 rounded-md p-2">
-                <div className="text-slate-400">Bonus Today</div>
-                <div className="text-slate-200 font-semibold">{formatCurrency(stats.todayRevenueBonus)}</div>
-              </div>
-            </div>
-          </div>
 
-          {/* Commission */}
-          <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-600/20 backdrop-blur-md rounded-lg p-6 border border-yellow-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Commission</span>
-              <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+              <div className="bg-[#252525] rounded-xl p-6 border border-[#333333] shadow-sm hover:border-[#d4af35]/50 transition-all cursor-default group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 rounded-lg bg-[#d4af35]/10 text-[#d4af35] group-hover:bg-[#d4af35] group-hover:text-[#1C1C1C] transition-colors">
+                    <ArrowUpFromLine className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium px-2 py-1 rounded bg-yellow-500/10 text-yellow-400">Pending</span>
+                </div>
+                <p className="text-[#b6b1a0] text-sm font-medium mb-1">Pending Withdrawals</p>
+                <h3 className="text-2xl font-bold text-white tracking-tight">{stats.pendingWithdrawals}</h3>
               </div>
-            </div>
-            <div className="text-3xl font-bold text-white">{formatCurrency(stats.totalCommission)}</div>
-            <p className="text-yellow-400 text-xs mt-2">Today: {formatCurrency(stats.todayCommission)}</p>
-          </div>
 
-          {/* Referral Performance */}
-          <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/20 backdrop-blur-md rounded-lg p-6 border border-teal-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Referral Program</span>
-              <div className="w-10 h-10 bg-teal-500/20 rounded-lg flex items-center justify-center">
-                <Share2 className="w-5 h-5 text-teal-300" />
+              <div className="bg-[#252525] rounded-xl p-6 border border-[#333333] shadow-sm hover:border-[#d4af35]/50 transition-all cursor-default group">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="p-2 rounded-lg bg-[#d4af35]/10 text-[#d4af35] group-hover:bg-[#d4af35] group-hover:text-[#1C1C1C] transition-colors">
+                    <Gamepad2 className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-medium px-2 py-1 rounded bg-[#333333] text-[#b6b1a0]">Live</span>
+                </div>
+                <p className="text-[#b6b1a0] text-sm font-medium mb-1">Live Games</p>
+                <h3 className="text-2xl font-bold text-white tracking-tight">{stats.activeGames}</h3>
               </div>
-            </div>
-            <div className="text-3xl font-bold text-white">{stats.totalReferrals}</div>
-            <p className="text-teal-300 text-xs mt-2">Earnings: {formatCurrency(stats.totalReferralEarnings)}</p>
-          </div>
+            </section>
 
-          {/* Pending Withdrawals */}
-          <div className="bg-gradient-to-br from-red-500/20 to-red-600/20 backdrop-blur-md rounded-lg p-6 border border-red-500/30 shadow-lg hover:shadow-xl transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-slate-400 text-sm font-medium">Pending</span>
-              <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 flex flex-col gap-6">
+                <div className="bg-[#252525] rounded-xl border border-[#333333] p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-lg font-bold text-white">Revenue Overview</h3>
+                    <select
+                      className="bg-[#1C1C1C] border border-[#333333] text-white text-sm rounded-lg focus:ring-[#d4af35] focus:border-[#d4af35] p-2 outline-none"
+                      value={revenueRange}
+                      onChange={(e) => setRevenueRange(e.target.value as any)}
+                    >
+                      <option value="7d">Last 7 Days</option>
+                      <option value="30d">Last 30 Days</option>
+                      <option value="year">This Year</option>
+                    </select>
+                  </div>
+
+                  <div className="h-64 w-full flex items-end justify-between gap-2 px-2 pb-4 border-b border-[#333333]/50">
+                    {revenueOverview.map((p, idx) => {
+                      const value = Number(p.value || 0)
+                      const pct = revenueOverviewMax > 0 ? Math.round((value / revenueOverviewMax) * 95) : 0
+                      const isLast = idx === revenueOverview.length - 1
+                      return (
+                        <div
+                          key={`${p.label}_${idx}`}
+                          className={
+                            (isLast
+                              ? 'w-full bg-[#d4af35] rounded-t-sm shadow-[0_0_15px_rgba(212,175,55,0.3)] relative group'
+                              : 'w-full bg-[#d4af35]/20 rounded-t-sm hover:bg-[#d4af35]/40 transition-all relative group')
+                          }
+                          style={{ height: `${Math.max(10, pct)}%` }}
+                          title={formatCurrency(value)}
+                        >
+                          <div
+                            className={
+                              (isLast
+                                ? 'absolute -top-8 left-1/2 -translate-x-1/2 opacity-100 bg-[#252525] border border-[#d4af35] text-xs px-2 py-1 rounded text-[#d4af35] font-bold shadow-xl'
+                                : 'absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-[#252525] border border-[#333333] text-xs px-2 py-1 rounded text-white shadow-xl')
+                            }
+                          >
+                            {formatCurrency(value)}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex justify-between mt-2 text-xs text-[#b6b1a0]">
+                    {revenueOverview.map((p, idx) => (
+                      <span key={`${p.label}_x_${idx}`} className="truncate">
+                        {p.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-[#252525] rounded-xl border border-[#333333] overflow-hidden shadow-sm">
+                  <div className="p-6 border-b border-[#333333] flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-white">Recent Transactions</h3>
+                    <Link href="/mgmt-portal-x7k9p2/transactions" className="text-sm text-[#d4af35] hover:text-white transition-colors">
+                      View All
+                    </Link>
+                  </div>
+                  <div className="overflow-x-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[#b6b1a0] text-sm border-b border-[#333333] bg-white/5">
+                          <th className="px-6 py-4 font-medium">User</th>
+                          <th className="px-6 py-4 font-medium">Type</th>
+                          <th className="px-6 py-4 font-medium">Amount</th>
+                          <th className="px-6 py-4 font-medium">Status</th>
+                          <th className="px-6 py-4 font-medium text-right">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm">
+                        {recentTransactions.length === 0 ? (
+                          <tr className="border-b border-[#333333]">
+                            <td className="px-6 py-6 text-[#b6b1a0]" colSpan={5}>
+                              No recent transactions.
+                            </td>
+                          </tr>
+                        ) : (
+                          recentTransactions.map((tx: any) => {
+                            const status = String(tx?.status || '').toLowerCase()
+                            const statusClass =
+                              status === 'completed'
+                                ? 'bg-green-500/10 text-green-400'
+                                : status === 'pending'
+                                  ? 'bg-yellow-500/10 text-yellow-400'
+                                  : 'bg-red-500/10 text-red-400'
+
+                            const userLabel =
+                              tx?.users?.username ||
+                              (tx?.users?.telegram_id ? `TG ${tx.users.telegram_id}` : tx?.user_id ? String(tx.user_id).slice(0, 8) : '—')
+
+                            return (
+                              <tr key={tx.id} className="border-b border-[#333333] hover:bg-white/5 transition-colors">
+                                <td className="px-6 py-4 text-white">{userLabel}</td>
+                                <td className="px-6 py-4 text-[#b6b1a0] capitalize">{String(tx?.type || '—')}</td>
+                                <td className="px-6 py-4 text-white font-medium">{formatCurrency(Number(tx?.amount || 0))}</td>
+                                <td className="px-6 py-4">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusClass}`}>
+                                    {String(tx?.status || '—')}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-[#b6b1a0] text-right">
+                                  {tx?.created_at ? new Date(tx.created_at).toLocaleString() : '—'}
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="text-3xl font-bold text-white">{stats.pendingWithdrawals}</div>
-            <p className="text-red-400 text-xs mt-2">Awaiting approval</p>
-          </div>
-        </div>
 
-        {/* Chart Section */}
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 shadow-lg mb-8">
-          <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-white mb-2">Analytics</h2>
-              <p className="text-slate-400 text-sm">Trend of revenue, commission, referral bonus, and new users</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {groupingEntries.map(([key, value]) => {
-                const isActive = grouping === key
-                return (
+              <div className="flex flex-col gap-6">
+                <div className="bg-[#252525] rounded-xl border border-[#333333] p-6 shadow-sm">
+                  <h3 className="text-lg font-bold text-white mb-4">System Health</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-[#b6b1a0]">Server Load</span>
+                        <span className="text-white font-medium">{systemHealth.serverLoad}%</span>
+                      </div>
+                      <div className="w-full bg-[#1C1C1C] rounded-full h-2">
+                        <div className="bg-[#d4af35] h-2 rounded-full" style={{ width: `${systemHealth.serverLoad}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-[#b6b1a0]">Memory Usage</span>
+                        <span className="text-white font-medium">{systemHealth.memoryUsage}%</span>
+                      </div>
+                      <div className="w-full bg-[#1C1C1C] rounded-full h-2">
+                        <div className="bg-[#d4af35] h-2 rounded-full" style={{ width: `${systemHealth.memoryUsage}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-[#b6b1a0]">Active Connections</span>
+                        <span className="text-white font-medium">{systemHealth.activeConnections.toLocaleString()}</span>
+                      </div>
+                      <div className="w-full bg-[#1C1C1C] rounded-full h-2">
+                        <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.max(10, systemHealth.memoryUsage)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-[#252525] rounded-xl border border-[#333333] p-6 shadow-sm flex-1">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-bold text-white">Live Alerts</h3>
+                    <button className="p-1 hover:bg-white/10 rounded transition-colors" type="button">
+                      <span className="text-[#b6b1a0]">...</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {liveAlerts.map((a, idx) => {
+                      const iconWrapClass =
+                        a.type === 'danger'
+                          ? 'bg-red-500/20 text-red-500'
+                          : a.type === 'info'
+                            ? 'bg-[#d4af35]/20 text-[#d4af35]'
+                            : 'bg-green-500/20 text-green-500'
+
+                      const iconText = a.type === 'danger' ? '!' : a.type === 'info' ? 'i' : '✓'
+
+                      return (
+                        <div key={a.id}>
+                          <div className="flex gap-3 items-start">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 ${iconWrapClass}`}>
+                              <span className="text-sm">{iconText}</span>
+                            </div>
+                            <div>
+                              <p className="text-white text-sm font-medium">{a.title}</p>
+                              <p className="text-xs text-[#b6b1a0] mt-1">{a.message}</p>
+                              <p className="text-xs text-[#b6b1a0] mt-1 opacity-60">{a.timestamp}</p>
+                            </div>
+                          </div>
+                          {idx < liveAlerts.length - 1 && <div className="w-full h-px bg-[#333333] mt-4" />}
+                        </div>
+                      )
+                    })}
+                  </div>
+
                   <button
-                    key={key}
-                    onClick={() => handleGroupingChange(key)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                      isActive
-                        ? 'bg-cyan-600/80 border-cyan-400 text-white shadow-cyan-500/40 shadow'
-                        : 'bg-slate-900/60 border-slate-700 text-slate-300 hover:text-white hover:border-cyan-400/60'
-                    }`}
+                    className="w-full mt-6 py-2 rounded-lg border border-[#333333] text-sm text-[#b6b1a0] hover:text-white hover:bg-white/5 transition-all"
+                    type="button"
                   >
-                    {value.label}
+                    View Activity Log
                   </button>
-                )
-              })}
-            </div>
-            <div className="flex flex-wrap gap-3 items-center">
-              {grouping === 'daily' ? (
-                <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <span>Day</span>
-                  <input
-                    type="date"
-                    value={toDateInputValue(rangeStart)}
-                    onChange={(e) => handleSingleDateChange(e.target.value)}
-                    className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                  />
-                </label>
-              ) : (
-                <>
-                  <label className="flex items-center gap-2 text-sm text-slate-300">
-                    <span>Start</span>
-                    <input
-                      type="date"
-                      value={toDateInputValue(rangeStart)}
-                      onChange={(e) => handleRangeStartChange(e.target.value)}
-                      className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-slate-300">
-                    <span>End</span>
-                    <input
-                      type="date"
-                      value={toDateInputValue(rangeEnd)}
-                      onChange={(e) => handleRangeEndChange(e.target.value)}
-                      className="bg-slate-900/70 border border-slate-700 rounded-md px-3 py-1.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/60"
-                    />
-                  </label>
-                </>
-              )}
+                </div>
+              </div>
             </div>
           </div>
-          <div className="bg-slate-900/50 rounded-lg p-6 border border-slate-700/30 w-full h-96">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartDataFormatted} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.2)" />
-                <XAxis dataKey="label" stroke="#9ca3af" style={{ fontSize: '12px' }} />
-                <YAxis
-                  yAxisId="left"
-                  stroke="#38bdf8"
-                  style={{ fontSize: '12px' }}
-                  label={{ value: 'Amount (ETB)', angle: -90, position: 'insideLeft', fill: '#38bdf8' }}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#f97316"
-                  style={{ fontSize: '12px' }}
-                  label={{ value: 'New Users', angle: 90, position: 'insideRight', fill: '#f97316' }}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155' }}
-                  labelStyle={{ color: '#cbd5f5' }}
-                  formatter={(value: number, name) => {
-                    if (name === 'New Users' || name === 'Games') {
-                      return [value, name]
-                    }
-                    return [formatCurrency(Number(value)), name]
-                  }}
-                />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="revenue" name="Revenue (ETB)" stroke="#6366f1" strokeWidth={3} dot={false} />
-                <Line yAxisId="left" type="monotone" dataKey="commission" name="Commission (ETB)" stroke="#facc15" strokeWidth={2} dot={false} strokeDasharray="6 2" />
-                <Line yAxisId="left" type="monotone" dataKey="referralEarnings" name="Referral Bonus (ETB)" stroke="#14b8a6" strokeWidth={2} dot={false} strokeDasharray="4 4" />
-                <Line yAxisId="right" type="monotone" dataKey="newUsers" name="New Users" stroke="#f97316" strokeWidth={2} dot={false} />
-                <Line yAxisId="right" type="monotone" dataKey="games" name="Games" stroke="#38bdf8" strokeWidth={2} dot={false} strokeDasharray="3 3" />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {hasAny('users_view','users_manage') && (
-          <Link href="/mgmt-portal-x7k9p2/users" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-colors group relative">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center group-hover:bg-cyan-500/30 transition-colors">
-                <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM6 20a9 9 0 0118 0v2h2v-2a11 11 0 00-22 0v2h2v-2z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-white">Manage Users</h3>
-                <p className="text-slate-400 text-sm">View & edit users</p>
-              </div>
-            </div>
-          </Link>
-          )}
-
-          {hasAny('games_view','games_manage') && (
-          <Link href="/mgmt-portal-x7k9p2/games" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-cyan-500/50 transition-colors group relative">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center group-hover:bg-green-500/30 transition-colors">
-                <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-white">View Games</h3>
-                <p className="text-slate-400 text-sm">Monitor games</p>
-              </div>
-            </div>
-          </Link>
-          )}
-
-          {hasAny('withdrawals_view','withdrawals_manage') && (
-          <Link href="/mgmt-portal-x7k9p2/withdrawals" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-yellow-500/50 transition-colors group relative">
-            {stats.pendingWithdrawals > 0 && (
-              <div className="absolute top-2 right-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                {stats.pendingWithdrawals}
-              </div>
-            )}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center group-hover:bg-yellow-500/30 transition-colors">
-                <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-white">Withdrawals</h3>
-                <p className="text-slate-400 text-sm">Approve requests</p>
-              </div>
-            </div>
-          </Link>
-          )}
-
-          {hasAny('settings_view','settings_manage') && (
-          <Link href="/mgmt-portal-x7k9p2/settings" className="bg-slate-800/50 backdrop-blur-md rounded-lg p-6 border border-slate-700/50 hover:border-purple-500/50 transition-colors group relative">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center group-hover:bg-purple-500/30 transition-colors">
-                <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-white">Settings</h3>
-                <p className="text-slate-400 text-sm">System config</p>
-              </div>
-            </div>
-          </Link>
-          )}
-        </div>
         </main>
       </div>
     </div>

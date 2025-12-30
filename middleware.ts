@@ -88,9 +88,9 @@ export async function middleware(request: NextRequest) {
         .select('config_value')
         .eq('config_key', 'registration_enabled')
         .eq('is_active', true)
-        .single()
+        .maybeSingle()
 
-      const isRegistrationEnabled = registrationConfig?.config_value !== 'false'
+      const isRegistrationEnabled = !registrationConfig || registrationConfig?.config_value !== 'false'
 
       if (!isRegistrationEnabled && pathname === '/register') {
         // Redirect to login if registration is disabled

@@ -5,6 +5,8 @@ import { requireAnyPermission, requirePermission } from '@/lib/server/admin-perm
 import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
 import { applyFirstDepositUnlock } from '@/lib/server/wallet-service'
 import { recordDeposit } from '@/lib/server/tournament-service'
+import { generateReceiptPdfBuffer } from '@/lib/server/receipt-pdf'
+import { sendTelegramMessage, sendTelegramPdf } from '@/lib/server/telegram-send'
 
 const supabase = supabaseAdmin
 
@@ -192,36 +194,55 @@ export async function POST(request: NextRequest) {
       // Send Telegram notification
       if (user?.telegram_id) {
         try {
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
-          if (botToken) {
-            const amountText = escapeMarkdown(transaction.amount.toFixed(2))
-            const bonusText = escapeMarkdown(bonusAmount.toFixed(2))
-            const totalAdded = transaction.amount + bonusAmount
-            const totalText = escapeMarkdown(totalAdded.toFixed(2))
-            const percentText = escapeMarkdown(depositBonusPercent.toFixed(2).replace(/\.00$/, ''))
+          const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
+          if (!botToken) return
 
-            let message = `✅ *Deposit Approved*\n\nYour deposit of *${amountText} ETB* has been approved.`
-            if (bonusAmount > 0) {
-              message += `\n\n🎁 *Bonus Applied:* ${bonusText} ETB (${percentText}% of ${amountText} ETB)`
-              message += `\n📊 *Total Added:* ${totalText} ETB`
-            }
-            message += `\n\nYou can now use this balance to play games!`
+          const amountText = escapeMarkdown(Number(transaction.amount || 0).toFixed(2))
+          const bonusText = escapeMarkdown(Number(bonusAmount || 0).toFixed(2))
+          const totalAdded = Number(transaction.amount || 0) + Number(bonusAmount || 0)
+          const totalText = escapeMarkdown(totalAdded.toFixed(2))
 
-            const payload: any = {
-              chat_id: user.telegram_id,
-              text: message,
-              parse_mode: 'Markdown'
-            }
+          const pdf = await generateReceiptPdfBuffer({
+            kind: 'deposit',
+            receiptNo: `DEP-${String(transactionId).slice(0, 8).toUpperCase()}`,
+            issuedAtIso: new Date().toISOString(),
+            username: user?.username || 'Unknown',
+            telegramId: user.telegram_id,
+            amountEtb: Number(transaction.amount || 0),
+            status: 'approved',
+            subtitle: bonusAmount > 0 ? 'Deposit approved with bonus and credited to your wallet' : 'Deposit approved and credited to your wallet',
+            items: [
+              { label: 'Deposit Amount', value: `${Number(transaction.amount || 0).toFixed(2)} ETB` },
+              { label: 'Bonus', value: `${Number(bonusAmount || 0).toFixed(2)} ETB` },
+              { label: 'Total Credited', value: `${totalAdded.toFixed(2)} ETB` },
+              { label: 'Balance Before', value: `${Number(userBefore?.balance ?? 0).toFixed(2)} ETB` },
+              { label: 'Balance After', value: `${Number(userAfter?.balance ?? 0).toFixed(2)} ETB` },
+              { label: 'Transaction ID', value: String(transactionId) },
+            ],
+          })
 
-            const replyMarkup = getAppReplyMarkup()
-            if (replyMarkup) payload.reply_markup = replyMarkup
+          const replyMarkup = getAppReplyMarkup()
 
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            })
-          }
+          await sendTelegramMessage({
+            botToken,
+            chatId: user.telegram_id,
+            parseMode: 'Markdown',
+            replyMarkup,
+            text:
+              `*Deposit Approved*\n\n` +
+              `Amount: *${amountText} ETB*\n` +
+              `Bonus: *${bonusText} ETB*\n` +
+              `Total Credited: *${totalText} ETB*\n\n` +
+              `A receipt PDF has been attached to this message.`,
+          })
+
+          await sendTelegramPdf({
+            botToken,
+            chatId: user.telegram_id,
+            filename: `deposit-receipt-${String(transactionId).slice(0, 8).toLowerCase()}.pdf`,
+            pdfBuffer: pdf,
+            caption: 'Deposit Receipt (PDF)',
+          })
         } catch (error) {
           console.error('Failed to send Telegram notification:', error)
         }

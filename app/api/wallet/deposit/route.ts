@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getUserFromSession } from '@/lib/server/user-session'
+import { getConfig } from '@/lib/admin-config'
+import { applyFirstDepositUnlock } from '@/lib/server/wallet-service'
+import { recordDeposit } from '@/lib/server/tournament-service'
 
 // Use admin client to bypass RLS
 const supabase = supabaseAdmin
@@ -105,6 +108,77 @@ export async function POST(request: NextRequest) {
     } catch (notifyError) {
       console.error('Error notifying admin:', notifyError)
       // Don't fail the request if notification fails
+    }
+
+    // Auto-approve deposits (optional) - non-crypto
+    try {
+      const autoApprove = Boolean(await getConfig('auto_approve_deposits'))
+      if (autoApprove) {
+        const depositBonusPercentRaw = await getConfig('deposit_bonus')
+        const depositBonusPercent = Number(depositBonusPercentRaw) || 0
+        const bonusAmount = (Number(transaction.amount || 0) * depositBonusPercent) / 100
+        const totalCredit = Number(transaction.amount || 0) + Number(bonusAmount || 0)
+
+        const { data: userBefore } = await supabase
+          .from('users')
+          .select('balance')
+          .eq('id', userId)
+          .single()
+
+        await applyFirstDepositUnlock(userId, totalCredit, {
+          ...(transaction.metadata || {}),
+          method: 'manual',
+          via: 'auto-approve',
+          transaction_id: transaction.id,
+        })
+
+        const { data: userAfter } = await supabase
+          .from('users')
+          .select('balance')
+          .eq('id', userId)
+          .single()
+
+        await supabase
+          .from('transactions')
+          .update({
+            status: 'completed',
+            metadata: {
+              ...(transaction.metadata || {}),
+              auto_approved: true,
+              approved_at: new Date().toISOString(),
+              real_balance_before: Number(userBefore?.balance ?? 0),
+              real_balance_after: Number(userAfter?.balance ?? 0),
+            },
+          } as any)
+          .eq('id', transaction.id)
+
+        try {
+          await recordDeposit(userId, Number(transaction.amount || 0))
+        } catch (e) {
+          console.warn('Failed to record tournament deposit metric:', e)
+        }
+
+        if (bonusAmount > 0) {
+          await supabase
+            .from('transactions')
+            .insert({
+              user_id: userId,
+              type: 'bonus',
+              amount: bonusAmount,
+              status: 'completed',
+              description: `Deposit bonus (${depositBonusPercent}% of ${transaction.amount} ETB) credited to real balance`,
+              metadata: { code: 'deposit_bonus', source: 'auto_approve_deposits' },
+            })
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'Deposit approved automatically',
+          transaction_id: transaction.id,
+        })
+      }
+    } catch (e) {
+      console.warn('Auto-approve deposit failed:', (e as any)?.message || e)
     }
 
     return NextResponse.json({

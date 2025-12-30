@@ -759,6 +759,9 @@ export default function LobbyPage() {
           <div className="flex items-center gap-2 sm:gap-3">
             {user && (() => {
               const cashBalance = user.balance || 0
+              const bonusBalance = (user as any).bonus_balance || 0
+              const bonusWinBalance = (user as any).bonus_win_balance || 0
+              const totalBonus = bonusBalance + bonusWinBalance
               return (
                 <div className="flex items-center gap-2">
                   {/* Wallet pill */}
@@ -767,10 +770,13 @@ export default function LobbyPage() {
                       <LuWallet className="w-4 h-4" />
                     </div>
                     <div className="flex flex-col mr-2">
-                      <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Wallet</span>
-                      <span className="text-xs font-semibold text-slate-50">
-                        {walletHidden ? '••••••' : formatCurrency(cashBalance)}
-                      </span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Cash</span>
+                      <span className="text-xs font-semibold text-slate-50">{walletHidden ? '••••••' : formatCurrency(cashBalance)}</span>
+                    </div>
+                    <div className="w-px h-8 bg-slate-700/60 mx-2" />
+                    <div className="flex flex-col mr-2">
+                      <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Bonus</span>
+                      <span className="text-xs font-semibold text-amber-200">{walletHidden ? '••••••' : formatCurrency(totalBonus)}</span>
                     </div>
                     <div className="flex items-center gap-1 text-slate-400 text-[10px]">
                       <button

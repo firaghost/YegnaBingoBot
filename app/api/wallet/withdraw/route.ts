@@ -10,6 +10,27 @@ export async function POST(request: Request) {
   try {
     const { userId, amount, bankName, accountNumber, accountHolder, otpTokenId, otpCode } = await request.json()
 
+    const notifyAdmin = async (title: string, details: Record<string, any>) => {
+      try {
+        const enabled = Boolean(await getConfig('suspicious_activity_alerts'))
+        if (!enabled) return
+        const adminTelegramId = process.env.ADMIN_TELEGRAM_ID
+        const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
+        if (!adminTelegramId || !botToken) return
+        const payload = {
+          chat_id: adminTelegramId,
+          text: `${title}\n\n${JSON.stringify(details)}`
+        }
+        await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } catch {
+        // ignore
+      }
+    }
+
     if (!userId || !amount || !bankName || !accountNumber || !accountHolder) {
       return NextResponse.json(
         { error: 'All fields required' },
@@ -37,6 +58,7 @@ export async function POST(request: Request) {
           p_max_count: maxPerMin
         })
         if (!ipErr && allowed === false) {
+          await notifyAdmin('⚠️ Withdraw blocked: rate limit', { userId, ip, amount })
           return NextResponse.json({ error: 'Too many attempts. Please wait a minute and try again.' }, { status: 429 })
         }
       }
@@ -48,6 +70,24 @@ export async function POST(request: Request) {
     // Best-effort geolocation (city-level, no permission prompt)
     const geo = await lookupIp(ip)
 
+    // Security toggle: restrict jurisdictions by GeoIP
+    try {
+      const blockRestricted = Boolean(await getConfig('block_restricted_jurisdictions'))
+      if (blockRestricted) {
+        const country = String(geo?.country || '').trim().toLowerCase()
+        const restricted = new Set(['united states', 'us', 'france', 'fr', 'netherlands', 'nl'])
+        if (country && restricted.has(country)) {
+          await notifyAdmin('⛔ Withdraw blocked: restricted jurisdiction', { userId, ip, amount, country: geo?.country })
+          return NextResponse.json(
+            { error: 'RESTRICTED_JURISDICTION', message: 'Withdrawals are not available from your region.' },
+            { status: 403 }
+          )
+        }
+      }
+    } catch (e) {
+      console.warn('Restricted jurisdiction check failed:', (e as any)?.message || e)
+    }
+
     // Get user data
     const { data: user } = await supabase
       .from('users')
@@ -57,6 +97,27 @@ export async function POST(request: Request) {
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    // Security toggle: strict KYC enforcement (best-effort, only if fields exist)
+    try {
+      const strictKyc = Boolean(await getConfig('strict_kyc_enforcement'))
+      if (strictKyc) {
+        const anyUser: any = user
+        const kycFieldPresent = 'kyc_verified' in anyUser || 'id_verified' in anyUser || 'is_kyc_verified' in anyUser
+        if (kycFieldPresent) {
+          const isVerified = Boolean(anyUser.kyc_verified || anyUser.id_verified || anyUser.is_kyc_verified)
+          if (!isVerified) {
+            await notifyAdmin('⛔ Withdraw blocked: KYC required', { userId, ip, amount })
+            return NextResponse.json(
+              { error: 'KYC_REQUIRED', message: 'KYC verification is required before withdrawing.' },
+              { status: 403 }
+            )
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Strict KYC check failed:', (e as any)?.message || e)
     }
 
     // Enforce "deposit gate": users with NO completed deposits cannot withdraw
@@ -92,6 +153,8 @@ export async function POST(request: Request) {
         } catch (notifyErr) {
           console.warn('Failed to notify user about bonus rule:', (notifyErr as any)?.message || notifyErr)
         }
+
+        await notifyAdmin('⛔ Withdraw blocked: bonus-only user', { userId, ip, amount })
 
         return NextResponse.json({
           error: 'BONUS_ONLY_BLOCKED',
@@ -187,6 +250,42 @@ export async function POST(request: Request) {
     if (error) throw error
 
     const withdrawalId = data
+
+    // Auto-approve all withdrawals (optional)
+    let autoApproved = false
+    try {
+      const autoApproveAll = Boolean(await getConfig('auto_approve_withdrawals'))
+      if (autoApproveAll) {
+        const { error: approveErr } = await supabase.rpc('approve_withdrawal', {
+          p_withdrawal_id: withdrawalId,
+          p_admin_id: '00000000-0000-0000-0000-000000000000',
+          p_admin_note: 'Auto-approved (global setting)',
+        })
+        if (!approveErr) {
+          autoApproved = true
+        }
+      }
+    } catch (e) {
+      console.warn('Auto-approve withdrawal failed:', (e as any)?.message || e)
+    }
+
+    // Auto-approve small withdrawals (optional)
+    try {
+      const autoApproveSmall = Boolean(await getConfig('auto_approve_small_withdrawals'))
+      const threshold = 500
+      if (!autoApproved && autoApproveSmall && Number(amount) > 0 && Number(amount) <= threshold) {
+        const { error: approveErr } = await supabase.rpc('approve_withdrawal', {
+          p_withdrawal_id: withdrawalId,
+          p_admin_id: '00000000-0000-0000-0000-000000000000',
+          p_admin_note: 'Auto-approved (small withdrawal)',
+        })
+        if (!approveErr) {
+          autoApproved = true
+        }
+      }
+    } catch (e) {
+      console.warn('Auto-approve small withdrawal failed:', (e as any)?.message || e)
+    }
 
     // Enrich withdrawal and related transaction with IP and geo
     try {
@@ -285,7 +384,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ 
       success: true,
       withdrawalId: withdrawalId,
-      message: 'Withdrawal request submitted successfully'
+      message: autoApproved ? 'Withdrawal approved automatically' : 'Withdrawal request submitted successfully'
     })
   } catch (error: any) {
     return NextResponse.json(

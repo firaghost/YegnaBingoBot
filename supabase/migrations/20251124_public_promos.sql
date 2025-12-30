@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS public.public_promo_claims (
   UNIQUE (promo_id, user_id)
 );
 
--- Redeem a public promo code: first N users win, each user only once
+-- Redeem a public promo code: first N users win, each user only once (credits bonus wallet)
 CREATE OR REPLACE FUNCTION public.redeem_public_promo_code(
   p_user_id uuid,
   p_code text

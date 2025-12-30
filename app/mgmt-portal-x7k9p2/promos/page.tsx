@@ -6,6 +6,9 @@ import { supabase } from '@/lib/supabase'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
 import { formatCurrency } from '@/lib/utils'
 import { AdminConfirmModal } from '@/app/components/AdminConfirmModal'
+import { AdminShell } from '@/app/mgmt-portal-x7k9p2/components/AdminShell'
+import { HelpCircle, Bell, Search, Plus, Ticket, Pencil, Ban } from 'lucide-react'
+import PromotionsManager from '@/app/mgmt-portal-x7k9p2/promos/promotions-manager'
 
 interface UserResult {
   id: string
@@ -55,7 +58,7 @@ interface ClaimRecord {
   phone: string | null
 }
 
-export default function AdminPromosPage() {
+function LegacyAdminPromosPage() {
   const { admin, loading: adminLoading } = useAdminAuth()
 
   const [title, setTitle] = useState('Surprise Bonus Promo')
@@ -128,6 +131,11 @@ export default function AdminPromosPage() {
     title: '',
     message: '',
   })
+
+  const [promoSearch, setPromoSearch] = useState('')
+  const [promoTab, setPromoTab] = useState<'all' | 'active' | 'scheduled' | 'expired'>('all')
+  const [promoSort, setPromoSort] = useState<'newest' | 'highest_value' | 'expiring_soon'>('newest')
+  const [showBuilder, setShowBuilder] = useState(false)
 
   useEffect(() => {
     const loadTournaments = async () => {
@@ -570,25 +578,6 @@ export default function AdminPromosPage() {
     setConfirmOpen(true)
   }
 
-  if (adminLoading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">
-        Loading admin session…
-      </div>
-    )
-  }
-
-  if (!admin) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-8 text-center">
-          <h1 className="text-2xl font-bold text-white mb-2">Admin Login Required</h1>
-          <p className="text-slate-400 text-sm">Please sign in to manage promos.</p>
-        </div>
-      </div>
-    )
-  }
-
   const sampleCode = 'FRIWIN520'
   const amountText = promoAmount && Number(promoAmount) > 0 ? Number(promoAmount).toFixed(2) : '0.00'
 
@@ -600,607 +589,266 @@ export default function AdminPromosPage() {
   if (dormantDays) filtersSummary.push(`Dormant for at least ${dormantDays} days`)
   if (selectedUsers.length > 0) filtersSummary.push(`${selectedUsers.length} user(s) manually selected`)
 
+  if (adminLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">
+        Loading admin session…
+      </div>
+    )
+  }
+
+  if (!admin) {
+    return (
+      <div className="min-h-screen bg-[#1C1C1C] flex items-center justify-center">
+        <div className="bg-[#252525] border border-[#333333] rounded-xl p-8 text-center">
+          <h1 className="text-2xl font-bold text-white mb-2">403 - Forbidden</h1>
+          <p className="text-[#A1A1AA]">You do not have permission to access Promotions.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <AdminConfirmModal
-        open={confirmOpen}
-        title={confirmConfig.title}
-        message={confirmConfig.message}
-        confirmLabel={confirmConfig.confirmLabel}
-        cancelLabel={confirmConfig.cancelLabel}
-        variant={confirmConfig.variant}
-        onConfirm={() => {
-          setConfirmOpen(false)
-          confirmConfig.onConfirm?.()
-        }}
-        onCancel={() => setConfirmOpen(false)}
-      />
+    <AdminShell title="Promotions">
+      <div className="min-h-screen bg-[#1C1C1C] text-white">
+        <AdminConfirmModal
+          open={confirmOpen}
+          title={confirmConfig.title}
+          message={confirmConfig.message}
+          confirmLabel={confirmConfig.confirmLabel}
+          cancelLabel={confirmConfig.cancelLabel}
+          variant={confirmConfig.variant}
+          onConfirm={() => {
+            setConfirmOpen(false)
+            confirmConfig.onConfirm?.()
+          }}
+          onCancel={() => setConfirmOpen(false)}
+        />
       {notification && (
         <div
-          className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base ${
+          className={`fixed top-4 right-4 px-4 sm:px-6 py-3 rounded-lg font-semibold z-50 animate-in fade-in slide-in-from-top text-sm sm:text-base border shadow-lg ${
             notification.type === 'success'
-              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-              : 'bg-red-500/20 text-red-300 border border-red-500/30'
+              ? 'bg-[#d4af35]/15 text-[#d4af35] border-[#d4af35]/30'
+              : 'bg-red-500/20 text-red-300 border-red-500/30'
           }`}
         >
           {notification.message}
         </div>
       )}
 
-      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/mgmt-portal-x7k9p2"
-              className="flex items-center justify-center w-10 h-10 bg-slate-700/50 hover:bg-slate-600/50 rounded-lg transition-all hover:scale-110"
-            >
-              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">Promo Campaigns</h1>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">
-                Generate and broadcast single-use promo codes to targeted players.
-              </p>
-            </div>
-          </div>
-          <div className="hidden sm:flex flex-col items-end text-right text-xs text-slate-400">
-            <span className="font-semibold text-slate-200">Estimated recipients</span>
-            <span className="text-lg font-bold text-emerald-400">
-              {loadingRecipients ? '…' : estimatedRecipients.toLocaleString()}
+      <header className="h-16 flex items-center justify-between border-b border-[#333333] px-6 bg-[#1C1C1C]/80 backdrop-blur-md sticky top-0 z-20">
+        <div className="hidden md:flex flex-1 max-w-md">
+          <div className="relative w-full group">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] group-focus-within:text-[#d4af35] transition-colors">
+              <Search className="w-4 h-4" />
             </span>
+            <input
+              className="w-full bg-[#252525] border border-[#333333] rounded-lg py-2 pl-10 pr-4 text-sm text-white focus:outline-none focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] placeholder-[#A1A1AA]/60 transition-all"
+              placeholder="Search promotions, ID, or tags..."
+              type="text"
+              value={promoSearch}
+              onChange={(e) => setPromoSearch(e.target.value)}
+            />
           </div>
+        </div>
+
+        <div className="flex items-center gap-3 ml-auto">
+          <button
+            type="button"
+            className="relative p-2 text-[#A1A1AA] hover:text-white transition-colors rounded-lg hover:bg-[#252525]"
+            title="Notifications"
+          >
+            <Bell className="w-5 h-5" />
+            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border border-[#1C1C1C]" />
+          </button>
+          <button
+            type="button"
+            className="p-2 text-[#A1A1AA] hover:text-white transition-colors rounded-lg hover:bg-[#252525]"
+            title="Help"
+          >
+            <HelpCircle className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 xl:gap-8">
-          <div className="xl:col-span-2 space-y-6">
-            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Promo configuration</h2>
+      <div className="flex-1 overflow-y-auto p-6 md:p-8 lg:px-12">
+        <div className="max-w-7xl mx-auto flex flex-col gap-8">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[#A1A1AA]">Dashboard</span>
+            <span className="text-[#A1A1AA]/40">/</span>
+            <span className="text-white font-medium">Promotions</span>
+          </div>
 
-              <div className="mb-4 flex flex-wrap gap-2 text-[11px] sm:text-xs items-center">
-                <span className="text-slate-400 mr-1">Promo type:</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPromoType('tournament')
-                  }}
-                  className={`px-3 py-1 rounded-full border text-xs font-medium transition-colors ${
-                    promoType === 'tournament'
-                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/50'
-                      : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/60'
-                  }`}
-                >
-                  Tournament promo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPromoType('generic')
-                    setPromoTournamentId('')
-                  }}
-                  className={`px-3 py-1 rounded-full border text-xs font-medium transition-colors ${
-                    promoType === 'generic'
-                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/50'
-                      : 'bg-slate-900/60 text-slate-300 border-slate-700 hover:border-emerald-500/60'
-                  }`}
-                >
-                  Gift promo
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4 text-sm">
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Title</label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                    placeholder="Promo headline shown at the top of message"
-                  />
-                </div>
-                {promoType === 'tournament' && (
-                  <div>
-                    <label className="block text-slate-300 text-xs font-medium mb-2">Tournament context</label>
-                    <select
-                      value={promoTournamentId}
-                      onChange={(e) => setPromoTournamentId(e.target.value)}
-                      className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                    >
-                      <option value="">Select tournament</option>
-                      {tournaments.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.settings?.display_name || t.name || 'Tournament'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-slate-300 text-xs font-medium mb-2">Message body</label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm resize-none"
-                  placeholder="Write the promo text shown to users. The system will automatically append the promo code line and standard how-to-claim steps (no amount)."
-                />
-                <p className="mt-1 text-[11px] text-slate-500">{message.length} characters</p>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-slate-300 text-xs font-medium mb-2">Promo banner image (optional)</label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">Banner URL</label>
-                    <input
-                      type="url"
-                      value={bannerUrl}
-                      onChange={(e) => setBannerUrl(e.target.value)}
-                      placeholder="https://mrayxghardqswonihwjs.supabase.co/storage/v1/object/public/broadcasts/logo.jpg"
-                      className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg focus:outline-none focus:border-emerald-500/50 transition-colors text-sm"
-                    />
-                    <p className="text-[11px] text-slate-500">
-                      Upload your banner manually to the <span className="font-semibold">broadcasts</span> bucket in Supabase, then paste the
-                      public URL here (for example the logo URL you shared).
-                    </p>
-                  </div>
-                  <div className="bg-slate-900/60 border border-slate-700 rounded-lg p-3 flex items-center justify-center min-h-[120px]">
-                    {bannerUrl ? (
-                      <img src={bannerUrl} alt="Promo banner preview" className="max-h-24 object-contain rounded" />
-                    ) : (
-                      <span className="text-slate-500 text-xs text-center">Banner preview will appear here</span>
-                    )}
-                  </div>
-                  {bannerUrl && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBannerUrl('')
-                      }}
-                      className="sm:col-span-2 w-full bg-slate-700/50 text-slate-300 py-2 rounded-lg border border-slate-600 text-sm hover:bg-slate-700 transition-colors"
-                    >
-                      Remove banner
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Promo amount (ETB)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={promoAmount}
-                    onChange={(e) => setPromoAmount(e.target.value)}
-                    className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                    placeholder="e.g. 50"
-                  />
-                </div>
-                {promoType === 'tournament' && (
-                  <>
-                    <div>
-                      <label className="block text-slate-300 text-xs font-medium mb-2">Metric tag</label>
-                      <select
-                        value={promoMetric}
-                        onChange={(e) => setPromoMetric(e.target.value as 'deposits' | 'plays')}
-                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                      >
-                        <option value="deposits">Top Depositor</option>
-                        <option value="plays">Most Played</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-slate-300 text-xs font-medium mb-2">Rank tag</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={promoRank}
-                        onChange={(e) => setPromoRank(parseInt(e.target.value) || 1)}
-                        className="w-full bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <label className="block text-slate-300 text-xs font-medium mb-2">Expires in</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      value={promoExpiresAmount}
-                      onChange={(e) => setPromoExpiresAmount(parseInt(e.target.value) || 1)}
-                      className="w-20 bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                    />
-                    <select
-                      value={promoExpiresUnit}
-                      onChange={(e) => setPromoExpiresUnit(e.target.value as 'days' | 'hours')}
-                      className="flex-1 bg-slate-700/50 border border-slate-600 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60"
-                    >
-                      <option value="days">Days</option>
-                      <option value="hours">Hours</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="sm:col-span-2 text-[11px] text-slate-400 flex items-center">
-                  Each selected user receives a unique single-use code. When they claim in the mini app, their real balance is credited automatically.
-                </div>
-              </div>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-3xl font-bold text-white tracking-tight">Promotions Management</h2>
+              <p className="text-[#A1A1AA] mt-1">Manage active bonuses, wagering requirements, and player incentives.</p>
             </div>
+            <button
+              type="button"
+              className="flex items-center gap-2 bg-[#d4af35] hover:bg-[#c29d2b] text-[#1C1C1C] px-5 py-2.5 rounded-lg font-bold transition-all border border-[#d4af35] shadow-[0_0_15px_rgba(212,175,53,0.3)] hover:shadow-[0_0_20px_rgba(212,175,53,0.5)]"
+              onClick={() => {
+                setShowBuilder(true)
+                document.getElementById('promo-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+            >
+              <Plus className="w-5 h-5" />
+              Create New Promo
+            </button>
+          </div>
 
-            <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-4 sm:p-6 lg:p-8">
-              <h2 className="text-lg sm:text-xl font-bold text-white mb-4">Audience & targeting</h2>
-
-              <div className="mb-4 flex flex-wrap gap-2 text-[11px]">
-                <span className="text-slate-500 mr-1">Quick segments:</span>
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-[#252525]/50 p-2 rounded-xl border border-[#333333]">
+            <div className="flex items-center gap-1 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+              {([
+                ['all', 'All Promos'],
+                ['active', 'Active'],
+                ['scheduled', 'Scheduled'],
+                ['expired', 'Expired'],
+              ] as const).map(([key, label]) => (
                 <button
+                  key={key}
                   type="button"
-                  onClick={() => applySegment('newcomers')}
-                  className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
+                  onClick={() => setPromoTab(key)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap border transition-colors ${
+                    promoTab === key
+                      ? 'bg-[#252525] text-white border-[#333333]'
+                      : 'text-[#A1A1AA] hover:text-white hover:bg-[#252525] border-transparent'
+                  }`}
                 >
-                  Newcomers (7d)
+                  {label}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => applySegment('highRollers')}
-                  className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
-                >
-                  High rollers
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applySegment('dormant')}
-                  className="px-3 py-1 rounded-full border border-slate-700 bg-slate-900/70 text-slate-200 hover:border-emerald-500/60 hover:text-emerald-200"
-                >
-                  Dormant users
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 text-sm">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-slate-900/60 rounded-lg border border-slate-700">
-                    <div>
-                      <p className="text-slate-200 text-sm font-medium">Active users only</p>
-                      <p className="text-[11px] text-slate-500">Last active within the past 24 hours.</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveOnly((v) => !v)}
-                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${
-                        activeOnly ? 'bg-emerald-600' : 'bg-slate-600'
-                      }`}
-                    >
-                      <div
-                        className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                          activeOnly ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">Minimum balance (ETB)</label>
-                    <input
-                      type="number"
-                      value={minBalance}
-                      onChange={(e) => setMinBalance(e.target.value)}
-                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                      placeholder="Leave empty for no limit"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">Minimum games played</label>
-                    <input
-                      type="number"
-                      value={minGames}
-                      onChange={(e) => setMinGames(e.target.value)}
-                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                      placeholder="Leave empty for no limit"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">New users (days since registration)</label>
-                    <input
-                      type="number"
-                      value={newUsersSinceDays}
-                      onChange={(e) => setNewUsersSinceDays(e.target.value)}
-                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                      placeholder="e.g. 7 for newcomers in last week"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">Dormant users (days since last active)</label>
-                    <input
-                      type="number"
-                      value={dormantDays}
-                      onChange={(e) => setDormantDays(e.target.value)}
-                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                      placeholder="e.g. 14 for inactive players"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-slate-300 text-xs font-medium">Max recipients (optional)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={maxRecipients}
-                      onChange={(e) => setMaxRecipients(e.target.value)}
-                      className="w-full bg-slate-900/60 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                      placeholder="Leave empty to send to all matched users"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="bg-slate-900/60 rounded-lg border border-slate-700 p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="text-slate-200 text-sm font-medium">Target specific users</p>
-                        <p className="text-[11px] text-slate-500">Search by username, phone, or Telegram ID.</p>
-                      </div>
-                      {selectedUsers.length > 0 && (
-                        <span className="px-2 py-1 rounded-full text-[11px] bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
-                          {selectedUsers.length} selected
-                        </span>
-                      )}
-                    </div>
-
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => searchUsers(e.target.value)}
-                      placeholder="Search users..."
-                      className="w-full bg-slate-900 border border-slate-700 text-white px-3 py-2 rounded-lg focus:outline-none focus:border-emerald-500/60 text-sm"
-                    />
-
-                    {searchTerm && (
-                      <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-slate-800 divide-y divide-slate-800 bg-slate-950/80">
-                        {isSearching ? (
-                          <div className="p-3 text-xs text-slate-400">Searching…</div>
-                        ) : userResults.length === 0 ? (
-                          <div className="p-3 text-xs text-slate-400">No users found</div>
-                        ) : (
-                          userResults.map((user) => {
-                            const isSelected = selectedUsers.some((u) => u.id === user.id)
-                            return (
-                              <button
-                                key={user.id}
-                                type="button"
-                                onClick={() => toggleUserSelection(user)}
-                                className={`w-full px-3 py-2 text-left text-xs sm:text-sm flex items-center justify-between hover:bg-slate-800/70 ${
-                                  isSelected ? 'bg-emerald-500/10 text-emerald-200' : 'text-slate-200'
-                                }`}
-                              >
-                                <div className="min-w-0">
-                                  <p className="font-medium truncate">{user.username || 'Unnamed user'}</p>
-                                  <p className="text-[11px] text-slate-400 truncate">
-                                    TG: {user.telegram_id || 'n/a'} · Phone: {user.phone || 'n/a'} · Bal: {formatCurrency(user.balance || 0)}
-                                  </p>
-                                </div>
-                                <span className="text-[11px]">{isSelected ? '✓' : 'Select'}</span>
-                              </button>
-                            )
-                          })
-                        )}
-                      </div>
-                    )}
-
-                    {selectedUsers.length > 0 && (
-                      <div className="pt-2 mt-2 border-t border-slate-800 text-[11px] text-slate-300 space-y-1">
-                        <p className="text-slate-400">Selected recipients:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedUsers.map((u) => (
-                            <span
-                              key={u.id}
-                              className="px-2 py-1 rounded-full bg-slate-800 border border-slate-600 text-[11px] max-w-[140px] truncate"
-                            >
-                              {u.username || u.telegram_id || 'User'}
-                            </span>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedUsers([])}
-                          className="mt-1 text-emerald-300 hover:text-emerald-200"
-                        >
-                          Clear selection
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-2 flex items-center justify-between bg-slate-900/60 rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300">
-                    <div>
-                      <p className="font-medium text-slate-200">Estimated recipients</p>
-                      <p className="text-[11px] text-slate-500">
-                        Based on filters and manual selection.
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-emerald-400">
-                        {loadingRecipients ? '…' : estimatedRecipients.toLocaleString()}
-                      </div>
-                      {filtersSummary.length > 0 && (
-                        <button
-                          type="button"
-                          className="text-[11px] text-slate-400 hover:text-slate-200"
-                          onClick={() => alert(filtersSummary.join('\n'))}
-                        >
-                          View filters
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-700 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                <p className="text-[11px] text-slate-500">
-                  Promo messages are delivered via Telegram using unique codes. Users claim them inside the mini app under
-                  <span className="font-semibold text-slate-300"> Profile → Claim Promo</span>.
-                </p>
-                <button
-                  type="button"
-                  disabled={isSending}
-                  onClick={handleSendPromos}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 border border-emerald-500/80 flex items-center justify-center gap-2"
-                >
-                  {isSending ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                      <span>Sending promos…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Send promo campaign</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <div className="flex items-center text-[#A1A1AA] text-sm mr-2">Sort by:</div>
+              <select
+                value={promoSort}
+                onChange={(e) => setPromoSort(e.target.value as any)}
+                className="bg-[#1C1C1C] border border-[#333333] text-white text-sm rounded-lg focus:ring-[#d4af35] focus:border-[#d4af35] block p-2"
+              >
+                <option value="newest">Newest First</option>
+                <option value="highest_value">Highest Value</option>
+                <option value="expiring_soon">Expiring Soon</option>
+              </select>
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="bg-slate-800/60 backdrop-blur-md rounded-lg border border-slate-700/60 p-4 sm:p-5">
-              <h3 className="text-sm font-semibold text-slate-100 mb-2">Telegram message preview</h3>
-              <div className="mt-2 bg-[#141414] text-[11px] text-slate-100 rounded-lg border border-yellow-500/40 overflow-hidden">
-                {bannerUrl && (
-                  <div className="bg-black/80 border-b border-yellow-500/40 flex items-center justify-center">
-                    <img src={bannerUrl} alt="Promo banner preview" className="max-h-32 object-contain" />
-                  </div>
-                )}
-                <div className="bg-yellow-500/90 text-slate-900 px-3 py-1.5 flex items-center gap-2 text-xs font-semibold">
-                  <span>✅ Promo</span>
-                </div>
-                <div className="px-3 py-2 space-y-2">
-                  <p className="font-semibold">✅ {title || 'Promo'} 🎁</p>
-                  {message && <p className="whitespace-pre-line text-slate-200">{message}</p>}
-                  <div className="pt-1 space-y-1">
-                    <p className="text-slate-100">
-                      🎟 Your promo code: <span className="font-mono bg-slate-800 px-1.5 py-0.5 rounded">{sampleCode}</span>
-                    </p>
-                    <p className="text-slate-300 font-semibold mt-1">How to claim:</p>
-                    <p>1️⃣ Open the BingoX mini app</p>
-                    <p>2️⃣ Go to Profile → Claim Promo</p>
-                    <p>3️⃣ Enter your promo code and confirm</p>
-                    <p className="text-[10px] text-amber-200 mt-1">
-                      🔥 Do not share this code. It works only once and expires in {promoExpiresAmount}{' '}
-                      {promoExpiresUnit === 'hours' ? 'hour' : 'day'}
-                      {promoExpiresAmount === 1 ? '' : 's'}.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {publicPromos
+              .filter((p) => {
+                const hay = `${p.code} ${p.amount} ${p.created_at}`.toLowerCase()
+                const okSearch = promoSearch.trim() ? hay.includes(promoSearch.trim().toLowerCase()) : true
+                if (!okSearch) return false
 
-            <div className="bg-slate-800/60 backdrop-blur-md rounded-lg border border-slate-700/60 p-4 sm:p-5">
-              <h3 className="text-sm font-semibold text-slate-100 mb-3">Recent promo campaigns</h3>
-              {previousPromos.length === 0 ? (
-                <p className="text-xs text-slate-500">No promo campaigns recorded yet.</p>
-              ) : (
-                <div className="space-y-3 max-h-[360px] overflow-y-auto text-xs scrollbar-hide pr-1">
-                  {previousPromos.map((p) => {
-                    const sent = p.sent ?? 0
-                    const failed = p.failed ?? 0
-                    const total = p.recipients ?? sent + failed
-                    const filters = (p.filters || {}) as any
-                    const promo = filters.promo || {}
-                    const stats = promoStats[p.id]
-                    const expAmount = promo.expiresAmount ?? promo.expiresInDays ?? 0
-                    const expUnit = promo.expiresUnit || (promo.expiresInDays ? 'days' : 'days')
-                    const allExpired =
-                      stats && stats.total > 0 && stats.expired > 0 && (stats as any).active === 0
-                    const fullyClaimed = stats && stats.total > 0 && stats.used === stats.total
+                const expiresAt = p.expires_at ? new Date(p.expires_at) : null
+                const now = new Date()
+                const isExpired = expiresAt ? expiresAt.getTime() <= now.getTime() : false
+                const fullyClaimed = p.used_count >= p.max_uses
+                const isActive = !isExpired && !fullyClaimed
 
-                    return (
-                      <div
-                        key={p.id}
-                        className="rounded-xl border border-slate-700 bg-slate-900/80 px-3.5 py-2.5 flex flex-col gap-1.5 shadow-sm"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-50 truncate text-[13px]">{p.title}</p>
-                            <p className="text-[10px] text-slate-500 truncate">
-                              {new Date(p.created_at).toLocaleString()}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-1 justify-end text-[10px]">
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
-                              Sent {sent}
-                            </span>
-                            {total > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
-                                Total {total}
-                              </span>
-                            )}
-                            {stats?.used > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-200 border border-emerald-500/40">
-                                Claimed {stats.used}
-                              </span>
-                            )}
-                            {fullyClaimed && (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-100 border border-emerald-400/60">
-                                Fully claimed
-                              </span>
-                            )}
-                            {stats?.expired > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
-                                Expired {stats.expired}
-                              </span>
-                            )}
-                            {failed > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-200 border border-rose-500/40">
-                                Failed {failed}
-                              </span>
-                            )}
-                          </div>
+                if (promoTab === 'active') return isActive
+                if (promoTab === 'expired') return isExpired || fullyClaimed
+                if (promoTab === 'scheduled') return false
+                return true
+              })
+              .slice(0, 18)
+              .map((p) => {
+                const expiresAt = p.expires_at ? new Date(p.expires_at) : null
+                const now = new Date()
+                const isExpired = expiresAt ? expiresAt.getTime() <= now.getTime() : false
+                const fullyClaimed = p.used_count >= p.max_uses
+                const statusLabel = fullyClaimed ? 'Disabled' : isExpired ? 'Expired' : 'Active'
+                const statusClass = fullyClaimed
+                  ? 'bg-gray-700/50 border-gray-600/50 text-gray-300'
+                  : isExpired
+                  ? 'bg-[#F39C12]/10 border-[#F39C12]/20 text-[#F39C12]'
+                  : 'bg-green-500/10 border-green-500/20 text-green-400'
+
+                return (
+                  <div
+                    key={p.id}
+                    className="group bg-[#252525] rounded-lg border border-[#37342a] p-5 flex flex-col gap-4 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.4)] hover:border-[#d4af35]/50 transition-all duration-300 relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <Ticket className="w-24 h-24 text-[#d4af35] -rotate-12 translate-x-4 -translate-y-4" />
+                    </div>
+
+                    <div className="flex justify-between items-start z-10">
+                      <div className="flex gap-3">
+                        <div className="size-10 rounded-full bg-[#1C1C1C] border border-[#37342a] flex items-center justify-center shrink-0">
+                          <Ticket className="w-5 h-5 text-[#d4af35]" />
                         </div>
-
-                        <div className="flex flex-wrap gap-1.5 mt-0.5">
-                          {promo.amount && (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
-                              {formatCurrency(promo.amount)} ETB
-                            </span>
-                          )}
-                          {promo.metric && (
-                            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 border border-slate-600">
-                              {promo.metric === 'deposits' ? 'Top Depositor' : 'Most Played'}
-                            </span>
-                          )}
-                          {expAmount > 0 && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-200 border border-amber-500/40">
-                              {allExpired
-                                ? 'Expired'
-                                : `Expires in ${expAmount}${expUnit === 'hours' ? 'h' : 'd'}`}
-                            </span>
-                          )}
+                        <div>
+                          <h3 className="text-white font-bold text-lg leading-tight">Public Promo</h3>
+                          <p className="text-[#b6b1a0] text-xs font-mono mt-0.5">ID: {p.code}</p>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
 
-            <div className="bg-slate-800/60 backdrop-blur-md rounded-lg border border-slate-700/60 p-4 sm:p-5">
-              <h3 className="text-sm sm:text-base font-semibold text-slate-100 mb-3">
-                Public promo code for channel posts
-              </h3>
-              <p className="text-[11px] text-slate-400 mb-3">
-                Generate a single promo code you can post in your Telegram channel. The first N players who
-                redeem it will receive the gift balance.
-              </p>
+                      <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-bold uppercase tracking-wider ${statusClass}`}>
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    <div className="py-2 z-10">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm text-[#b6b1a0] font-medium">ETB</span>
+                        <span className="text-4xl font-bold text-[#d4af35] tracking-tight">{Number(p.amount).toFixed(2)}</span>
+                      </div>
+                      <div className="inline-flex items-center gap-1.5 mt-2 px-2 py-1 rounded-md bg-[#1C1C1C] border border-[#37342a]">
+                        <span className="text-[10px] font-semibold text-[#b6b1a0] uppercase tracking-wide">Non-Withdrawable</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#1C1C1C]/50 rounded-lg p-3 grid grid-cols-2 gap-y-2 gap-x-4 text-sm border border-[#37342a]/50 z-10">
+                      <div className="flex flex-col">
+                        <span className="text-[#b6b1a0] text-xs">Uses</span>
+                        <span className="text-white font-medium">{p.used_count}/{p.max_uses}</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[#b6b1a0] text-xs">Created</span>
+                        <span className="text-white font-medium">{new Date(p.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex flex-col col-span-2 pt-2 border-t border-[#37342a]/50 mt-1">
+                        <span className="text-[#b6b1a0] text-xs">Validity</span>
+                        <div className="flex items-center gap-1 text-white font-medium">
+                          {expiresAt ? `Expires ${expiresAt.toLocaleDateString()}` : 'No Expiry'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-auto pt-2 z-10">
+                      <span className="text-xs text-[#b6b1a0]">Claims tracked</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          className="size-9 flex items-center justify-center rounded-lg bg-[#1C1C1C] hover:bg-[#d4af35] hover:text-[#1C1C1C] text-white border border-[#37342a] transition-colors"
+                          onClick={() => {
+                            setShowBuilder(true)
+                            document.getElementById('promo-builder')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          }}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          className="h-9 px-3 flex items-center justify-center rounded-lg bg-[#1C1C1C] text-[#b6b1a0] border border-[#37342a] hover:border-red-500 hover:text-red-400 transition-colors gap-2 text-xs font-bold"
+                        >
+                          <Ban className="w-4 h-4" />
+                          Disable
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+
+          <div className="text-xs text-[#A1A1AA]">
+            Use the Create New Promo button to generate and send promotions.
+          </div>
+        </div>
+      </div>
+              
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm mb-3">
                 <div>
@@ -1348,10 +996,10 @@ export default function AdminPromosPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    
+    </AdminShell>
   )
+}
+
+export default function AdminPromosPage() {
+  return <PromotionsManager />
 }

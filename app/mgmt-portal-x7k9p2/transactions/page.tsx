@@ -1,10 +1,11 @@
 "use client"
 
-import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useLocalStorage } from '@/lib/hooks/usePageState'
+import { AdminShell } from '@/app/mgmt-portal-x7k9p2/components/AdminShell'
+import { Calendar, ChevronDown, Download, Search } from 'lucide-react'
 
 export default function AdminTransactionsPage() {
   const [allTransactions, setAllTransactions] = useState<any[]>([])
@@ -14,6 +15,7 @@ export default function AdminTransactionsPage() {
   const [statusFilter, setStatusFilter] = useLocalStorage('transactions_statusFilter', 'all')
   const [searchTerm, setSearchTerm] = useLocalStorage('transactions_search', '')
   const [dateFilter, setDateFilter] = useLocalStorage('transactions_dateFilter', 'all')
+  const [walletFilter, setWalletFilter] = useLocalStorage('transactions_walletFilter', 'all')
   const [currentPage, setCurrentPage] = useLocalStorage('transactions_page', 1)
   const [pageSize, setPageSize] = useLocalStorage('transactions_pageSize', 10)
   const [referralStats, setReferralStats] = useState({ totalAmount: 0, totalInvites: 0, uniqueReferrers: 0 })
@@ -25,7 +27,7 @@ export default function AdminTransactionsPage() {
   useEffect(() => {
     filterTransactions()
     setCurrentPage(1)
-  }, [typeFilter, statusFilter, searchTerm, dateFilter, allTransactions])
+  }, [typeFilter, statusFilter, searchTerm, dateFilter, walletFilter, allTransactions])
 
   const fetchTransactions = async () => {
     setLoading(true)
@@ -162,161 +164,220 @@ export default function AdminTransactionsPage() {
       filtered = filtered.filter(tx => new Date(tx.created_at) >= startDate)
     }
 
+    // Filter by wallet (derived)
+    if (walletFilter !== 'all') {
+      filtered = filtered.filter((tx: any) => {
+        const meta = tx?.metadata || {}
+        const source = meta?.source as string | undefined
+        const stakeSource = meta?.stake_source as string | undefined
+        const creditedTo = meta?.credited_to as string | undefined
+
+        const resolved = (() => {
+          if (tx.type === 'bonus' || tx.type === 'referral_bonus') return 'bonus'
+          if (tx.type === 'stake') {
+            const s = stakeSource || source
+            if (s === 'bonus') return 'bonus'
+            if (s === 'mixed') return 'mixed'
+            return 'real'
+          }
+          if (tx.type === 'win') {
+            if (creditedTo === 'bonus_win') return 'bonus'
+            return 'real'
+          }
+          return 'real'
+        })()
+
+        if (walletFilter === 'real') return resolved === 'real'
+        if (walletFilter === 'bonus') return resolved === 'bonus'
+        return true
+      })
+    }
+
     setTransactions(filtered)
   }
 
   const totalPages = Math.ceil(transactions.length / pageSize)
   const paginatedTransactions = transactions.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
-  // Calculate stats
-  const stats = {
-    total: allTransactions.length,
-    totalVolume: allTransactions.reduce((sum, tx) => sum + Math.abs(tx.amount), 0),
-    wins: allTransactions.filter(tx => tx.type === 'win').reduce((sum, tx) => sum + (tx.amount || 0), 0),
-    stakes: allTransactions.filter(tx => tx.type === 'stake').reduce((sum, tx) => sum + Math.abs(tx.amount || 0), 0),
-    deposits: allTransactions.filter(tx => tx.type === 'deposit').length,
-    withdrawals: allTransactions.filter(tx => tx.type === 'withdrawal').length,
-    pending: allTransactions.filter(tx => tx.status === 'pending').length,
-    completed: allTransactions.filter(tx => (tx.status || 'completed') === 'completed').length,
-    referrals: referralStats
+  const exportCsv = () => {
+    const rows = transactions.map((tx: any) => ({
+      transaction_id: tx.id,
+      user: tx.users?.username || '',
+      telegram_id: tx.users?.telegram_id || '',
+      type: tx.type,
+      status: tx.status || 'completed',
+      amount: Number(tx.amount || 0),
+      created_at: tx.created_at,
+    }))
+
+    const headers = ['transaction_id', 'user', 'telegram_id', 'type', 'status', 'amount', 'created_at']
+    const escape = (v: any) => {
+      const s = String(v ?? '')
+      if (s.includes('"') || s.includes(',') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`
+      return s
+    }
+
+    const csv = [headers.join(',')]
+      .concat(rows.map(r => headers.map(h => escape((r as any)[h])).join(',')))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
+  const typeMeta = (type: string) => {
+    switch (type) {
+      case 'deposit':
+        return { label: 'Deposit', badge: 'bg-green-500/10 text-green-400 border-green-500/20', dot: 'bg-green-400' }
+      case 'withdrawal':
+        return { label: 'Withdrawal', badge: 'bg-orange-500/10 text-orange-400 border-orange-500/20', dot: 'bg-orange-400' }
+      case 'stake':
+        return { label: 'Game Play', badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20', dot: 'bg-blue-400' }
+      case 'bonus':
+        return { label: 'Bonus', badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20', dot: 'bg-purple-400' }
+      case 'referral_bonus':
+        return { label: 'Referral Bonus', badge: 'bg-purple-500/10 text-purple-400 border-purple-500/20', dot: 'bg-purple-400' }
+      case 'win':
+        return { label: 'Win', badge: 'bg-green-500/10 text-green-400 border-green-500/20', dot: 'bg-green-400' }
+      default:
+        return { label: type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Unknown', badge: 'bg-gray-500/10 text-gray-300 border-gray-500/20', dot: 'bg-gray-300' }
+    }
+  }
+
+  const pageItems = useMemo(() => {
+    if (totalPages <= 1) return [] as (number | 'ellipsis')[]
+    const current = Number(currentPage)
+    const pages: (number | 'ellipsis')[] = []
+    const push = (p: number | 'ellipsis') => pages.push(p)
+
+    push(1)
+    const start = Math.max(2, current - 1)
+    const end = Math.min(totalPages - 1, current + 1)
+
+    if (start > 2) push('ellipsis')
+    for (let p = start; p <= end; p++) push(p)
+    if (end < totalPages - 1) push('ellipsis')
+    if (totalPages > 1) push(totalPages)
+    return pages
+  }, [currentPage, totalPages])
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <header className="bg-slate-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Link href="/mgmt-portal-x7k9p2" className="text-slate-400 hover:text-white transition-colors">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-bold text-white">Transactions</h1>
+    <AdminShell title="Transactions">
+      <div className="container mx-auto px-4 py-8 md:px-8 max-w-7xl">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-white mb-2">Transactions History</h1>
+            <p className="text-[#A0A0A0]">View and audit all financial activities across the platform.</p>
           </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-4 mb-6 sm:mb-8">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg border border-slate-700/50 p-3 sm:p-4 hover:border-slate-600/50 transition-all">
-            <div className="text-xs text-slate-400 mb-1">Total</div>
-            <div className="text-xl sm:text-2xl font-bold text-white">{stats.total}</div>
-            <div className="text-xs text-slate-500 mt-1">{formatCurrency(stats.totalVolume)}</div>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-900/30 to-slate-900 rounded-lg border border-emerald-700/30 p-3 sm:p-4 hover:border-emerald-600/50 transition-all">
-            <div className="text-xs text-emerald-400 mb-1">Wins</div>
-            <div className="text-xl sm:text-2xl font-bold text-emerald-400">{formatCurrency(stats.wins)}</div>
-            <div className="text-xs text-emerald-600 mt-1">{allTransactions.filter(tx => tx.type === 'win').length} games</div>
-          </div>
-          <div className="bg-gradient-to-br from-red-900/30 to-slate-900 rounded-lg border border-red-700/30 p-3 sm:p-4 hover:border-red-600/50 transition-all">
-            <div className="text-xs text-red-400 mb-1">Stakes</div>
-            <div className="text-xl sm:text-2xl font-bold text-red-400">{formatCurrency(stats.stakes)}</div>
-            <div className="text-xs text-red-600 mt-1">{allTransactions.filter(tx => tx.type === 'stake').length} games</div>
-          </div>
-          <div className="bg-gradient-to-br from-cyan-900/30 to-slate-900 rounded-lg border border-cyan-700/30 p-3 sm:p-4 hover:border-cyan-600/50 transition-all">
-            <div className="text-xs text-cyan-400 mb-1">Deposits</div>
-            <div className="text-xl sm:text-2xl font-bold text-cyan-400">{stats.deposits}</div>
-            <div className="text-xs text-cyan-600 mt-1">{stats.withdrawals} withdrawals</div>
-          </div>
-          <div className="bg-gradient-to-br from-indigo-900/30 to-slate-900 rounded-lg border border-indigo-700/30 p-3 sm:p-4 hover:border-indigo-600/50 transition-all">
-            <div className="text-xs text-indigo-300 mb-1">Referrals</div>
-            <div className="text-xl sm:text-2xl font-bold text-indigo-200">{formatCurrency(stats.referrals.totalAmount)}</div>
-            <div className="text-xs text-indigo-400 mt-1">{stats.referrals.totalInvites} invites · {stats.referrals.uniqueReferrers} referrers</div>
-          </div>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="flex items-center justify-center gap-2 bg-[#eec02b] hover:bg-[#d4aa24] text-black px-5 py-2.5 rounded-lg font-bold text-sm transition-colors shadow-[0_0_15px_rgba(238,192,43,0.15)]"
+          >
+            <Download className="w-5 h-5" />
+            Export CSV
+          </button>
         </div>
 
-        {/* Filters */}
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 p-3 sm:p-4 mb-4 sm:mb-6">
-          <div className="flex flex-col gap-3 sm:gap-4">
-            <input
-              type="text"
-              placeholder="Search username, Telegram ID, or transaction ID..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-900/50 border border-slate-700/50 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
-            />
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <div className="flex gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 self-center">Type:</span>
-                {['all', 'stake', 'win', 'deposit', 'withdrawal', 'referral_bonus'].map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setTypeFilter(type)}
-                    className={`px-2.5 sm:px-3 py-1 rounded text-xs font-semibold transition-all ${
-                      typeFilter === type
-                        ? 'bg-cyan-600/80 text-white border border-cyan-500/50'
-                        : 'bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:border-slate-500/50'
-                    }`}
-                  >
-                    {type === 'referral_bonus' ? 'Referral' : (type.charAt(0).toUpperCase() + type.slice(1))}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 self-center">Status:</span>
-                {['all', 'pending', 'completed'].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={`px-2.5 sm:px-3 py-1 rounded text-xs font-semibold transition-all ${
-                      statusFilter === status
-                        ? 'bg-cyan-600/80 text-white border border-cyan-500/50'
-                        : 'bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:border-slate-500/50'
-                    }`}
-                  >
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <span className="text-xs text-slate-400 self-center">Date:</span>
-                {['all', 'today', 'week', 'month'].map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setDateFilter(period)}
-                    className={`px-2.5 sm:px-3 py-1 rounded text-xs font-semibold transition-all ${
-                      dateFilter === period
-                        ? 'bg-cyan-600/80 text-white border border-cyan-500/50'
-                        : 'bg-slate-700/50 text-slate-300 border border-slate-600/50 hover:border-slate-500/50'
-                    }`}
-                  >
-                    {period === 'all' ? 'All' : period.charAt(0).toUpperCase() + period.slice(1)}
-                  </button>
-                ))}
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 mb-6">
+          <div className="lg:col-span-4">
+            <label className="block text-xs font-medium text-[#A0A0A0] mb-1.5 uppercase tracking-wider">Search</label>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#A0A0A0]" />
+              <input
+                className="w-full bg-[#252525] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#eec02b] focus:border-[#eec02b] block pl-10 p-3 placeholder-gray-500"
+                placeholder="Search by Transaction ID or User..."
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-medium text-[#A0A0A0] mb-1.5 uppercase tracking-wider">Type</label>
+            <div className="relative">
+              <select
+                className="w-full bg-[#252525] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#eec02b] focus:border-[#eec02b] block p-3 appearance-none cursor-pointer"
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+              >
+                <option value="all">All Types</option>
+                <option value="deposit">Deposit</option>
+                <option value="withdrawal">Withdrawal</option>
+                <option value="stake">Game Play</option>
+                <option value="bonus">Bonus</option>
+                <option value="referral_bonus">Referral Bonus</option>
+                <option value="win">Win</option>
+              </select>
+              <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A0A0] pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-medium text-[#A0A0A0] mb-1.5 uppercase tracking-wider">Wallet</label>
+            <div className="relative">
+              <select
+                className="w-full bg-[#252525] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#eec02b] focus:border-[#eec02b] block p-3 appearance-none cursor-pointer"
+                value={walletFilter}
+                onChange={(e) => setWalletFilter(e.target.value)}
+              >
+                <option value="all">All Wallets</option>
+                <option value="real">Real Money</option>
+                <option value="bonus">Bonus Balance</option>
+              </select>
+              <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A0A0] pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="lg:col-span-4">
+            <label className="block text-xs font-medium text-[#A0A0A0] mb-1.5 uppercase tracking-wider">Date Range</label>
+            <div className="relative">
+              <Calendar className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[#A0A0A0]" />
+              <select
+                className="w-full bg-[#252525] border border-[#333333] text-white text-sm rounded-lg focus:ring-1 focus:ring-[#eec02b] focus:border-[#eec02b] block pl-10 p-3 appearance-none cursor-pointer"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">Last 7 Days</option>
+                <option value="month">Last 30 Days</option>
+              </select>
+              <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-[#A0A0A0] pointer-events-none" />
             </div>
           </div>
         </div>
 
         {/* Transactions Table/Cards */}
-        <div className="bg-slate-800/50 backdrop-blur-md rounded-lg border border-slate-700/50 overflow-hidden">
+        <div className="bg-[#252525] rounded-xl border border-[#333333] shadow-xl overflow-hidden">
           {loading ? (
-            <div className="p-8 sm:p-12 text-center">
-              <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-400 text-sm sm:text-base">Loading transactions...</p>
-            </div>
+            <div className="p-10 text-center text-[#A0A0A0]">Loading transactions...</div>
           ) : paginatedTransactions.length === 0 ? (
-            <div className="p-8 sm:p-12 text-center text-slate-400 text-sm sm:text-base">
-              No transactions found
-            </div>
+            <div className="p-10 text-center text-[#A0A0A0]">No transactions found</div>
           ) : (
             <>
               {/* Desktop Table */}
               <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead className="border-b border-slate-700/50 bg-slate-900/50">
+                <table className="w-full text-left border-collapse">
+                  <thead>
                     <tr>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">User</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Type</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Amount</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Wallet</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Status</th>
-                      <th className="px-4 sm:px-6 py-3 text-left text-xs font-semibold text-slate-300">Date</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333]">Transaction ID</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333]">User</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333]">Type</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333]">Wallet</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333]">Date &amp; Time</th>
+                      <th className="px-6 py-4 text-xs font-semibold text-[#A0A0A0] uppercase tracking-wider bg-[#2A2A2A] border-b border-[#333333] text-right">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-700/30">
+                  <tbody className="divide-y divide-[#333333]">
                     {paginatedTransactions.map((tx: any) => {
                       const rBefore = tx?.metadata?.real_balance_before
                       const rAfter = tx?.metadata?.real_balance_after
@@ -332,74 +393,49 @@ export default function AdminTransactionsPage() {
                       } else if (tx.type === 'win') {
                         walletBadge = creditedTo === 'real' ? 'Cash Win' : creditedTo === 'bonus_win' ? 'Bonus Win' : null
                       }
+
+                      let walletLabel: string = '—'
+                      if (walletBadge) walletLabel = walletBadge
+                      else if (hasReal) walletLabel = 'Real Money'
+                      else if (hasBonusWin) walletLabel = 'Bonus Balance'
+                      else if (tx.metadata?.wallet) walletLabel = String(tx.metadata.wallet)
+
+                      const meta = typeMeta(tx.type)
+                      const isBonusWallet = walletLabel.toLowerCase().includes('bonus')
+                      const amountText = tx.amount < 0 ? 'text-red-400' : isBonusWallet ? 'text-[#eec02b]' : 'text-white'
+
                       return (
-                      <tr key={tx.id} className="hover:bg-slate-700/20 transition-colors">
-                        <td className="px-4 sm:px-6 py-4">
-                          <div>
-                            <div className="font-semibold text-white text-sm">{tx.users?.username || 'Unknown'}</div>
-                            <div className="text-xs text-slate-400">{tx.users?.telegram_id}</div>
-                          </div>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            tx.type === 'win' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                            tx.type === 'stake' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                            tx.type === 'deposit' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
-                            tx.type === 'referral_bonus' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
-                            'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                          }`}>
-                            {tx.type === 'referral_bonus' ? 'Referral' : (tx.type.charAt(0).toUpperCase() + tx.type.slice(1))}
-                          </span>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <span className={`font-bold text-sm ${
-                            tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'
-                          }`}>
-                            {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                          </span>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 text-xs text-slate-300">
-                          <div className="space-y-1">
-                            {hasReal ? (
-                              <div>
-                                <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
+                        <tr key={tx.id} className="hover:bg-[#2e2e2e] transition-colors group">
+                          <td className="px-6 py-4 text-sm text-[#A0A0A0] font-mono">{String(tx.id).slice(0, 8)}…</td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-[#eec02b]/20 text-[#eec02b] flex items-center justify-center font-bold text-xs">
+                                {String(tx.users?.username || 'U').charAt(0).toUpperCase()}
                               </div>
-                            ) : hasBonusWin ? (
                               <div>
-                                <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
+                                <div className="font-semibold text-white text-sm">{tx.users?.username || 'Unknown'}</div>
+                                <div className="text-xs text-[#A0A0A0]">{tx.users?.telegram_id}</div>
                               </div>
-                            ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
-                              <div>
-                                <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
-                              </div>
-                            ) : (
-                              <div className="text-slate-500">—</div>
-                            )}
-                            {walletBadge && (
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                walletBadge === 'Cash' || walletBadge === 'Cash Win'
-                                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
-                                  : walletBadge === 'Bonus' || walletBadge === 'Bonus Win'
-                                    ? 'bg-purple-500/10 text-purple-300 border-purple-500/40'
-                                    : 'bg-amber-500/10 text-amber-300 border-amber-500/40'
-                              }`}>
-                                {walletBadge}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                            (tx.status || 'completed') === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                            'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                          }`}>
-                            {(tx.status || 'completed').charAt(0).toUpperCase() + (tx.status || 'completed').slice(1)}
-                          </span>
-                        </td>
-                        <td className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-slate-400">
-                          {new Date(tx.created_at).toLocaleDateString()}
-                        </td>
-                      </tr>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${meta.badge}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                              {meta.label}
+                            </span>
+                          </td>
+                          <td className={`px-6 py-4 text-sm ${isBonusWallet ? 'text-[#eec02b]' : 'text-gray-300'}`}>{walletLabel}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="text-sm text-[#A0A0A0]">
+                              {new Date(tx.created_at).toLocaleDateString()} <span className="text-[#555] mx-1">|</span> {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span className={`text-sm font-bold font-mono ${amountText}`}>
+                              {tx.amount > 0 ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                            </span>
+                          </td>
+                        </tr>
                     )})}
                   </tbody>
                 </table>
@@ -408,12 +444,6 @@ export default function AdminTransactionsPage() {
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3 p-4">
                 {paginatedTransactions.map((tx: any) => {
-                  const rBefore = tx?.metadata?.real_balance_before
-                  const rAfter = tx?.metadata?.real_balance_after
-                  const bwBefore = tx?.metadata?.bonus_win_balance_before
-                  const bwAfter = tx?.metadata?.bonus_win_balance_after
-                  const hasReal = typeof rBefore === 'number' && typeof rAfter === 'number'
-                  const hasBonusWin = typeof bwBefore === 'number' && typeof bwAfter === 'number'
                   const source = tx?.metadata?.source as string | undefined
                   const creditedTo = tx?.metadata?.credited_to as string | undefined
                   let walletBadge: string | null = null
@@ -422,99 +452,102 @@ export default function AdminTransactionsPage() {
                   } else if (tx.type === 'win') {
                     walletBadge = creditedTo === 'real' ? 'Cash Win' : creditedTo === 'bonus_win' ? 'Bonus Win' : null
                   }
+
+                  let walletLabel: string = '—'
+                  if (walletBadge) walletLabel = walletBadge
+                  else if (tx.metadata?.wallet) walletLabel = String(tx.metadata.wallet)
+                  const username = tx.users?.username || 'Unknown'
+                  const initial = String(username || 'U').charAt(0).toUpperCase()
+                  const meta = typeMeta(tx.type)
+                  const isBonusWallet = walletLabel.toLowerCase().includes('bonus')
+                  const amountText = tx.amount < 0 ? 'text-red-400' : isBonusWallet ? 'text-[#eec02b]' : 'text-white'
                   return (
-                  <div key={tx.id} className="bg-slate-700/30 rounded-lg border border-slate-700/50 p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-white">{tx.users?.username || 'Unknown'}</div>
-                        <div className="text-xs text-slate-400">{tx.users?.telegram_id}</div>
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        tx.type === 'win' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                        tx.type === 'stake' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                        tx.type === 'deposit' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' :
-                        tx.type === 'referral_bonus' ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
-                        'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                      }`}>
-                        {tx.type === 'referral_bonus' ? 'Referral' : (tx.type.charAt(0).toUpperCase() + tx.type.slice(1))}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <div className="text-xs text-slate-400">Amount</div>
-                        <div className={`font-bold ${
-                          tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'
-                        }`}>
-                          {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                    <div key={tx.id} className="bg-[#2A2A2A] rounded-xl border border-[#333333] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-[#eec02b]/20 text-[#eec02b] flex items-center justify-center font-bold text-xs flex-shrink-0">
+                            {initial}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-white text-sm truncate">{username}</div>
+                            <div className="text-xs text-[#A0A0A0] truncate">{tx.users?.telegram_id}</div>
+                          </div>
                         </div>
+                        <div className="text-xs text-[#A0A0A0] font-mono flex-shrink-0">{String(tx.id).slice(0, 8)}…</div>
                       </div>
-                      <div>
-                        <div className="text-xs text-slate-400">Date</div>
-                        <div className="text-slate-300">{new Date(tx.created_at).toLocaleDateString()}</div>
-                      </div>
-                      <div className="col-span-2">
-                        <div className="text-xs text-slate-400">Wallet</div>
-                        <div className="text-slate-300 text-xs space-y-1">
-                          {hasReal ? (
-                            <div>
-                              <span className="text-slate-400">Real:</span> {formatCurrency(rBefore)} → {formatCurrency(rAfter)}
-                            </div>
-                          ) : hasBonusWin ? (
-                            <div>
-                              <span className="text-slate-400">Bonus-win:</span> {formatCurrency(bwBefore)} → {formatCurrency(bwAfter)}
-                            </div>
-                          ) : tx.type === 'referral_bonus' && tx.metadata?.referral_count ? (
-                            <div>
-                              <span className="text-slate-400">Invites:</span> {tx.metadata.referral_count}
-                            </div>
-                          ) : (
-                            <div className="text-slate-500">—</div>
-                          )}
-                          {walletBadge && (
-                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              walletBadge === 'Cash' || walletBadge === 'Cash Win'
-                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
-                                : walletBadge === 'Bonus' || walletBadge === 'Bonus Win'
-                                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/40'
-                                  : 'bg-amber-500/10 text-amber-300 border-amber-500/40'
-                            }`}>
-                              {walletBadge}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="col-span-2">
-                        <div className="text-xs text-slate-400 mb-1">Status</div>
-                        <span className={`px-2 py-1 rounded text-xs font-semibold inline-block ${
-                          (tx.status || 'completed') === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                          'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                        }`}>
-                          {(tx.status || 'completed').charAt(0).toUpperCase() + (tx.status || 'completed').slice(1)}
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${meta.badge}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                          {meta.label}
                         </span>
                       </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[11px] text-[#A0A0A0] uppercase tracking-wider">Wallet</div>
+                          <div className={`text-sm mt-0.5 ${isBonusWallet ? 'text-[#eec02b]' : 'text-gray-300'}`}>{walletLabel}</div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] text-[#A0A0A0] uppercase tracking-wider">Date &amp; Time</div>
+                          <div className="text-sm text-[#A0A0A0] mt-0.5">
+                            {new Date(tx.created_at).toLocaleDateString()} <span className="text-[#555] mx-1">|</span> {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <div className="col-span-2 flex items-center justify-between">
+                          <div className="text-[11px] text-[#A0A0A0] uppercase tracking-wider">Amount</div>
+                          <div className={`text-sm font-bold font-mono ${amountText}`}>
+                            {tx.amount > 0 ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
                 )})}
               </div>
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between p-4 border-t border-slate-700/50">
-                  <div className="text-sm text-slate-400">
-                    Page {currentPage} of {totalPages} ({transactions.length} total)
+                <div className="px-6 py-4 border-t border-[#333333] flex items-center justify-between bg-[#282828]">
+                  <div className="hidden sm:block">
+                    <p className="text-sm text-[#A0A0A0]">
+                      Showing <span className="font-medium text-white">{(currentPage - 1) * pageSize + 1}</span> to{' '}
+                      <span className="font-medium text-white">{Math.min(currentPage * pageSize, transactions.length)}</span> of{' '}
+                      <span className="font-medium text-white">{transactions.length}</span> results
+                    </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-1 justify-between sm:justify-end gap-2">
                     <button
                       onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 rounded bg-slate-700/50 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600/50 transition-colors text-sm"
+                      className="relative inline-flex items-center rounded-lg bg-[#252525] px-3 py-2 text-sm font-semibold text-gray-300 ring-1 ring-inset ring-[#333333] hover:bg-[#333] transition-colors disabled:opacity-50"
                     >
                       Previous
                     </button>
+
+                    <div className="hidden sm:flex gap-1">
+                      {pageItems.map((p, idx) =>
+                        p === 'ellipsis' ? (
+                          <span key={`e-${idx}`} className="relative inline-flex items-center px-2 py-2 text-sm font-semibold text-gray-500">…</span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setCurrentPage(p)}
+                            className={
+                              p === currentPage
+                                ? 'relative inline-flex items-center rounded-lg bg-[#eec02b] px-3 py-2 text-sm font-bold text-black focus:z-20'
+                                : 'relative inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold text-gray-300 hover:bg-[#333] transition-colors focus:z-20'
+                            }
+                          >
+                            {p}
+                          </button>
+                        )
+                      )}
+                    </div>
+
                     <button
                       onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 rounded bg-slate-700/50 text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-600/50 transition-colors text-sm"
+                      className="relative inline-flex items-center rounded-lg bg-[#252525] px-3 py-2 text-sm font-semibold text-gray-300 ring-1 ring-inset ring-[#333333] hover:bg-[#333] transition-colors disabled:opacity-50"
                     >
                       Next
                     </button>
@@ -525,6 +558,6 @@ export default function AdminTransactionsPage() {
           )}
         </div>
       </div>
-    </div>
+    </AdminShell>
   )
 }

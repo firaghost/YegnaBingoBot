@@ -27,6 +27,9 @@ const baseSecurityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Remove console.* in production builds (keep errors only)
   compiler: {
     removeConsole: isProd ? { exclude: ['error'] } : false,

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Player } from '@lottiefiles/react-lottie-player'
 import { supabase } from '@/lib/supabase'
+import { getConfig } from '@/lib/admin-config'
 import { formatCurrency } from '@/lib/utils'
 import BottomNav from '@/app/components/BottomNav'
 import { LuTrophy } from 'react-icons/lu'
@@ -20,6 +21,7 @@ interface LeaderboardEntry {
 export default function LeaderboardPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [enabled, setEnabled] = useState<boolean | null>(null)
   const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'all'>('daily')
   const [view, setView] = useState<'global' | 'tournament'>('global')
   const [tournamentLoading, setTournamentLoading] = useState(false)
@@ -27,6 +29,26 @@ export default function LeaderboardPage() {
   const [tournamentDeposits, setTournamentDeposits] = useState<{ username: string; valueLabel: string }[]>([])
   const [tournamentPlays, setTournamentPlays] = useState<{ username: string; valueLabel: string }[]>([])
   const { user } = useAuth()
+
+  useEffect(() => {
+    const loadEnabled = async () => {
+      try {
+        const v = await getConfig('global_leaderboard')
+        setEnabled(Boolean(v))
+      } catch {
+        setEnabled(true)
+      }
+    }
+    void loadEnabled()
+  }, [])
+
+  useEffect(() => {
+    if (enabled === false) {
+      try {
+        window.location.href = '/lobby'
+      } catch {}
+    }
+  }, [enabled])
 
   useEffect(() => {
     fetchLeaderboard()
@@ -40,6 +62,10 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = async () => {
     try {
       setLoading(true)
+      if (enabled === false) {
+        setLeaderboard([])
+        return
+      }
       if (period === 'all') {
         const { data, error } = await supabase
           .from('users')
@@ -166,6 +192,7 @@ export default function LeaderboardPage() {
   const myRankLabel = myRankIdx >= 0 ? `#${myRankIdx + 1}` : 'Unranked'
 
   return (
+    enabled === false ? null :
     <div className="min-h-screen bg-slate-950 pb-20 text-slate-50">
       {/* Sticky Header */}
       <div

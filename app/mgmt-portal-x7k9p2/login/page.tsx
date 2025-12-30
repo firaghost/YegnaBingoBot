@@ -3,17 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAdminAuth } from '@/lib/hooks/useAdminAuth'
-import { Lock } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { Eye, EyeOff, LogIn, Shield, User } from 'lucide-react'
 
 export default function AdminLoginPage() {
   const router = useRouter()
   const { loginWithTelegram, isAuthenticated, setAdminFromApi } = useAdminAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loginMethod, setLoginMethod] = useState<'telegram' | 'password'>('password')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -82,109 +81,123 @@ export default function AdminLoginPage() {
     }
   }
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-6">
-      <div className="max-w-md w-full">
-        <div className="bg-white/10 backdrop-blur-md rounded-3xl shadow-2xl p-10 border border-white/20">
-          <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
-                <Lock className="w-8 h-8 text-blue-300" />
+    <div className="relative flex min-h-screen w-full flex-col bg-[#1C1C1C] font-sans overflow-x-hidden antialiased selection:bg-[#d4af35]/30 selection:text-[#d4af35]">
+      <div aria-hidden="true" className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[520px] bg-[radial-gradient(circle_at_center,rgba(212,175,53,0.10),transparent_55%)] opacity-70" />
+      </div>
+
+      <div className="relative z-10 flex h-full grow flex-col items-center justify-center p-4 sm:p-6">
+        <div className="w-full max-w-[440px] flex flex-col bg-[#252525] rounded-xl shadow-2xl border border-[#333333] overflow-hidden">
+          <div className="h-1.5 w-full bg-[#d4af35] shadow-[0_0_10px_rgba(212,175,53,0.40)]" />
+
+          <div className="p-8 md:p-10 flex flex-col w-full">
+            <div className="flex flex-col items-center text-center mb-8">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] border border-[#333333] flex items-center justify-center shadow-lg mb-4 transition-transform duration-500 hover:scale-105">
+                <Shield className="w-8 h-8 text-[#d4af35]" />
               </div>
+              <h1 className="text-2xl font-bold text-white tracking-tight">Admin Console</h1>
+              <p className="text-sm text-[#a3a3a3] mt-1 font-medium">Restricted Access Environment</p>
             </div>
-            <h1 className="text-4xl font-bold text-white mb-2">Admin Access</h1>
-            <p className="text-gray-300">BingoX Dashboard</p>
-          </div>
 
-          {error && (
-            <div className="mb-6 bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
+            {error && (
+              <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {error}
+              </div>
+            )}
 
-          {/* Login Method Tabs */}
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setLoginMethod('password')}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
-                loginMethod === 'password'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              Password
-            </button>
-            <button
-              onClick={() => setLoginMethod('telegram')}
-              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
-                loginMethod === 'telegram'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white/10 text-gray-300 hover:bg-white/20'
-              }`}
-            >
-              Telegram
-            </button>
-          </div>
+            <form className="flex flex-col gap-5" onSubmit={handlePasswordLogin}>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wider ml-1">Admin ID</label>
+                <div className="relative group">
+                  <input
+                    className="w-full h-12 bg-[#181818] border border-[#333333] rounded-lg pl-4 pr-12 text-base text-white placeholder:text-[#6b7280] focus:outline-none focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] transition-all duration-200"
+                    placeholder="Username"
+                    type="text"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    disabled={loading}
+                  />
+                  <div className="absolute right-0 top-0 h-full w-12 flex items-center justify-center pointer-events-none text-[#a3a3a3] group-focus-within:text-[#d4af35] transition-colors duration-200">
+                    <User className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
 
-          <div className="space-y-4">
-            {loginMethod === 'password' ? (
-              <form onSubmit={handlePasswordLogin} className="space-y-4">
-                <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  required
-                />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-4 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Logging in...' : 'Login'}
-                </button>
-              </form>
-            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wider ml-1">Password</label>
+                <div className="relative group">
+                  <input
+                    className="w-full h-12 bg-[#181818] border border-[#333333] rounded-lg pl-4 pr-12 text-base text-white placeholder:text-[#6b7280] focus:outline-none focus:ring-1 focus:ring-[#d4af35] focus:border-[#d4af35] transition-all duration-200"
+                    placeholder="••••••••••••"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    disabled={loading}
+                    className="absolute right-0 top-0 h-full w-12 flex items-center justify-center text-[#a3a3a3] hover:text-white transition-colors duration-200 disabled:opacity-50"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
               <button
-                onClick={handleTelegramLogin}
+                className="mt-4 flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 px-5 bg-[#d4af35] hover:bg-[#c29f2e] text-[#171612] text-base font-bold leading-normal tracking-wide transition-all duration-200 shadow-[0_4px_14px_0_rgba(212,175,53,0.39)] hover:shadow-[0_6px_20px_rgba(212,175,53,0.23)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                type="submit"
                 disabled={loading}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white py-4 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Authenticating...</span>
-                  </>
+                  <span>Logging in...</span>
                 ) : (
                   <>
-                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z"/>
-                    </svg>
-                    <span>Login with Telegram</span>
+                    <LogIn className="w-5 h-5 mr-2" />
+                    <span>Secure Login</span>
                   </>
                 )}
               </button>
-            )}
-          </div>
+            </form>
 
-          <div className="mt-8 pt-6 border-t border-white/20">
-            <p className="text-center text-sm text-gray-400">
-              Only authorized administrators can access this area
-            </p>
+            <button
+              onClick={handleTelegramLogin}
+              disabled={loading}
+              className="mt-3 w-full h-12 rounded-lg border border-[#333333] bg-[#1b1b1b] hover:bg-[#202020] text-white font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              type="button"
+            >
+              {loading ? 'Authenticating...' : 'Login with Telegram'}
+            </button>
+
+            <div className="mt-8 pt-6 border-t border-[#333333]">
+              <div className="flex gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#1b1b1b] border border-[#333333] flex items-center justify-center text-[#d4af35]">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-bold text-[#d4d4d4] uppercase tracking-wide">Notice</p>
+                  <p className="text-[11px] leading-relaxed text-[#8a8a8a]">
+                    This system is for authorized administrators only. All activities are monitored.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="text-center mt-6">
-          <a href="/" className="text-white/80 hover:text-white hover:underline font-medium">
-            ← Back to Home
+        <div className="mt-8 flex flex-col items-center gap-2 opacity-60">
+          <div className="flex items-center gap-2 text-xs text-[#666666]">
+            <Shield className="w-4 h-4" />
+            <span>Encrypted Connection</span>
+          </div>
+          <a href="/" className="text-[10px] text-[#444444] hover:text-[#666666] transition-colors">
+            Back to Home
           </a>
         </div>
       </div>

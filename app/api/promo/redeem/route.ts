@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getUserFromSession } from '@/lib/server/user-session'
+import { getConfig } from '@/lib/admin-config'
 
 const supabase = supabaseAdmin
 
@@ -28,6 +29,28 @@ export async function POST(req: NextRequest) {
     const trimmed = code.trim().toUpperCase()
     if (!trimmed) {
       return NextResponse.json({ error: 'Promo code is required' }, { status: 400 })
+    }
+
+    try {
+      const allowStacking = Boolean(await getConfig('allow_bonus_stacking'))
+      if (!allowStacking) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        const { data: existingPromoTx } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('type', 'bonus')
+          .eq('status', 'completed')
+          .gte('created_at', since)
+          .not('metadata->>code', 'is', null)
+          .limit(1)
+
+        if (Array.isArray(existingPromoTx) && existingPromoTx.length > 0) {
+          return NextResponse.json({ error: 'You already have an active promo. Try again later.' }, { status: 409 })
+        }
+      }
+    } catch {
+      // ignore enforcement failures
     }
 
     const { data: amount, error } = await supabase.rpc('redeem_any_promo', {

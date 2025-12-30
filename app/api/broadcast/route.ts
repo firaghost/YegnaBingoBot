@@ -10,6 +10,10 @@ function escapeMarkdown(input: string) {
   return input.replace(/([_\*\[\]()~`>#+\-=|{}.!])/g, '\\$1')
 }
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 export async function POST(request: NextRequest) {
   try {
     await requirePermission(request, 'broadcast_manage')
@@ -41,47 +45,72 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get users based on filters or explicit selection - only users with telegram_id
-    let query = supabase
+    const baseQuery = () => supabase
       .from('users')
-      .select('id, telegram_id, username')
+      .select('id, telegram_id, username', { count: 'exact' })
       .not('telegram_id', 'is', null)
 
-    if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
-      query = query.in('id', targetUserIds)
-    } else {
+    const applyFilters = (q: any) => {
+      let query = q
       if (filters?.activeOnly) {
         const yesterday = new Date()
         yesterday.setDate(yesterday.getDate() - 1)
         query = query.gte('updated_at', yesterday.toISOString())
       }
-
       if (filters?.minBalance != null) {
         query = query.gte('balance', filters.minBalance)
       }
-
       if (filters?.minGames != null) {
         query = query.gte('games_played', filters.minGames)
       }
-
       if (filters?.newUsersSinceDays != null && filters.newUsersSinceDays > 0) {
         const since = new Date()
         since.setDate(since.getDate() - filters.newUsersSinceDays)
         query = query.gte('created_at', since.toISOString())
       }
-
       if (filters?.dormantDays != null && filters.dormantDays > 0) {
         const since = new Date()
         since.setDate(since.getDate() - filters.dormantDays)
         query = query.lt('updated_at', since.toISOString())
       }
+      return query
     }
 
-    const { data: users, error } = await query
+    const users: Array<{ id: string; telegram_id: string | null; username: string | null }> = []
 
-    if (error) throw error
+    if (Array.isArray(targetUserIds) && targetUserIds.length > 0) {
+      // Supabase can reject very large IN clauses; chunk by 500
+      const chunkSize = 500
+      for (let i = 0; i < targetUserIds.length; i += chunkSize) {
+        const slice = targetUserIds.slice(i, i + chunkSize)
+        const { data, error } = await baseQuery().in('id', slice)
+        if (error) throw error
+        users.push(...((data || []) as any[]))
+      }
+    } else {
+      const pageSize = 1000
+      // count first
+      const { count, error: countErr } = await applyFilters(
+        supabase
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .not('telegram_id', 'is', null)
+      )
 
-    if (!users || users.length === 0) {
+      if (countErr) throw countErr
+      const total = Number(count || 0)
+
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const { data, error } = await applyFilters(baseQuery())
+          .range(offset, offset + pageSize - 1)
+
+        if (error) throw error
+        if (!data || data.length === 0) break
+        users.push(...((data || []) as any[]))
+      }
+    }
+
+    if (users.length === 0) {
       return NextResponse.json(
         { error: 'No users found matching criteria (users must have Telegram ID)' },
         { status: 404 }
@@ -101,42 +130,46 @@ export async function POST(request: NextRequest) {
 
     console.log(`📢 Starting broadcast to ${users.length} users`)
 
-    for (const user of users) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+    const endpoint = trimmedImageUrl ? 'sendPhoto' : 'sendMessage'
+
+    let cursor = 0
+    const concurrency = 3
+    const throttleMs = 120
+    const progressEvery = 100
+
+    const pushError = (msg: string) => {
+      if (results.errors.length < 25) {
+        results.errors.push(msg)
+      }
+    }
+
+    const logProgress = () => {
+      const done = results.sent + results.failed
+      if (done > 0 && done % progressEvery === 0) {
+        console.log(`📣 Broadcast progress: ${done}/${results.total} processed (sent=${results.sent}, failed=${results.failed})`)
+      }
+    }
+
+    const sendToUser = async (user: { id: string; telegram_id: string | null; username: string | null }) => {
       try {
         if (!user.telegram_id) {
-          console.log(`⚠️ Skipping user ${user.username} - no telegram_id`)
           results.failed++
-          results.errors.push(`User ${user.username}: No telegram ID`)
-          continue
+          pushError(`User ${user.username}: No telegram ID`)
+          logProgress()
+          return
         }
-
-        console.log(`Sending to user: ${user.username} (${user.telegram_id})`)
-
-        // Get the app URL - use NEXT_PUBLIC_APP_URL or VERCEL_URL
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
 
         const messagePayload: any = trimmedImageUrl
-          ? {
-              chat_id: user.telegram_id,
-              photo: trimmedImageUrl,
-              caption: broadcastMessage
-            }
-          : {
-              chat_id: user.telegram_id,
-              text: broadcastMessage
-            }
+          ? { chat_id: user.telegram_id, photo: trimmedImageUrl, caption: broadcastMessage }
+          : { chat_id: user.telegram_id, text: broadcastMessage }
 
-        // Only add web_app button if we have a valid HTTPS URL
         if (appUrl && appUrl.startsWith('https://')) {
           messagePayload.reply_markup = {
-            inline_keyboard: [
-              [{ text: '🎮 Play Now', web_app: { url: appUrl } }]
-            ]
+            inline_keyboard: [[{ text: '🎮 Play Now', web_app: { url: appUrl } }]]
           }
         }
-
-        const endpoint = trimmedImageUrl ? 'sendPhoto' : 'sendMessage'
 
         const response = await fetch(`${TELEGRAM_API}/${endpoint}`, {
           method: 'POST',
@@ -144,30 +177,40 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify(messagePayload)
         })
 
-        const responseData = await response.json()
+        const responseData = await response.json().catch(() => ({}))
 
         if (response.ok) {
           results.sent++
-          console.log(`✅ Sent to ${user.username}`)
         } else {
           results.failed++
-          const errorMsg = responseData.description || JSON.stringify(responseData)
+          const errorMsg = (responseData as any)?.description || JSON.stringify(responseData)
           if (response.status === 401) {
             console.error('❌ Telegram returned 401 Unauthorized. Please verify TELEGRAM_BOT_TOKEN / BOT_TOKEN.')
           }
-          console.error(`❌ Failed to send to ${user.username}: ${errorMsg}`)
-          results.errors.push(`User ${user.username}: ${errorMsg}`)
+          pushError(`User ${user.username}: ${errorMsg}`)
         }
 
-        // Rate limiting: wait 50ms between messages
-        await new Promise(resolve => setTimeout(resolve, 50))
+        logProgress()
       } catch (err: any) {
         results.failed++
-        const errorMsg = err.message || String(err)
-        console.error(`❌ Error sending to ${user.username}: ${errorMsg}`)
-        results.errors.push(`User ${user.username}: ${errorMsg}`)
+        const errorMsg = err?.message || String(err)
+        pushError(`User ${user.username}: ${errorMsg}`)
+        logProgress()
+      } finally {
+        await sleep(throttleMs)
       }
     }
+
+    const worker = async () => {
+      while (true) {
+        const idx = cursor
+        cursor++
+        if (idx >= users.length) return
+        await sendToUser(users[idx])
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, users.length) }, () => worker()))
 
     console.log(`📊 Broadcast complete: ${results.sent} sent, ${results.failed} failed`)
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAnyPermission, requirePermission } from '@/lib/server/admin-permissions'
 import { getClientIp, rateLimit } from '@/lib/server/rate-limit'
+import { generateReceiptPdfBuffer } from '@/lib/server/receipt-pdf'
+import { sendTelegramMessage, sendTelegramPdf } from '@/lib/server/telegram-send'
 
 const supabase = supabaseAdmin
 
@@ -119,27 +121,48 @@ export async function POST(request: NextRequest) {
             const amountText = escapeMarkdown(Number(withdrawal.amount).toFixed(2))
             const bankText = escapeMarkdown(withdrawal.bank_name || 'N/A')
             const accountText = escapeMarkdown(withdrawal.account_number || 'N/A')
-            const noteText = adminNote ? `\n\n📝 *Admin Note:* ${escapeMarkdown(adminNote)}` : ''
+            const noteText = adminNote ? `\n\n*Admin Note:* ${escapeMarkdown(adminNote)}` : ''
 
-            const payload: any = {
-              chat_id: withdrawal.users.telegram_id,
-              text:
-                `✅ *Withdrawal Approved*\n\n` +
-                `Your withdrawal request of *${amountText} ETB* has been approved.` +
-                `\n\nThe funds will be transferred to your bank account within 24-48 hours.` +
-                `\n\n*Bank:* ${bankText}` +
-                `\n*Account:* ${accountText}` +
-                noteText,
-              parse_mode: 'Markdown'
-            }
+            const pdf = await generateReceiptPdfBuffer({
+              kind: 'withdrawal',
+              receiptNo: `WDR-${String(withdrawalId).slice(0, 8).toUpperCase()}`,
+              issuedAtIso: new Date().toISOString(),
+              username: withdrawal?.users?.username || 'Unknown',
+              telegramId: withdrawal?.users?.telegram_id,
+              amountEtb: Number(withdrawal.amount || 0),
+              status: 'approved',
+              subtitle: 'Withdrawal approved for processing',
+              items: [
+                { label: 'Withdrawal Amount', value: `${Number(withdrawal.amount || 0).toFixed(2)} ETB` },
+                { label: 'Bank', value: String(withdrawal.bank_name || '—') },
+                { label: 'Account Number', value: String(withdrawal.account_number || '—') },
+                { label: 'Account Holder', value: String(withdrawal.account_holder || '—') },
+                { label: 'Request ID', value: String(withdrawalId) },
+              ],
+            })
 
             const replyMarkup = getAppReplyMarkup()
-            if (replyMarkup) payload.reply_markup = replyMarkup
 
-            await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
+            await sendTelegramMessage({
+              botToken,
+              chatId: withdrawal.users.telegram_id,
+              parseMode: 'Markdown',
+              replyMarkup,
+              text:
+                `*Withdrawal Approved*\n\n` +
+                `Amount: *${amountText} ETB*\n` +
+                `Bank: *${bankText}*\n` +
+                `Account: *${accountText}*` +
+                noteText +
+                `\n\nA receipt PDF has been attached to this message.`,
+            })
+
+            await sendTelegramPdf({
+              botToken,
+              chatId: withdrawal.users.telegram_id,
+              filename: `withdrawal-receipt-${String(withdrawalId).slice(0, 8).toLowerCase()}.pdf`,
+              pdfBuffer: pdf,
+              caption: 'Withdrawal Receipt (PDF)',
             })
           }
         } catch (error) {

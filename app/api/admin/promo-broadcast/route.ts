@@ -10,6 +10,16 @@ const RAW_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN ||
 const TELEGRAM_API = RAW_BOT_TOKEN ? `https://api.telegram.org/bot${RAW_BOT_TOKEN}` : ''
 const MINI_APP_URL = process.env.NEXT_PUBLIC_APP_URL || process.env.MINI_APP_URL || ''
 
+function generateSecurePromoCode(prefix: string) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = crypto.randomBytes(8)
+  let out = ''
+  for (let i = 0; i < 6; i++) {
+    out += alphabet[bytes[i] % alphabet.length]
+  }
+  return `${prefix}-${out}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const admin = await requirePermission(req, 'broadcast_manage')
@@ -168,8 +178,7 @@ export async function POST(req: NextRequest) {
     let sharedCode: string | null = null
     if (promoType === 'generic') {
       for (let attempt = 0; attempt < 5; attempt++) {
-        const base = Math.random().toString(36).substring(2, 8).toUpperCase()
-        const candidate = `PRM-${base}`
+        const candidate = generateSecurePromoCode('PRM')
         const { data: existing, error: existsErr } = await supabase
           .from('tournament_promos')
           .select('id')
@@ -203,8 +212,7 @@ export async function POST(req: NextRequest) {
         } else {
           // Tournament promos: best-effort unique code per user
           for (let attempt = 0; attempt < 3; attempt++) {
-            const base = Math.random().toString(36).substring(2, 8).toUpperCase()
-            code = `PRM-${base}`
+            code = generateSecurePromoCode('PRM')
             const { data: existing, error: existsErr } = await supabase
               .from('tournament_promos')
               .select('id')
@@ -240,47 +248,55 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        const lines: string[] = []
-        lines.push(`✅ ${title} 🎁`)
-        lines.push('')
-        if (baseMessage) {
-          lines.push(baseMessage, '')
-        }
+        const safeTitle = String(title || '').trim()
+        const safeMessage = baseMessage
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
 
-        if (promoType === 'generic') {
-          const amt = Number(amount)
-          const amtText = Number.isFinite(amt) && amt > 0 ? `${amt} ETB` : 'a free balance gift'
-          lines.push(`🎁 You\'ve received a free gift balance of ${amtText}.`)
-          lines.push('')
-        }
+        const safeCode = String(code || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
 
-        lines.push(`🎟 Your promo code: \`${code}\``)
-        lines.push('')
-        lines.push('How to claim:')
-        lines.push('1️⃣ Open the *BingoX* mini app')
-        lines.push('2️⃣ Go to *Profile → Claim Promo*')
-        lines.push('3️⃣ Enter your promo code and confirm')
-        lines.push('')
-        lines.push('🔥 Do not share this code. It works only once per account.')
-        if (labelUnit === 'hours') {
-          lines.push(`This code expires in ${labelAmount} hour${labelAmount === 1 ? '' : 's'}.`)
-        } else {
-          lines.push(`This code expires in ${labelAmount} day${labelAmount === 1 ? '' : 's'}.`)
-        }
+        const expiresText =
+          labelUnit === 'hours'
+            ? `Expires in ${labelAmount} hour${labelAmount === 1 ? '' : 's'}`
+            : `Expires in ${labelAmount} day${labelAmount === 1 ? '' : 's'}`
 
-        const text = lines.join('\n')
+        const parts: string[] = []
+        parts.push(`<b>${safeTitle}</b>`) 
+        parts.push('━━━━━━━━━━━━━━━━━━')
+        if (safeMessage) {
+          parts.push(safeMessage)
+          parts.push('')
+        }
+        parts.push(`<b>Your Promo Code</b>`) 
+        parts.push(`<code>${safeCode}</code>`) 
+        parts.push('')
+        parts.push(`<b>${expiresText}</b>`)
+        parts.push('')
+        parts.push('<b>How to claim</b>')
+        parts.push('1) Open the BingoX mini app')
+        parts.push('2) Go to Profile → Claim Promo')
+        parts.push('3) Paste the code and confirm')
+        parts.push('')
+        parts.push('<i>Tip: This code works once per account. Please keep it private.</i>')
+        parts.push('━━━━━━━━━━━━━━━━━━')
+
+        const text = parts.join('\n')
 
         const payload: any = trimmedImageUrl
           ? {
               chat_id: user.telegram_id,
               photo: trimmedImageUrl,
               caption: text,
-              parse_mode: 'Markdown',
+              parse_mode: 'HTML',
             }
           : {
               chat_id: user.telegram_id,
               text,
-              parse_mode: 'Markdown',
+              parse_mode: 'HTML',
             }
 
         const appUrl = MINI_APP_URL && MINI_APP_URL.startsWith('https://') ? MINI_APP_URL : null
@@ -289,7 +305,7 @@ export async function POST(req: NextRequest) {
             inline_keyboard: [
               [
                 {
-                  text: '🎁 Claim Promo',
+                  text: 'Claim Promo',
                   web_app: { url: `${appUrl}/account?promo=1` },
                 },
               ],

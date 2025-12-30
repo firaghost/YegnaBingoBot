@@ -768,11 +768,24 @@ export default function GamePage() {
     if (!gameState) return
     if (isSpectator) return
     if (bingoCard.length > 0) return
+    if (!gameId || !user?.id) return
 
     if (gameState.status === 'countdown' || gameState.status === 'active') {
       console.log('🎯 Generating bingo card on game start')
       const newCard = generateBingoCard()
       setBingoCard(newCard)
+
+      void (async () => {
+        try {
+          await fetch('/api/game/player-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameId, userId: user.id, card: newCard }),
+          })
+        } catch (e) {
+          console.warn('Failed to persist bingo card', e)
+        }
+      })()
 
       const initialMarked = Array(5)
         .fill(null)
@@ -783,7 +796,7 @@ export default function GamePage() {
         )
       setMarkedCells(initialMarked)
     }
-  }, [gameState?.status, gameState, isSpectator, bingoCard.length])
+  }, [gameState?.status, gameState, isSpectator, bingoCard.length, gameId, user?.id])
 
   // Handle cell click - Manual marking only (no unmarking)
   const handleCellClick = (row: number, col: number) => {
@@ -1248,7 +1261,7 @@ export default function GamePage() {
   const cashBalance = user?.balance || 0
   const bonusBalance = user?.bonus_balance || 0
   const lockedBonus = (user as any)?.bonus_win_balance || 0
-  const walletTotal = cashBalance + bonusBalance + lockedBonus
+  const totalBonus = bonusBalance + lockedBonus
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -1311,12 +1324,19 @@ export default function GamePage() {
                 <div className="w-7 h-7 rounded-full bg-amber-500 flex items-center justify-center text-slate-900 mr-2">
                   <LuWallet className="w-4 h-4" />
                 </div>
-                <div className="flex flex-col mr-1">
-                  <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Wallet</span>
-                  <span className="text-xs font-semibold text-slate-50">
-                    {walletHidden ? '••••••' : formatCurrency(walletTotal)}
-                  </span>
+
+                <div className="flex flex-col mr-2">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Cash</span>
+                  <span className="text-xs font-semibold text-slate-50">{walletHidden ? '••••••' : formatCurrency(cashBalance)}</span>
                 </div>
+
+                <div className="w-px h-8 bg-slate-700/60 mx-2" />
+
+                <div className="flex flex-col mr-1">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-[0.12em]">Bonus</span>
+                  <span className="text-xs font-semibold text-amber-200">{walletHidden ? '••••••' : formatCurrency(totalBonus)}</span>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => setWalletHidden((prev) => !prev)}

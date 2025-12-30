@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { supabase } from './supabase'
 
 // Cache for configuration values to avoid repeated DB calls
 const configCache = new Map<string, { value: any; timestamp: number }>()
@@ -92,10 +92,16 @@ export async function getConfig(key: string): Promise<any> {
       .select('config_value')
       .eq('config_key', key)
       .eq('is_active', true)
-      .single()
+      .maybeSingle()
 
     if (selectError) {
       console.error('Direct select failed:', selectError)
+      return null
+    }
+
+    if (!directData) {
+      // Missing key is valid; treat as null
+      configCache.set(key, { value: null, timestamp: Date.now() })
       return null
     }
 

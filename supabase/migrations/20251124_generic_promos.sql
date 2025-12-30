@@ -42,13 +42,14 @@ BEGIN
     'completed',
     jsonb_build_object(
       'promo_id', p_promo_id,
-      'code', p_code
+      'code', p_code,
+      'wallet_type', 'bonus'
     )
   )
   RETURNING id INTO v_tx_id;
 
   UPDATE public.users
-  SET balance = COALESCE(balance, 0) + p_amount
+  SET bonus_balance = COALESCE(bonus_balance, 0) + p_amount
   WHERE id = p_user_id;
 
   RETURN;

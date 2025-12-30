@@ -43,7 +43,7 @@ export default function RootLayout({
         )}
       </head>
       <body className="antialiased bg-slate-950 text-slate-50">
-        <div className="safe-area min-h-[100dvh] flex flex-col">
+        <div className="safe-area h-[100dvh] overflow-y-auto overflow-x-hidden flex flex-col scrollbar-hide">
           {/* Top spacer to avoid Telegram overlays cropping the header */}
           <div className="tg-top-spacer" />
           <Suspense fallback={null}>
