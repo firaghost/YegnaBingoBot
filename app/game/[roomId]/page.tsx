@@ -90,7 +90,10 @@ export default function GamePage() {
   )
 
   // Bases for asset loading (prod may host frontend and socket on different domains)
-  const SOCKET_BASE = (process.env.NEXT_PUBLIC_SOCKET_URL || 'https://yegnabingobot-production.up.railway.app').replace(/\/$/, '')
+  const SOCKET_BASE = (
+    process.env.NEXT_PUBLIC_SOCKET_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : '')
+  ).replace(/\/$/, '')
   const ASSETS_BASE = (process.env.NEXT_PUBLIC_ASSETS_BASE_URL || '').replace(/\/$/, '')
   const buildUrl = (key: string, base: string) => base ? `${base}/BINGO_Sound/${key}.mp3` : `/BINGO_Sound/${key}.mp3`
   const BINGO_VOICE_URL = '/AdditionalSounds/Good-Bingo.mp3'

@@ -45,12 +45,24 @@ export function useSocket() {
       process.env.NEXT_PUBLIC_SOCKET_URL ||
       (typeof window !== 'undefined' ? window.location.origin : '')
     console.log('🔌 Connecting to Socket.IO:', socketUrl)
+
+    const isTelegram = typeof window !== 'undefined' && Boolean((window as any)?.Telegram?.WebApp)
+    const isMobile =
+      typeof navigator !== 'undefined' &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+    // Telegram mobile WebViews can be flaky with direct WebSocket; start with polling and upgrade.
+    const transports: Array<'polling' | 'websocket'> = (isTelegram && isMobile)
+      ? ['polling', 'websocket']
+      : ['websocket', 'polling']
     
     const socket = io(socketUrl, {
-      transports: ['websocket', 'polling'],
+      transports,
+      upgrade: true,
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000
+      reconnectionDelay: 1000,
+      timeout: 20000
     })
 
     socket.on('connect', () => {
